@@ -1,4 +1,5 @@
 import { capitalize } from '@awslambdahackathon/utils';
+import { fetchAuthSession } from 'aws-amplify/auth';
 import { useEffect, useState } from 'react';
 
 import './App.css';
@@ -7,11 +8,32 @@ import { API_CONFIG, apiClient } from './config/api';
 function HomePage() {
   const [count, setCount] = useState(0);
   const [apiStatus, setApiStatus] = useState('');
+  const [authStatus, setAuthStatus] = useState('');
   const [loading, setLoading] = useState(false);
+  const [authLoading, setAuthLoading] = useState(false);
 
   useEffect(() => {
     testApiConnection();
+    checkAuthStatus();
   }, []);
+
+  const checkAuthStatus = async () => {
+    setAuthLoading(true);
+    try {
+      const session = await fetchAuthSession();
+      if (session.tokens?.idToken) {
+        setAuthStatus('✅ Authenticated - Token available');
+      } else {
+        setAuthStatus('❌ Not authenticated - No token available');
+      }
+    } catch (error) {
+      setAuthStatus(
+        `❌ Auth error: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    } finally {
+      setAuthLoading(false);
+    }
+  };
 
   const testApiConnection = async () => {
     setLoading(true);
@@ -50,12 +72,21 @@ function HomePage() {
           <h3>Utils Package Demo</h3>
           <p>Capitalized "hello world": {capitalize('hello world')}</p>
         </div>
+        <div className="auth-demo">
+          <h3>Authentication Status</h3>
+          <p>
+            Status: {authLoading ? 'Checking...' : authStatus || 'Not checked'}
+          </p>
+          <button onClick={checkAuthStatus} disabled={authLoading}>
+            {authLoading ? 'Checking...' : 'Check Auth Status'}
+          </button>
+        </div>
         <div className="api-demo">
-          <h3>API Connection Demo</h3>
+          <h3>API Connection Demo (Protected Endpoint)</h3>
           <p>API URL: {API_CONFIG.baseUrl}</p>
           <p>Status: {loading ? 'Loading...' : apiStatus || 'Not tested'}</p>
           <button onClick={testApiConnection} disabled={loading}>
-            {loading ? 'Testing...' : 'Test API Connection'}
+            {loading ? 'Testing...' : 'Test Protected API'}
           </button>
         </div>
         <div className="links">

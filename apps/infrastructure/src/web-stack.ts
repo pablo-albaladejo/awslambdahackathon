@@ -11,6 +11,8 @@ interface WebStackProps extends cdk.StackProps {
 }
 
 export class WebStack extends cdk.Stack {
+  public readonly cloudFrontDomain: string;
+
   constructor(scope: Construct, id: string, props: WebStackProps) {
     super(scope, id, props);
 
@@ -51,6 +53,9 @@ export class WebStack extends cdk.Stack {
         },
       ],
     });
+
+    // Store CloudFront domain for use in other stacks
+    this.cloudFrontDomain = distribution.distributionDomainName;
 
     // Deploy website files to S3 (only if webAssetPath is provided)
     if (props.webAssetPath) {

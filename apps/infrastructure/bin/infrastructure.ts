@@ -32,15 +32,17 @@ const authStack = new AuthStack(app, `AuthStack-${environment}`, {
 });
 authStack.addDependency(backendStack);
 
+// Web Stack (needs to be created before API Stack to get CloudFront domain)
+const webStack = new WebStack(app, `WebStack-${environment}`, {
+  ...stackProps,
+});
+
 // API Stack
 const apiStack = new ApiStack(app, `ApiStack-${environment}`, {
   ...stackProps,
   healthFunction: backendStack.healthFunction,
+  userPool: authStack.userPool,
+  cloudFrontDomain: webStack.cloudFrontDomain,
 });
 apiStack.addDependency(authStack);
-
-// Web Stack
-const webStack = new WebStack(app, `WebStack-${environment}`, {
-  ...stackProps,
-});
-webStack.addDependency(apiStack);
+apiStack.addDependency(webStack);
