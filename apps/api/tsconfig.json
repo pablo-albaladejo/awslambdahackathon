@@ -1,8 +1,8 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
-    "target": "ES2020",
-    "module": "commonjs",
+    "target": "es2022",
+    "module": "ESNext",
     "lib": ["ES2020"],
     "outDir": "./dist",
     "strict": true,
@@ -13,7 +13,7 @@
     "declarationMap": true,
     "sourceMap": true,
     "resolveJsonModule": true,
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "noEmit": false,
     "baseUrl": ".",
     "paths": {

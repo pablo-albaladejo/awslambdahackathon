@@ -10,6 +10,14 @@
     ".": {
       "import": "./dist/index.js",
       "require": "./dist/index.js"
+    },
+    "./frontend": {
+      "import": "./dist/frontend.js",
+      "require": "./dist/frontend.js"
+    },
+    "./backend": {
+      "import": "./dist/lambda.js",
+      "require": "./dist/lambda.js"
     }
   },
   "scripts": {

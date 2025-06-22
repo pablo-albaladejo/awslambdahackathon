@@ -1,15 +1,50 @@
 import { Logger } from '@aws-lambda-powertools/logger';
 import { Metrics } from '@aws-lambda-powertools/metrics';
 import { Tracer } from '@aws-lambda-powertools/tracer';
+import type { ApiResponse, LambdaResponse } from '@awslambdahackathon/types';
 import middy from '@middy/core';
 import cors from '@middy/http-cors';
 import httpErrorHandler from '@middy/http-error-handler';
 import httpJsonBodyParser from '@middy/http-json-body-parser';
 import validator from '@middy/validator';
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-import type { ZodSchema } from 'zod';
+import { z, type ZodSchema } from 'zod';
+
 // Define LogLevel type locally
 export type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
+
+// HTTP response utilities for Lambda functions
+const defaultHeaders = {
+  'Content-Type': 'application/json',
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers':
+    'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+};
+
+export const createSuccessResponse = <T>(
+  data: T,
+  statusCode: number = 200
+): LambdaResponse => ({
+  statusCode,
+  headers: defaultHeaders,
+  body: JSON.stringify({
+    success: true,
+    data,
+  } as ApiResponse<T>),
+});
+
+export const createErrorResponse = (
+  error: string,
+  statusCode: number = 500
+): LambdaResponse => ({
+  statusCode,
+  headers: defaultHeaders,
+  body: JSON.stringify({
+    success: false,
+    error,
+  } as ApiResponse),
+});
 
 // Create centralized logger, tracer, and metrics instances
 export const logger = new Logger({
@@ -102,8 +137,6 @@ export const createHandler = <
 };
 
 // Common Zod schemas
-import { z } from 'zod';
-
 export const commonSchemas = {
   // Health check schema
   health: z.object({

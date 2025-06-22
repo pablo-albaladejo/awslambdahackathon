@@ -1,5 +1,5 @@
 import { WithAuthenticatorProps } from '@aws-amplify/ui-react';
-import { logger } from '@awslambdahackathon/utils';
+import { logger } from '@awslambdahackathon/utils/frontend';
 import { fetchAuthSession } from 'aws-amplify/auth';
 import { ReactNode, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';

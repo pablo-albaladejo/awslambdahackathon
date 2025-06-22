@@ -2,7 +2,7 @@
 // This file contains the configuration for AWS CloudWatch RUM
 // which provides real-time monitoring of frontend applications
 
-import { logger } from '@awslambdahackathon/utils';
+import { AwsRum, logger } from '@awslambdahackathon/utils/frontend';
 
 export interface RUMConfig {
   applicationId: string;
@@ -54,7 +54,7 @@ export const initializeRUM = async (config: RUMConfig = defaultRUMConfig) => {
     );
 
     // Make it globally available
-    window.awsRum = awsRum;
+    window.awsRum = awsRum as unknown as AwsRum;
 
     logger.info('CloudWatch RUM initialized successfully');
   } catch (error) {

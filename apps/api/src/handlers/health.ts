@@ -5,7 +5,7 @@ import {
   logger,
   metrics,
   tracer,
-} from '@awslambdahackathon/utils';
+} from '@awslambdahackathon/utils/backend';
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 
 // Define the handler function
