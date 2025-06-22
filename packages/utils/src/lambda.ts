@@ -138,9 +138,18 @@ export const createHandler = <
 
 // Common Zod schemas
 export const commonSchemas = {
-  // Health check schema
+  // Health check schema - validates the entire API Gateway event
   health: z.object({
+    httpMethod: z.string(),
+    path: z.string(),
     queryStringParameters: z.record(z.string()).optional(),
+    pathParameters: z.record(z.string()).optional(),
+    headers: z.record(z.string()).optional(),
+    body: z.any().optional(),
+    requestContext: z.any().optional(),
+    multiValueQueryStringParameters: z.record(z.array(z.string())).optional(),
+    multiValueHeaders: z.record(z.array(z.string())).optional(),
+    isBase64Encoded: z.boolean().optional(),
   }),
 
   // Generic API Gateway event schema
@@ -151,5 +160,9 @@ export const commonSchemas = {
     pathParameters: z.record(z.string()).optional(),
     headers: z.record(z.string()).optional(),
     body: z.any().optional(),
+    requestContext: z.any().optional(),
+    multiValueQueryStringParameters: z.record(z.array(z.string())).optional(),
+    multiValueHeaders: z.record(z.array(z.string())).optional(),
+    isBase64Encoded: z.boolean().optional(),
   }),
 };

@@ -15,33 +15,29 @@ configureAmplify();
 
 function App({ user, signOut }: WithAuthenticatorProps) {
   return (
-    <Layout user={user} signOut={signOut}>
-      <Routes>
-        <Route
-          path="/"
-          element={
-            <ProtectedRoute requiredGroup="Users">
-              <HomePage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/dashboard"
-          element={
-            <ProtectedRoute requiredGroup="Admins">
-              <DashboardPage />
-            </ProtectedRoute>
-          }
-        />
-      </Routes>
-    </Layout>
+    <BrowserRouter>
+      <Layout user={user} signOut={signOut}>
+        <Routes>
+          <Route
+            path="/"
+            element={
+              <ProtectedRoute requiredGroup="Users">
+                <HomePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoute requiredGroup="Admins">
+                <DashboardPage />
+              </ProtectedRoute>
+            }
+          />
+        </Routes>
+      </Layout>
+    </BrowserRouter>
   );
 }
 
-const AppWithRouter = () => (
-  <BrowserRouter>
-    <App />
-  </BrowserRouter>
-);
-
-export default withAuthenticator(AppWithRouter);
+export default withAuthenticator(App);

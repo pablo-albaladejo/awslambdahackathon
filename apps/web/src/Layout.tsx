@@ -12,6 +12,15 @@ const Layout = ({ user, signOut, children }: LayoutProps) => {
   const navigate = useNavigate();
   const [userGroups, setUserGroups] = useState<string[]>([]);
 
+  // Debug logs
+  useEffect(() => {
+    logger.info('Layout rendered', {
+      hasUser: !!user,
+      username: user?.username,
+      hasSignOut: !!signOut,
+    });
+  }, [user, signOut]);
+
   useEffect(() => {
     const fetchUserGroups = async () => {
       try {
@@ -21,6 +30,7 @@ const Layout = ({ user, signOut, children }: LayoutProps) => {
             | string[]
             | undefined) || [];
         setUserGroups(groups);
+        logger.info('User groups fetched', { groups });
       } catch (error) {
         logger.error('Error fetching user groups', { error });
       }
