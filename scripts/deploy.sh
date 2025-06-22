@@ -12,6 +12,7 @@ echo "🌍 AWS Region: $AWS_REGION"
 # Set AWS environment variables
 export AWS_PROFILE=$AWS_PROFILE
 export AWS_DEFAULT_REGION=$AWS_REGION
+export AWS_PAGER=""
 
 # Function to handle errors
 handle_error() {
