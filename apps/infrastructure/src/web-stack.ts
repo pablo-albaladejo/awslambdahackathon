@@ -7,7 +7,7 @@ import { Construct } from 'constructs';
 
 interface WebStackProps extends cdk.StackProps {
   environment: string;
-  webAssetPath: string;
+  webAssetPath?: string;
 }
 
 export class WebStack extends cdk.Stack {
@@ -29,16 +29,14 @@ export class WebStack extends cdk.Stack {
 
     // CloudFront Origin Access Identity
     const oai = new cloudfront.OriginAccessIdentity(this, 'OAI');
+    websiteBucket.grantRead(oai);
 
     // CloudFront Distribution for the website
     const distribution = new cloudfront.Distribution(this, 'Distribution', {
       defaultBehavior: {
-        origin: cloudfront_origins.S3BucketOrigin.withOriginAccessIdentity(
-          websiteBucket,
-          {
-            originAccessIdentity: oai,
-          }
-        ),
+        origin: new cloudfront_origins.S3Origin(websiteBucket, {
+          originAccessIdentity: oai,
+        }),
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
         cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
       },
@@ -52,18 +50,25 @@ export class WebStack extends cdk.Stack {
       ],
     });
 
-    // Deploy website files to S3
-    new s3deploy.BucketDeployment(this, 'DeployWebsite', {
-      sources: [s3deploy.Source.asset(props.webAssetPath)],
-      destinationBucket: websiteBucket,
-      distribution,
-      distributionPaths: ['/*'],
-    });
+    // Deploy website files to S3 (only if webAssetPath is provided)
+    if (props.webAssetPath) {
+      new s3deploy.BucketDeployment(this, 'DeployWebsite', {
+        sources: [s3deploy.Source.asset(props.webAssetPath)],
+        destinationBucket: websiteBucket,
+        distribution,
+        distributionPaths: ['/*'],
+      });
+    }
 
     // Outputs
     new cdk.CfnOutput(this, 'WebsiteUrl', {
       value: `https://${distribution.distributionDomainName}`,
       description: 'CloudFront Distribution URL',
+    });
+
+    new cdk.CfnOutput(this, 'DistributionId', {
+      value: distribution.distributionId,
+      description: 'CloudFront Distribution ID',
     });
   }
 }

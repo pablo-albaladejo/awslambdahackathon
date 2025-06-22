@@ -35,6 +35,5 @@ apiStack.addDependency(backendStack);
 // Web Stack
 const webStack = new WebStack(app, `WebStack-${environment}`, {
   ...stackProps,
-  webAssetPath: '../web/dist', // Default path, can be overridden
 });
 webStack.addDependency(apiStack);
