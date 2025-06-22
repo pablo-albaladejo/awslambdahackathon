@@ -4,7 +4,7 @@
 ENVIRONMENT=${1:-dev}
 AWS_PROFILE=${2:-awslambdahackathon}
 AWS_REGION=${3:-us-east-2}
-DEFAULT_USER_EMAIL=${4:-pablo.albaladejo.mestre+awslambdahackathon@gmail.com}
+DEFAULT_USER_EMAIL=${4:-demo@example.com}
 
 echo "🚀 Starting deployment for environment: $ENVIRONMENT"
 echo "🔧 AWS Profile: $AWS_PROFILE"
@@ -64,6 +64,34 @@ echo "🔒 Deploying Auth stack: $AUTH_STACK_NAME"
 if ! npx cdk deploy "$AUTH_STACK_NAME" --require-approval never --context defaultUserEmail="$DEFAULT_USER_EMAIL"; then
     handle_error "Failed to deploy Auth stack"
 fi
+
+# Step 4.5: Create default users via script
+echo "🔑 Creating default users..."
+TEMP_PASSWORD_SECRET_ID="awslambdahackathon-default-user-password-$ENVIRONMENT"
+USER_POOL_ID_OUTPUT=$(aws cloudformation describe-stacks --stack-name "$AUTH_STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='UserPoolId'].OutputValue" --output text)
+
+if [ -z "$USER_POOL_ID_OUTPUT" ]; then
+    handle_error "Could not get UserPoolId from Auth stack output"
+fi
+
+cd ../.. || handle_error "Failed to return to project root"
+
+export USER_POOL_ID="$USER_POOL_ID_OUTPUT"
+export TEMP_PASSWORD_SECRET_ID="$TEMP_PASSWORD_SECRET_ID"
+export DEFAULT_USER_EMAIL_BASE="$DEFAULT_USER_EMAIL"
+export AWS_REGION="$AWS_REGION"
+
+if ! sh scripts/create-default-users.sh; then
+    handle_error "Failed to create default users"
+fi
+
+# Unset environment variables for security
+unset USER_POOL_ID
+unset TEMP_PASSWORD_SECRET_ID
+unset DEFAULT_USER_EMAIL_BASE
+# We keep AWS_REGION
+
+cd apps/infrastructure || handle_error "Failed to change back to infrastructure directory"
 
 # Step 5: Deploy the API stack
 echo "🏗️  Deploying API stack: $API_STACK_NAME"

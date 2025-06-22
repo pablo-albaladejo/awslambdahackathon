@@ -11,9 +11,6 @@ const app = new cdk.App();
 
 // Get environment from context
 const environment = app.node.tryGetContext('environment') || 'dev';
-const defaultUserEmail =
-  app.node.tryGetContext('defaultUserEmail') ||
-  'pablo.albaladejo.mestre+awslambdahackathon@gmail.com';
 
 // Common props for stacks
 const stackProps = {
@@ -32,7 +29,6 @@ const backendStack = new BackendStack(app, `BackendStack-${environment}`, {
 // Auth Stack
 const authStack = new AuthStack(app, `AuthStack-${environment}`, {
   ...stackProps,
-  defaultUserEmail,
 });
 authStack.addDependency(backendStack);
 
