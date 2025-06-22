@@ -132,6 +132,56 @@ The CDK stack deploys:
 
 ---
 
+## API Handlers with Middy, Zod & Lambda Powertools
+
+The API uses a modern, production-ready stack for Lambda handlers:
+
+### Features
+
+- **Middy**: Middleware framework for AWS Lambda with automatic request/response handling
+- **Zod**: TypeScript-first schema validation for all requests
+- **Lambda Powertools**: Centralized logging, tracing, and metrics across all handlers
+
+### Handler Structure
+
+All handlers follow a standardized pattern with:
+
+```typescript
+// Automatic middleware: JSON parsing, CORS, logging, error handling
+export const handler = createHandler(myHandler, validationSchema);
+```
+
+### Built-in Middleware
+
+- **JSON Body Parser**: Automatic parsing of request bodies
+- **CORS**: Cross-origin resource sharing headers
+- **Request/Response Logger**: Structured logging of all requests
+- **Error Handler**: Standardized error responses
+- **Validator**: Schema validation with detailed error messages
+
+### Observability
+
+- **Structured Logging**: All logs include request context and structured data
+- **Custom Metrics**: Business metrics automatically sent to CloudWatch
+- **Distributed Tracing**: Custom spans for business logic
+- **Error Tracking**: Automatic error logging with full context
+
+### Testing
+
+Use the test script to verify handlers work correctly:
+
+```sh
+# Test all endpoints
+./scripts/test-api.sh [API_URL]
+
+# Example: Test deployed API
+./scripts/test-api.sh https://your-api-gateway-url.amazonaws.com
+```
+
+For detailed documentation, see [apps/api/README.md](apps/api/README.md).
+
+---
+
 ## Notes
 
 - The Lambda build must be up-to-date before running `deploy` or `synth`.

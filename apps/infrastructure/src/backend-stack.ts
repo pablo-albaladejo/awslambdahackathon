@@ -1,7 +1,6 @@
 import * as path from 'path';
 
 import * as cdk from 'aws-cdk-lib';
-import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as logs from 'aws-cdk-lib/aws-logs';
@@ -12,63 +11,34 @@ interface BackendStackProps extends cdk.StackProps {
 }
 
 export class BackendStack extends cdk.Stack {
-  public readonly helloFunction: lambda.IFunction;
-  public readonly usersFunction: lambda.IFunction;
+  public readonly healthFunction: lambda.IFunction;
 
   constructor(scope: Construct, id: string, props: BackendStackProps) {
     super(scope, id, props);
 
-    // DynamoDB Table for users
-    const usersTable = new dynamodb.Table(this, 'UsersTable', {
-      tableName: `awslambdahackathon-users-${props.environment}`,
-      partitionKey: {
-        name: 'id',
-        type: dynamodb.AttributeType.STRING,
-      },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      removalPolicy:
-        props.environment === 'prod'
-          ? cdk.RemovalPolicy.RETAIN
-          : cdk.RemovalPolicy.DESTROY,
-    });
+    // Common environment variables for all Lambda functions
+    const commonEnvVars = {
+      NODE_ENV: props.environment,
+      ENVIRONMENT: props.environment,
+      LOG_LEVEL: props.environment === 'prod' ? 'INFO' : 'DEBUG',
+      POWERTOOLS_SERVICE_NAME: 'awslambdahackathon-api',
+      POWERTOOLS_METRICS_NAMESPACE: 'awslambdahackathon',
+    };
 
-    // Lambda function for /hello endpoint
-    this.helloFunction = new NodejsFunction(this, 'HelloFunction', {
-      entry: path.join(__dirname, '../../../apps/api/src/handlers/hello.ts'),
+    // Lambda function for /health endpoint
+    this.healthFunction = new NodejsFunction(this, 'HealthFunction', {
+      entry: path.join(__dirname, '../../../apps/api/src/handlers/health.ts'),
       handler: 'handler',
       runtime: lambda.Runtime.NODEJS_22_X,
-      environment: {
-        NODE_ENV: props.environment,
-        USERS_TABLE: usersTable.tableName,
-      },
+      environment: commonEnvVars,
       logRetention: logs.RetentionDays.ONE_WEEK,
       bundling: {
         externalModules: ['@aws-sdk/*'],
+        minify: props.environment === 'prod',
+        sourceMap: props.environment !== 'prod',
       },
-    });
-
-    // Lambda function for /users endpoints
-    this.usersFunction = new NodejsFunction(this, 'UsersFunction', {
-      entry: path.join(__dirname, '../../../apps/api/src/handlers/users.ts'),
-      handler: 'handler',
-      runtime: lambda.Runtime.NODEJS_22_X,
-      environment: {
-        NODE_ENV: props.environment,
-        USERS_TABLE: usersTable.tableName,
-      },
-      logRetention: logs.RetentionDays.ONE_WEEK,
-      bundling: {
-        externalModules: ['@aws-sdk/*'],
-      },
-    });
-
-    // Grant DynamoDB permissions to the users Lambda function
-    usersTable.grantReadWriteData(this.usersFunction);
-
-    // Outputs
-    new cdk.CfnOutput(this, 'UsersTableName', {
-      value: usersTable.tableName,
-      description: 'DynamoDB Users Table Name',
+      timeout: cdk.Duration.seconds(30),
+      memorySize: 512,
     });
   }
 }

@@ -1,4 +1,20 @@
+/* eslint-disable no-console */
 import type { ApiResponse, LambdaResponse } from '@awslambdahackathon/types';
+import { z, ZodSchema } from 'zod';
+
+// Define LogLevel type locally
+export type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
+
+// Extend the Window interface to include awsRum
+interface AwsRum {
+  recordEvent: (eventName: string, data: unknown) => void;
+}
+
+declare global {
+  interface Window {
+    awsRum?: AwsRum;
+  }
+}
 
 const defaultHeaders = {
   'Content-Type': 'application/json',
@@ -53,3 +69,69 @@ export const capitalize = (str: string): string => {
 export const generateId = (): string => {
   return Math.random().toString(36).substring(2) + Date.now().toString(36);
 };
+
+// Frontend logger with CloudWatch RUM support
+export const logger = {
+  info: (message: string, data?: unknown) => {
+    if (typeof window !== 'undefined') {
+      // Try to use CloudWatch RUM if available
+      if (window.awsRum) {
+        window.awsRum.recordEvent('info', {
+          message,
+          data,
+          timestamp: new Date().toISOString(),
+        });
+      } else {
+        console.log(`[INFO] ${message}`, data);
+      }
+    }
+  },
+  error: (message: string, data?: unknown) => {
+    if (typeof window !== 'undefined') {
+      // Try to use CloudWatch RUM if available
+      if (window.awsRum) {
+        window.awsRum.recordEvent('error', {
+          message,
+          data,
+          timestamp: new Date().toISOString(),
+        });
+      } else {
+        console.error(`[ERROR] ${message}`, data);
+      }
+    }
+  },
+  warn: (message: string, data?: unknown) => {
+    if (typeof window !== 'undefined') {
+      // Try to use CloudWatch RUM if available
+      if (window.awsRum) {
+        window.awsRum.recordEvent('warn', {
+          message,
+          data,
+          timestamp: new Date().toISOString(),
+        });
+      } else {
+        console.warn(`[WARN] ${message}`, data);
+      }
+    }
+  },
+  debug: (message: string, data?: unknown) => {
+    if (typeof window !== 'undefined') {
+      // Try to use CloudWatch RUM if available
+      if (window.awsRum) {
+        window.awsRum.recordEvent('debug', {
+          message,
+          data,
+          timestamp: new Date().toISOString(),
+        });
+      } else {
+        console.debug(`[DEBUG] ${message}`, data);
+      }
+    }
+  },
+};
+
+// Export Zod utilities for frontend use
+export { z, ZodSchema };
+
+// Export Lambda utilities (backend only)
+export * from './lambda';

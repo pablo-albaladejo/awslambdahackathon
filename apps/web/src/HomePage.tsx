@@ -17,7 +17,7 @@ function HomePage() {
     setLoading(true);
     try {
       const response = await apiClient.get<{ message: string }>(
-        API_CONFIG.endpoints.hello
+        API_CONFIG.endpoints.health
       );
       if (response.success) {
         setApiStatus(response.data?.message || 'API connected successfully!');

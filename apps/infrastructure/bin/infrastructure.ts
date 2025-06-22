@@ -35,8 +35,7 @@ authStack.addDependency(backendStack);
 // API Stack
 const apiStack = new ApiStack(app, `ApiStack-${environment}`, {
   ...stackProps,
-  helloFunction: backendStack.helloFunction,
-  usersFunction: backendStack.usersFunction,
+  healthFunction: backendStack.healthFunction,
 });
 apiStack.addDependency(authStack);
 

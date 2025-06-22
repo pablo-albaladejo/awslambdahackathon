@@ -5,8 +5,7 @@ import { Construct } from 'constructs';
 
 interface ApiStackProps extends cdk.StackProps {
   environment: string;
-  helloFunction: lambda.IFunction;
-  usersFunction: lambda.IFunction;
+  healthFunction: lambda.IFunction;
 }
 
 export class ApiStack extends cdk.Stack {
@@ -27,34 +26,10 @@ export class ApiStack extends cdk.Stack {
     });
 
     // API Gateway Resources and Methods
-    const helloResource = api.root.addResource('hello');
-    helloResource.addMethod(
+    const healthResource = api.root.addResource('health');
+    healthResource.addMethod(
       'GET',
-      new apigateway.LambdaIntegration(props.helloFunction)
-    );
-
-    const usersResource = api.root.addResource('users');
-    usersResource.addMethod(
-      'GET',
-      new apigateway.LambdaIntegration(props.usersFunction)
-    );
-    usersResource.addMethod(
-      'POST',
-      new apigateway.LambdaIntegration(props.usersFunction)
-    );
-
-    const userResource = usersResource.addResource('{id}');
-    userResource.addMethod(
-      'GET',
-      new apigateway.LambdaIntegration(props.usersFunction)
-    );
-    userResource.addMethod(
-      'PUT',
-      new apigateway.LambdaIntegration(props.usersFunction)
-    );
-    userResource.addMethod(
-      'DELETE',
-      new apigateway.LambdaIntegration(props.usersFunction)
+      new apigateway.LambdaIntegration(props.healthFunction)
     );
 
     // Outputs
