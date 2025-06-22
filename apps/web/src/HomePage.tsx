@@ -1,7 +1,7 @@
-import { Md } from '@awslambdahackathon/utils';
+import { capitalize } from '@awslambdahackathon/utils';
 import { useEffect, useState } from 'react';
-import { Uu, jd } from '../config/api';
 import './App.css';
+import { API_CONFIG, apiClient } from './config/api';
 
 function HomePage() {
   const [count, setCount] = useState(0);
@@ -15,7 +15,9 @@ function HomePage() {
   const testApiConnection = async () => {
     setLoading(true);
     try {
-      const response = await jd.get(Uu.endpoints.hello);
+      const response = await apiClient.get<{ message: string }>(
+        API_CONFIG.endpoints.hello
+      );
       if (response.success) {
         setApiStatus(response.data?.message || 'API connected successfully!');
       } else {
@@ -41,11 +43,11 @@ function HomePage() {
         </div>
         <div className="utils-demo">
           <h3>Utils Package Demo</h3>
-          <p>Capitalized "hello world": {Md('hello world')}</p>
+          <p>Capitalized "hello world": {capitalize('hello world')}</p>
         </div>
         <div className="api-demo">
           <h3>API Connection Demo</h3>
-          <p>API URL: {Uu.baseUrl}</p>
+          <p>API URL: {API_CONFIG.baseUrl}</p>
           <p>Status: {loading ? 'Loading...' : apiStatus || 'Not tested'}</p>
           <button onClick={testApiConnection} disabled={loading}>
             {loading ? 'Testing...' : 'Test API Connection'}

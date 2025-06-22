@@ -114,12 +114,23 @@ export class AuthStack extends cdk.Stack {
           Payload: JSON.stringify({
             ResourceProperties: {
               UserPoolId: this.userPool.userPoolId,
-              Email: props.defaultUserEmail,
-              TemporaryPassword: temporaryPasswordSecret.secretValue.toString(),
+              TemporaryPasswordSecretArn: temporaryPasswordSecret.secretArn,
               Users: [
-                { username: 'admin_user', group: 'Admins' },
-                { username: 'user_one', group: 'Users' },
-                { username: 'user_two', group: 'Users' },
+                {
+                  username: 'admin_user',
+                  group: 'Admins',
+                  email: 'admin_user@example.com',
+                },
+                {
+                  username: 'user_one',
+                  group: 'Users',
+                  email: 'user_one@example.com',
+                },
+                {
+                  username: 'user_two',
+                  group: 'Users',
+                  email: 'user_two@example.com',
+                },
               ],
             },
           }),
@@ -128,9 +139,12 @@ export class AuthStack extends cdk.Stack {
           `cognito-default-users-trigger-${Date.now()}`
         ),
       },
-      policy: custom_resources.AwsCustomResourcePolicy.fromSdkCalls({
-        resources: [userCreatorLambda.functionArn],
-      }),
+      policy: custom_resources.AwsCustomResourcePolicy.fromStatements([
+        new iam.PolicyStatement({
+          actions: ['lambda:InvokeFunction'],
+          resources: [userCreatorLambda.functionArn],
+        }),
+      ]),
       logRetention: logs.RetentionDays.ONE_WEEK,
     });
 

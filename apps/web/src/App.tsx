@@ -3,6 +3,7 @@ import {
   WithAuthenticatorProps,
 } from '@aws-amplify/ui-react';
 import '@aws-amplify/ui-react/styles.css';
+import { fetchAuthSession } from 'aws-amplify/auth';
 import { useEffect } from 'react';
 import { BrowserRouter, Route, Routes, useNavigate } from 'react-router-dom';
 
@@ -18,14 +19,31 @@ function App({ user }: WithAuthenticatorProps) {
 
   useEffect(() => {
     // Redirect user based on their group after login
-    const groups =
-      user?.getSignInUserSession()?.getAccessToken().getJwtToken()[
-        'cognito:groups'
-      ] || [];
-    if (groups.includes('Admins')) {
-      navigate('/dashboard');
-    } else if (groups.includes('Users')) {
-      navigate('/');
+    const getUserGroups = async () => {
+      try {
+        const session = await fetchAuthSession();
+        const groups =
+          (session.tokens?.accessToken?.payload[
+            'cognito:groups'
+          ] as string[]) || [];
+
+        if (groups.includes('Admins')) {
+          navigate('/dashboard');
+        } else if (groups.includes('Users')) {
+          navigate('/');
+        } else {
+          // Default fallback for users without specific groups
+          navigate('/');
+        }
+      } catch (error) {
+        console.error('Error getting user groups:', error);
+        // Default to home page if we can't determine groups
+        navigate('/');
+      }
+    };
+
+    if (user) {
+      getUserGroups();
     }
   }, [user, navigate]);
 

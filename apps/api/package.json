@@ -11,21 +11,20 @@
     "test:watch": "vitest --watch",
     "test:coverage": "vitest --coverage",
     "type-check": "tsc --noEmit",
-    "lint": "eslint . --ext ts --report-unused-disable-directives --max-warnings 0",
     "deploy": "npm run build && serverless deploy",
     "deploy:dev": "npm run build && serverless deploy --stage dev",
     "deploy:prod": "npm run build && serverless deploy --stage prod"
   },
   "dependencies": {
+    "@aws-sdk/client-cognito-identity-provider": "^3.596.0",
+    "@aws-sdk/client-secrets-manager": "^3.596.0",
     "@awslambdahackathon/types": "file:../../packages/types",
-    "@awslambdahackathon/utils": "file:../../packages/utils",
-    "aws-sdk": "^2.1490.0"
+    "@awslambdahackathon/utils": "file:../../packages/utils"
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.129",
     "@types/node": "^20.10.0",
     "@vitest/coverage-v8": "^1.0.0",
-    "eslint": "^8.54.0",
     "serverless": "^3.38.0",
     "serverless-plugin-typescript": "^2.1.5",
     "typescript": "^5.3.0",

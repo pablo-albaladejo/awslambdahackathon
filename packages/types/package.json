@@ -15,12 +15,10 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "clean": "rm -rf dist",
-    "type-check": "tsc --noEmit",
-    "lint": "eslint . --ext .ts"
+    "type-check": "tsc --noEmit"
   },
   "dependencies": {},
   "devDependencies": {
-    "eslint": "^8.57.0",
     "typescript": "^5.4.5"
   }
 }

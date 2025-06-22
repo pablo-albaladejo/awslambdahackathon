@@ -3,13 +3,18 @@ import {
   AdminCreateUserCommand,
   CognitoIdentityProviderClient,
 } from '@aws-sdk/client-cognito-identity-provider';
+import {
+  GetSecretValueCommand,
+  SecretsManagerClient,
+} from '@aws-sdk/client-secrets-manager';
 
 const cognito = new CognitoIdentityProviderClient({});
+const secretsManager = new SecretsManagerClient({});
 
 export const handler = async (event: any): Promise<any> => {
   console.log('Event:', JSON.stringify(event, null, 2));
 
-  const { UserPoolId, Users, Email, TemporaryPassword } =
+  const { UserPoolId, Users, TemporaryPasswordSecretArn } =
     event.ResourceProperties;
 
   if (event.RequestType === 'Delete') {
@@ -22,8 +27,18 @@ export const handler = async (event: any): Promise<any> => {
   }
 
   try {
+    const getSecretValueCommand = new GetSecretValueCommand({
+      SecretId: TemporaryPasswordSecretArn,
+    });
+    const secretValue = await secretsManager.send(getSecretValueCommand);
+    const temporaryPassword = secretValue.SecretString;
+
+    if (!temporaryPassword) {
+      throw new Error('Temporary password not found in Secrets Manager.');
+    }
+
     for (const user of Users) {
-      const { username, group } = user;
+      const { username, group, email } = user;
 
       // 1. Create the user
       try {
@@ -31,9 +46,9 @@ export const handler = async (event: any): Promise<any> => {
           new AdminCreateUserCommand({
             UserPoolId,
             Username: username,
-            TemporaryPassword,
+            TemporaryPassword: temporaryPassword,
             UserAttributes: [
-              { Name: 'email', Value: Email },
+              { Name: 'email', Value: email },
               { Name: 'email_verified', Value: 'true' },
             ],
             MessageAction: 'SUPPRESS', // Do not send welcome email

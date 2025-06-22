@@ -7,7 +7,6 @@
     "dev": "vite",
     "dev:prod": "vite --mode production",
     "build": "tsc && vite build",
-    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
     "test": "vitest",
     "test:watch": "vitest --watch",
@@ -16,8 +15,10 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@aws-amplify/ui-react": "^6.1.12",
     "@awslambdahackathon/types": "file:../../packages/types",
     "@awslambdahackathon/utils": "file:../../packages/utils",
+    "aws-amplify": "^6.4.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.24.1"
@@ -25,13 +26,7 @@
   "devDependencies": {
     "@types/react": "^18.2.37",
     "@types/react-dom": "^18.2.17",
-    "@typescript-eslint/eslint-plugin": "^6.14.0",
-    "@typescript-eslint/parser": "^6.14.0",
     "@vitejs/plugin-react": "^4.2.1",
-    "aws-amplify": "^6.4.0",
-    "eslint": "^8.55.0",
-    "eslint-plugin-react-hooks": "^4.6.0",
-    "eslint-plugin-react-refresh": "^0.4.4",
     "typescript": "^5.2.2",
     "vite": "^5.0.8",
     "vitest": "^1.0.0",

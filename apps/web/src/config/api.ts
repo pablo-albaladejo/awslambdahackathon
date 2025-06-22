@@ -1,3 +1,5 @@
+import type { ApiResponse } from '@awslambdahackathon/types';
+
 // API configuration
 export const API_CONFIG = {
   baseUrl: import.meta.env.VITE_API_URL || 'http://localhost:3000',
@@ -14,15 +16,26 @@ export const buildApiUrl = (endpoint: string): string => {
 
 // API client functions
 export const apiClient = {
-  async get<T>(endpoint: string): Promise<T> {
+  async get<T>(endpoint: string): Promise<ApiResponse<T>> {
     const response = await fetch(buildApiUrl(endpoint));
     if (!response.ok) {
-      throw new Error(`API Error: ${response.status}`);
+      // Try to parse error from body
+      try {
+        const errorBody = await response.json();
+        return (
+          errorBody || {
+            success: false,
+            error: `API Error: ${response.status}`,
+          }
+        );
+      } catch (e) {
+        return { success: false, error: `API Error: ${response.status}` };
+      }
     }
     return response.json();
   },
 
-  async post<T>(endpoint: string, data: any): Promise<T> {
+  async post<T>(endpoint: string, data: any): Promise<ApiResponse<T>> {
     const response = await fetch(buildApiUrl(endpoint), {
       method: 'POST',
       headers: {
@@ -31,7 +44,17 @@ export const apiClient = {
       body: JSON.stringify(data),
     });
     if (!response.ok) {
-      throw new Error(`API Error: ${response.status}`);
+      try {
+        const errorBody = await response.json();
+        return (
+          errorBody || {
+            success: false,
+            error: `API Error: ${response.status}`,
+          }
+        );
+      } catch (e) {
+        return { success: false, error: `API Error: ${response.status}` };
+      }
     }
     return response.json();
   },
