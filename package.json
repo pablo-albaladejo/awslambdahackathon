@@ -1,5 +1,6 @@
 {
   "name": "awslambdahackathon",
+  "title": "AWS Lambda Hackathon",
   "version": "0.0.0",
   "private": true,
   "workspaces": [

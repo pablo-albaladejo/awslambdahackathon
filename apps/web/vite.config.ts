@@ -1,26 +1,27 @@
-import { resolve } from 'path';
+/// <reference types="vitest" />
+import { readFileSync } from 'fs';
+import path from 'path';
 
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 
+const rootPackageJson = JSON.parse(
+  readFileSync(path.resolve(__dirname, '../../package.json'), {
+    encoding: 'utf-8',
+  })
+);
+
+// https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
-  resolve: {
-    alias: {
-      '@': resolve(__dirname, './src'),
-    },
-  },
-  server: {
-    port: 3000,
-    open: true,
-  },
-  build: {
-    outDir: 'dist',
-    sourcemap: true,
+  define: {
+    'import.meta.env.VITE_APP_NAME': JSON.stringify(
+      rootPackageJson.title || 'MyApp'
+    ),
   },
   test: {
     globals: true,
-    environment: 'jsdom',
+    environment: 'happy-dom',
     setupFiles: ['./src/test/setup.ts'],
   },
-}); 
+});

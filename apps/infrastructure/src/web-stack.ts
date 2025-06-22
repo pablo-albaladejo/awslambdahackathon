@@ -1,6 +1,7 @@
 import * as cdk from 'aws-cdk-lib';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as cloudfront_origins from 'aws-cdk-lib/aws-cloudfront-origins';
+import * as rum from 'aws-cdk-lib/aws-rum';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
 import { Construct } from 'constructs';
@@ -8,6 +9,7 @@ import { Construct } from 'constructs';
 interface WebStackProps extends cdk.StackProps {
   environment: string;
   webAssetPath?: string;
+  identityPoolId: string;
 }
 
 export class WebStack extends cdk.Stack {
@@ -54,18 +56,43 @@ export class WebStack extends cdk.Stack {
       ],
     });
 
+    // RUM App Monitor
+    const appMonitor = new rum.CfnAppMonitor(this, 'RumAppMonitor', {
+      domain: distribution.distributionDomainName,
+      name: `awslambdahackathon-web-${props.environment}`,
+      appMonitorConfiguration: {
+        allowCookies: true,
+        enableXRay: true,
+        identityPoolId: props.identityPoolId,
+        sessionSampleRate: 1,
+        telemetries: ['performance', 'errors', 'http'],
+      },
+    });
+
     // Store CloudFront domain for use in other stacks
     this.cloudFrontDomain = distribution.distributionDomainName;
 
     // Deploy website files to S3 (only if webAssetPath is provided)
+    const rumConfig = {
+      identityPoolId: props.identityPoolId,
+      applicationId: appMonitor.attrId,
+      region: this.region,
+    };
+
+    const sources = [
+      s3deploy.Source.data('rum-config.json', JSON.stringify(rumConfig)),
+    ];
+
     if (props.webAssetPath) {
-      new s3deploy.BucketDeployment(this, 'DeployWebsite', {
-        sources: [s3deploy.Source.asset(props.webAssetPath)],
-        destinationBucket: websiteBucket,
-        distribution,
-        distributionPaths: ['/*'],
-      });
+      sources.push(s3deploy.Source.asset(props.webAssetPath));
     }
+
+    new s3deploy.BucketDeployment(this, 'DeployWebsite', {
+      sources,
+      destinationBucket: websiteBucket,
+      distribution,
+      distributionPaths: ['/*'],
+    });
 
     // Outputs
     new cdk.CfnOutput(this, 'WebsiteUrl', {

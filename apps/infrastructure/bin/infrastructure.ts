@@ -35,6 +35,7 @@ authStack.addDependency(backendStack);
 // Web Stack (needs to be created before API Stack to get CloudFront domain)
 const webStack = new WebStack(app, `WebStack-${environment}`, {
   ...stackProps,
+  identityPoolId: authStack.identityPool.ref,
 });
 
 // API Stack

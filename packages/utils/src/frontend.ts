@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 import { z, ZodSchema } from 'zod';
 
 // Extend the Window interface to include awsRum
