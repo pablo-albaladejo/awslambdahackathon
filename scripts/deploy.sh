@@ -63,23 +63,31 @@ if [ -z "$API_URL" ]; then
 fi
 echo "📍 API URL: $API_URL"
 
-# Step 5: Create environment file for the frontend
-cd ../.. || handle_error "Failed to return to root directory"
-ENV_CONTENT="VITE_API_URL=$API_URL"
-ENV_PATH="apps/web/.env.production"
-
-echo "$ENV_CONTENT" > "$ENV_PATH"
-echo "📝 Created .env.production for frontend"
-
-# Step 6: Build the frontend with the API URL
+# Step 5: Build the frontend with the API URL (using environment variable)
 echo "📦 Building frontend application..."
+
+# Return to project root directory (we're currently in apps/infrastructure)
+cd ../.. || handle_error "Failed to return to project root"
+
 cd apps/web || handle_error "Failed to change to web directory"
+
+# Remove any existing .env.production file for security
+rm -f .env.production
+
+# Set environment variable for the build process
+export VITE_API_URL="$API_URL"
+
+# Build with Vite (it will read VITE_API_URL from environment)
 if ! npm run build; then
     handle_error "Failed to build frontend"
 fi
+
+# Clear the environment variable for security
+unset VITE_API_URL
+
 cd ../.. || handle_error "Failed to return to root directory"
 
-# Step 7: Deploy the Web stack
+# Step 6: Deploy the Web stack
 echo "🌐 Deploying Web stack: $WEB_STACK_NAME"
 cd apps/infrastructure || handle_error "Failed to change to infrastructure directory"
 
@@ -89,12 +97,12 @@ fi
 
 cd ../.. || handle_error "Failed to return to root directory"
 
-# Step 8: Deploy frontend files to S3
+# Step 7: Deploy frontend files to S3
 echo "📤 Deploying frontend files to S3..."
 WEBSITE_BUCKET_NAME="awslambdahackathon-web-$ENVIRONMENT"
 aws s3 sync apps/web/dist/ s3://$WEBSITE_BUCKET_NAME/ --delete
 
-# Step 9: Invalidate CloudFront cache
+# Step 8: Invalidate CloudFront cache
 echo "🔄 Invalidating CloudFront cache..."
 DISTRIBUTION_ID=$(aws cloudformation describe-stacks \
     --stack-name "$WEB_STACK_NAME" \
@@ -106,7 +114,7 @@ if [ ! -z "$DISTRIBUTION_ID" ]; then
     echo "✅ CloudFront cache invalidation initiated"
 fi
 
-# Step 10: Get the Website URL from the Web stack outputs
+# Step 9: Get the Website URL from the Web stack outputs
 echo "🔍 Getting Website URL from $WEB_STACK_NAME outputs..."
 WEBSITE_URL=$(aws cloudformation describe-stacks \
     --stack-name "$WEB_STACK_NAME" \
@@ -116,10 +124,6 @@ WEBSITE_URL=$(aws cloudformation describe-stacks \
 if [ -z "$WEBSITE_URL" ]; then
     echo "⚠️  Could not get Website URL from stack outputs"
 fi
-
-# Step 11: Clean up environment file
-rm "$ENV_PATH"
-echo "🗑️  Removed .env.production file"
 
 echo "✅ Deployment completed successfully!"
 echo "🔗 API: $API_URL"

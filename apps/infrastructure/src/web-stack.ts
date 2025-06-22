@@ -29,14 +29,16 @@ export class WebStack extends cdk.Stack {
 
     // CloudFront Origin Access Identity
     const oai = new cloudfront.OriginAccessIdentity(this, 'OAI');
-    websiteBucket.grantRead(oai);
 
     // CloudFront Distribution for the website
     const distribution = new cloudfront.Distribution(this, 'Distribution', {
       defaultBehavior: {
-        origin: new cloudfront_origins.S3Origin(websiteBucket, {
-          originAccessIdentity: oai,
-        }),
+        origin: cloudfront_origins.S3BucketOrigin.withOriginAccessIdentity(
+          websiteBucket,
+          {
+            originAccessIdentity: oai,
+          }
+        ),
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
         cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
       },
