@@ -134,3 +134,14 @@ dist
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.*
+
+# Environment variables
+.env.*
+!.env.example
+!.env.ci
+
+# CDK
+cdk.out/
+
+# Turborepo
+.turbo/
