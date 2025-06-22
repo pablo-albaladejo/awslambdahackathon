@@ -4,10 +4,12 @@
 ENVIRONMENT=${1:-dev}
 AWS_PROFILE=${2:-awslambdahackathon}
 AWS_REGION=${3:-us-east-2}
+DEFAULT_USER_EMAIL=${4:-pablo.albaladejo.mestre+awslambdahackathon@gmail.com}
 
 echo "🚀 Starting deployment for environment: $ENVIRONMENT"
 echo "🔧 AWS Profile: $AWS_PROFILE"
 echo "🌍 AWS Region: $AWS_REGION"
+echo "📧 Default User Email: $DEFAULT_USER_EMAIL"
 
 # Set AWS environment variables
 export AWS_PROFILE=$AWS_PROFILE
@@ -34,6 +36,7 @@ cd apps/infrastructure && npm run build && cd ../..
 cd apps/api && npm run build && cd ../..
 
 # Define stack names
+AUTH_STACK_NAME="AuthStack-$ENVIRONMENT"
 BACKEND_STACK_NAME="BackendStack-$ENVIRONMENT"
 API_STACK_NAME="ApiStack-$ENVIRONMENT"
 WEB_STACK_NAME="WebStack-$ENVIRONMENT"
@@ -46,25 +49,32 @@ if ! npx cdk deploy "$BACKEND_STACK_NAME" --require-approval never; then
     handle_error "Failed to deploy Backend stack"
 fi
 
-# Step 3: Deploy the API stack
+# Step 3: Deploy the Auth stack
+echo "🔒 Deploying Auth stack: $AUTH_STACK_NAME"
+if ! npx cdk deploy "$AUTH_STACK_NAME" --require-approval never --context defaultUserEmail="$DEFAULT_USER_EMAIL"; then
+    handle_error "Failed to deploy Auth stack"
+fi
+
+# Step 4: Deploy the API stack
 echo "🏗️  Deploying API stack: $API_STACK_NAME"
 if ! npx cdk deploy "$API_STACK_NAME" --require-approval never; then
     handle_error "Failed to deploy API stack"
 fi
 
-# Step 4: Get the API URL from the API stack outputs
-echo "🔍 Getting API URL from $API_STACK_NAME outputs..."
-API_URL=$(aws cloudformation describe-stacks \
-    --stack-name "$API_STACK_NAME" \
-    --query "Stacks[0].Outputs[?OutputKey=='ApiUrl'].OutputValue" \
-    --output text)
+# Step 5: Get stack outputs
+echo "🔍 Getting stack outputs..."
+API_URL=$(aws cloudformation describe-stacks --stack-name "$API_STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='ApiUrl'].OutputValue" --output text)
+USER_POOL_ID=$(aws cloudformation describe-stacks --stack-name "$AUTH_STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='UserPoolId'].OutputValue" --output text)
+USER_POOL_CLIENT_ID=$(aws cloudformation describe-stacks --stack-name "$AUTH_STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='UserPoolClientId'].OutputValue" --output text)
 
-if [ -z "$API_URL" ]; then
-    handle_error "Could not get API URL from stack outputs"
+if [ -z "$API_URL" ] || [ -z "$USER_POOL_ID" ] || [ -z "$USER_POOL_CLIENT_ID" ]; then
+    handle_error "Could not get all required stack outputs (ApiUrl, UserPoolId, UserPoolClientId)"
 fi
 echo "📍 API URL: $API_URL"
+echo "🔑 User Pool ID: $USER_POOL_ID"
+echo "📱 User Pool Client ID: $USER_POOL_CLIENT_ID"
 
-# Step 5: Build the frontend with the API URL (using environment variable)
+# Step 6: Build the frontend with environment variables
 echo "📦 Building frontend application..."
 
 # Return to project root directory (we're currently in apps/infrastructure)
@@ -75,20 +85,24 @@ cd apps/web || handle_error "Failed to change to web directory"
 # Remove any existing .env.production file for security
 rm -f .env.production
 
-# Set environment variable for the build process
+# Set environment variables for the build process
 export VITE_API_URL="$API_URL"
+export VITE_USER_POOL_ID="$USER_POOL_ID"
+export VITE_USER_POOL_CLIENT_ID="$USER_POOL_CLIENT_ID"
 
 # Build with Vite (it will read VITE_API_URL from environment)
 if ! npm run build; then
     handle_error "Failed to build frontend"
 fi
 
-# Clear the environment variable for security
+# Clear the environment variables for security
 unset VITE_API_URL
+unset VITE_USER_POOL_ID
+unset VITE_USER_POOL_CLIENT_ID
 
 cd ../.. || handle_error "Failed to return to root directory"
 
-# Step 6: Deploy the Web stack
+# Step 7: Deploy the Web stack
 echo "🌐 Deploying Web stack: $WEB_STACK_NAME"
 cd apps/infrastructure || handle_error "Failed to change to infrastructure directory"
 
@@ -98,12 +112,12 @@ fi
 
 cd ../.. || handle_error "Failed to return to root directory"
 
-# Step 7: Deploy frontend files to S3
+# Step 8: Deploy frontend files to S3
 echo "📤 Deploying frontend files to S3..."
 WEBSITE_BUCKET_NAME="awslambdahackathon-web-$ENVIRONMENT"
 aws s3 sync apps/web/dist/ s3://$WEBSITE_BUCKET_NAME/ --delete
 
-# Step 8: Invalidate CloudFront cache
+# Step 9: Invalidate CloudFront cache
 echo "🔄 Invalidating CloudFront cache..."
 DISTRIBUTION_ID=$(aws cloudformation describe-stacks \
     --stack-name "$WEB_STACK_NAME" \
@@ -115,7 +129,7 @@ if [ ! -z "$DISTRIBUTION_ID" ]; then
     echo "✅ CloudFront cache invalidation initiated"
 fi
 
-# Step 9: Get the Website URL from the Web stack outputs
+# Step 10: Get the Website URL from the Web stack outputs
 echo "🔍 Getting Website URL from $WEB_STACK_NAME outputs..."
 WEBSITE_URL=$(aws cloudformation describe-stacks \
     --stack-name "$WEB_STACK_NAME" \

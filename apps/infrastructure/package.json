@@ -20,8 +20,8 @@
     "lint": "eslint . --ext ts --report-unused-disable-directives --max-warnings 0"
   },
   "dependencies": {
-    "aws-cdk-lib": "2.146.0",
     "@aws-cdk/aws-lambda-nodejs": "^1.204.0",
+    "aws-cdk-lib": "^2.202.0",
     "constructs": "^10.0.0",
     "esbuild": "^0.23.0",
     "fs-extra": "^11.2.0",

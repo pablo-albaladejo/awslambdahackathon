@@ -2,6 +2,7 @@
 import * as cdk from 'aws-cdk-lib';
 import 'source-map-support/register';
 import { ApiStack } from '../src/api-stack';
+import { AuthStack } from '../src/auth-stack';
 import { BackendStack } from '../src/backend-stack';
 import { WebStack } from '../src/web-stack';
 
@@ -9,6 +10,9 @@ const app = new cdk.App();
 
 // Get environment from context
 const environment = app.node.tryGetContext('environment') || 'dev';
+const defaultUserEmail =
+  app.node.tryGetContext('defaultUserEmail') ||
+  'pablo.albaladejo.mestre+awslambdahackathon@gmail.com';
 
 // Common props for stacks
 const stackProps = {
@@ -24,13 +28,20 @@ const backendStack = new BackendStack(app, `BackendStack-${environment}`, {
   ...stackProps,
 });
 
+// Auth Stack
+const authStack = new AuthStack(app, `AuthStack-${environment}`, {
+  ...stackProps,
+  defaultUserEmail,
+});
+authStack.addDependency(backendStack);
+
 // API Stack
 const apiStack = new ApiStack(app, `ApiStack-${environment}`, {
   ...stackProps,
   helloFunction: backendStack.helloFunction,
   usersFunction: backendStack.usersFunction,
 });
-apiStack.addDependency(backendStack);
+apiStack.addDependency(authStack);
 
 // Web Stack
 const webStack = new WebStack(app, `WebStack-${environment}`, {
