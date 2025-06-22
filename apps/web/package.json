@@ -16,8 +16,8 @@
   },
   "dependencies": {
     "@aws-amplify/ui-react": "^6.1.12",
-    "@awslambdahackathon/types": "file:../../packages/types",
-    "@awslambdahackathon/utils": "file:../../packages/utils",
+    "@awslambdahackathon/types": "*",
+    "@awslambdahackathon/utils": "*",
     "aws-amplify": "^6.4.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",

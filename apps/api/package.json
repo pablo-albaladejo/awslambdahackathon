@@ -18,8 +18,8 @@
   "dependencies": {
     "@aws-sdk/client-cognito-identity-provider": "^3.596.0",
     "@aws-sdk/client-secrets-manager": "^3.596.0",
-    "@awslambdahackathon/types": "file:../../packages/types",
-    "@awslambdahackathon/utils": "file:../../packages/utils"
+    "@awslambdahackathon/types": "*",
+    "@awslambdahackathon/utils": "*"
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.129",
