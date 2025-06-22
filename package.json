@@ -9,7 +9,8 @@
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",
-    "lint": "eslint \"apps/**/*.{ts,tsx}\" \"packages/**/*.{ts,tsx}\"",
+    "lint": "eslint \"apps/**/*.{ts,tsx}\" \"packages/**/*.{ts,tsx}\" --ignore-pattern \"**/cdk.out/**\" --ignore-pattern \"**/dist/**\"",
+    "lint:fix": "npm run lint -- --fix",
     "test": "turbo run test",
     "type-check": "turbo run type-check",
     "clean": "turbo run clean",

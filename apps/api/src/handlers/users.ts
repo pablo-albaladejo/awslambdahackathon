@@ -1,5 +1,8 @@
 import type { User } from '@awslambdahackathon/types';
-import { createErrorResponse, createSuccessResponse } from '@awslambdahackathon/utils';
+import {
+  createErrorResponse,
+  createSuccessResponse,
+} from '@awslambdahackathon/utils';
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 
 // Mock database - replace with actual DynamoDB implementation
@@ -20,10 +23,10 @@ export const handler = async (
     const { httpMethod, pathParameters } = event;
 
     switch (httpMethod) {
-      case 'GET':
+      case 'GET': {
         if (pathParameters?.id) {
           // Get user by ID
-          const user = users.find((u) => u.id === pathParameters.id);
+          const user = users.find(u => u.id === pathParameters.id);
           if (!user) {
             return createErrorResponse('User not found', 404);
           }
@@ -32,8 +35,9 @@ export const handler = async (
           // Get all users
           return createSuccessResponse(users);
         }
+      }
 
-      case 'POST':
+      case 'POST': {
         // Create new user
         const body = JSON.parse(event.body || '{}');
         const newUser: User = {
@@ -45,14 +49,15 @@ export const handler = async (
         };
         users.push(newUser);
         return createSuccessResponse(newUser, 201);
+      }
 
-      case 'PUT':
+      case 'PUT': {
         // Update user
         if (!pathParameters?.id) {
           return createErrorResponse('User ID is required', 400);
         }
         const updateBody = JSON.parse(event.body || '{}');
-        const userIndex = users.findIndex((u) => u.id === pathParameters.id);
+        const userIndex = users.findIndex(u => u.id === pathParameters.id);
         if (userIndex === -1) {
           return createErrorResponse('User not found', 404);
         }
@@ -62,24 +67,29 @@ export const handler = async (
           updatedAt: new Date(),
         };
         return createSuccessResponse(users[userIndex]);
+      }
 
-      case 'DELETE':
+      case 'DELETE': {
         // Delete user
         if (!pathParameters?.id) {
           return createErrorResponse('User ID is required', 400);
         }
-        const deleteIndex = users.findIndex((u) => u.id === pathParameters.id);
+        const deleteIndex = users.findIndex(u => u.id === pathParameters.id);
         if (deleteIndex === -1) {
           return createErrorResponse('User not found', 404);
         }
         const deletedUser = users.splice(deleteIndex, 1)[0];
-        return createSuccessResponse({ message: 'User deleted successfully', user: deletedUser });
+        return createSuccessResponse({
+          message: 'User deleted successfully',
+          user: deletedUser,
+        });
+      }
 
       default:
         return createErrorResponse('Method not allowed', 405);
     }
   } catch (error) {
-    console.error('Error in users handler:', error);
+    // LOG: Error in users handler (use a logger in production)
     return createErrorResponse('Internal server error', 500);
   }
-}; 
+};

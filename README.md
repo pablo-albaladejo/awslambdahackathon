@@ -143,4 +143,50 @@ The CDK stack deploys:
 
 ---
 
+## Production-Grade Code Quality & Linting
+
+This monorepo is configured to maintain a professional code quality standard across all packages (backend and frontend).
+
+### Linting & Formatting
+
+- **Global lint:**
+  - Run `npm run lint` to check all source code (excluding generated files like `dist` and `cdk.out`).
+  - Run `npm run lint:fix` to automatically fix style and formatting issues that ESLint can resolve.
+- **Formatting:**
+  - Use `npm run format` to apply Prettier to all code.
+  - Use `npm run format:check` to verify formatting without modifying files.
+
+### Mandatory Best Practices
+
+- **Do not use `any`:** Always explicitly type your variables, arguments, and return values. Use `unknown` and type guards if necessary.
+- **Do not use `console.log`/`console.error` in production:** Use a logging system or `// LOG:` comments to mark log points.
+- **Do not lint or modify generated files:** The `dist` and `cdk.out` folders are excluded from linting.
+- **Robust error handling:** Always use try/catch and handle errors with explicit types.
+- **Centralized configuration:** All ESLint and Prettier rules are in the root of the monorepo.
+
+### Example Workflow
+
+```sh
+# Check that all code meets the standard
+npm run lint
+
+# Automatically fix what can be fixed
+npm run lint:fix
+
+# Format all code
+npm run format
+
+# Before committing, make sure there are no lint or build errors
+npm run build
+npm run lint
+```
+
+### CI/CD
+
+You can integrate these commands into your CI/CD pipeline to ensure that only code meeting the quality standard is deployed.
+
+---
+
+Questions? Want to add new rules? Edit `.eslintrc.js` or `package.json` in the root and run the commands above to validate the result.
+
 Questions? Check the stacks in `apps/infrastructure/src` or ask your favorite AI 😉

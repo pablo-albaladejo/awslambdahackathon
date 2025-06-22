@@ -28,14 +28,14 @@ export const apiClient = {
             error: `API Error: ${response.status}`,
           }
         );
-      } catch (e) {
+      } catch (e: unknown) {
         return { success: false, error: `API Error: ${response.status}` };
       }
     }
     return response.json();
   },
 
-  async post<T>(endpoint: string, data: any): Promise<ApiResponse<T>> {
+  async post<T>(endpoint: string, data: unknown): Promise<ApiResponse<T>> {
     const response = await fetch(buildApiUrl(endpoint), {
       method: 'POST',
       headers: {
@@ -52,7 +52,7 @@ export const apiClient = {
             error: `API Error: ${response.status}`,
           }
         );
-      } catch (e) {
+      } catch (e: unknown) {
         return { success: false, error: `API Error: ${response.status}` };
       }
     }

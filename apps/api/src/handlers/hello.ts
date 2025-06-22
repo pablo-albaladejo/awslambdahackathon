@@ -17,7 +17,7 @@ export const handler = async (
 
     return createSuccessResponse(message);
   } catch (error) {
-    console.error('Error in hello handler:', error);
+    // LOG: Error in hello handler (use a logger in production)
     return {
       statusCode: 500,
       headers: {
@@ -30,4 +30,4 @@ export const handler = async (
       }),
     };
   }
-}; 
+};

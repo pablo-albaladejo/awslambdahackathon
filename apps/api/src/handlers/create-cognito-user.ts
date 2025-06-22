@@ -11,18 +11,33 @@ import {
 const cognito = new CognitoIdentityProviderClient({});
 const secretsManager = new SecretsManagerClient({});
 
-export const handler = async (event: any): Promise<any> => {
-  console.log('Event:', JSON.stringify(event, null, 2));
+interface CreateCognitoUserEvent {
+  RequestType: string;
+  ResourceProperties: {
+    UserPoolId: string;
+    Users: Array<{ username: string; group: string; email: string }>;
+    TemporaryPasswordSecretArn: string;
+  };
+  PhysicalResourceId?: string;
+}
+
+interface CustomResourceResponse {
+  PhysicalResourceId: string;
+}
+
+export const handler = async (
+  event: CreateCognitoUserEvent
+): Promise<CustomResourceResponse> => {
+  // LOG: Received event (use a logger in production)
+  // console.log('Event:', JSON.stringify(event, null, 2));
 
   const { UserPoolId, Users, TemporaryPasswordSecretArn } =
     event.ResourceProperties;
 
   if (event.RequestType === 'Delete') {
-    // In a real-world scenario, you might want to handle user deletion.
-    // For this case, we'll do nothing on stack deletion to avoid accidental data loss.
-    console.log('Delete request received. No action taken.');
+    // LOG: Delete request received. No action taken.
     return {
-      PhysicalResourceId: event.PhysicalResourceId,
+      PhysicalResourceId: event.PhysicalResourceId || 'cognito-default-users',
     };
   }
 
@@ -54,10 +69,15 @@ export const handler = async (event: any): Promise<any> => {
             MessageAction: 'SUPPRESS', // Do not send welcome email
           })
         );
-        console.log(`Successfully created user: ${username}`);
-      } catch (error: any) {
-        if (error.name === 'UsernameExistsException') {
-          console.log(`User ${username} already exists. Skipping creation.`);
+        // LOG: Successfully created user: username
+      } catch (error) {
+        if (
+          typeof error === 'object' &&
+          error !== null &&
+          'name' in error &&
+          (error as { name: string }).name === 'UsernameExistsException'
+        ) {
+          // LOG: User already exists. Skipping creation.
         } else {
           throw error;
         }
@@ -71,14 +91,14 @@ export const handler = async (event: any): Promise<any> => {
           GroupName: group,
         })
       );
-      console.log(`Successfully added user ${username} to group ${group}`);
+      // LOG: Successfully added user to group
     }
 
     return {
       PhysicalResourceId: `cognito-default-users-${Date.now()}`,
     };
-  } catch (error: any) {
-    console.error('Error creating default users:', error);
+  } catch (error) {
+    // LOG: Error creating default users
     throw new Error('Failed to create default Cognito users.');
   }
 };

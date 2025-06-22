@@ -1,5 +1,5 @@
 // Common types for the entire monorepo
-export interface ApiResponse<T = any> {
+export interface ApiResponse<T = unknown> {
   success: boolean;
   data?: T;
   error?: string;
@@ -38,4 +38,4 @@ export interface LambdaResponse {
   statusCode: number;
   headers?: Record<string, string>;
   body: string;
-} 
+}

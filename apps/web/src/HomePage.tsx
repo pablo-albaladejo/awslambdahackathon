@@ -1,5 +1,6 @@
 import { capitalize } from '@awslambdahackathon/utils';
 import { useEffect, useState } from 'react';
+
 import './App.css';
 import { API_CONFIG, apiClient } from './config/api';
 
@@ -23,8 +24,12 @@ function HomePage() {
       } else {
         setApiStatus(`API error: ${response.error || 'Unknown error'}`);
       }
-    } catch (error: any) {
-      setApiStatus(`Failed to connect to API: ${error.message}`);
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        setApiStatus(`Failed to connect to API: ${error.message}`);
+      } else {
+        setApiStatus('Failed to connect to API: Unknown error');
+      }
     } finally {
       setLoading(false);
     }

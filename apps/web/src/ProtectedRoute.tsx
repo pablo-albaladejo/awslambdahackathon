@@ -1,5 +1,5 @@
 import { fetchAuthSession } from 'aws-amplify/auth';
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 interface ProtectedRouteProps {
@@ -30,7 +30,6 @@ const ProtectedRoute = ({ children, requiredGroup }: ProtectedRouteProps) => {
         }
       } catch (error) {
         // Not authenticated
-        console.log('Not authenticated:', error);
         navigate('/');
       }
     };

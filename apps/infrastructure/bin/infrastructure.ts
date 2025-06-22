@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import * as cdk from 'aws-cdk-lib';
+
 import 'source-map-support/register';
 import { ApiStack } from '../src/api-stack';
 import { AuthStack } from '../src/auth-stack';

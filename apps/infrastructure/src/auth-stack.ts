@@ -1,3 +1,5 @@
+import * as path from 'path';
+
 import * as cdk from 'aws-cdk-lib';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as iam from 'aws-cdk-lib/aws-iam';
@@ -6,7 +8,6 @@ import * as logs from 'aws-cdk-lib/aws-logs';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import * as custom_resources from 'aws-cdk-lib/custom-resources';
 import { Construct } from 'constructs';
-import * as path from 'path';
 
 interface AuthStackProps extends cdk.StackProps {
   environment: string;

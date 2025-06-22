@@ -36,7 +36,6 @@ function App({ user }: WithAuthenticatorProps) {
           navigate('/');
         }
       } catch (error) {
-        console.error('Error getting user groups:', error);
         // Default to home page if we can't determine groups
         navigate('/');
       }
