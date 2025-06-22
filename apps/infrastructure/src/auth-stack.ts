@@ -120,17 +120,17 @@ export class AuthStack extends cdk.Stack {
                 {
                   username: 'admin_user',
                   group: 'Admins',
-                  email: 'admin_user@example.com',
+                  email: props.defaultUserEmail,
                 },
                 {
                   username: 'user_one',
                   group: 'Users',
-                  email: 'user_one@example.com',
+                  email: props.defaultUserEmail,
                 },
                 {
                   username: 'user_two',
                   group: 'Users',
-                  email: 'user_two@example.com',
+                  email: props.defaultUserEmail,
                 },
               ],
             },
