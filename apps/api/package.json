@@ -16,14 +16,15 @@
     "deploy:prod": "npm run build && serverless deploy --stage prod"
   },
   "dependencies": {
-    "@aws-sdk/client-cognito-identity-provider": "^3.596.0",
-    "@aws-sdk/client-secrets-manager": "^3.596.0",
     "@awslambdahackathon/types": "*",
-    "@awslambdahackathon/utils": "*"
+    "@awslambdahackathon/utils": "*",
+    "aws-jwt-verify": "^4.0.0",
+    "ws": "^8.14.2"
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.129",
     "@types/node": "^20.10.0",
+    "@types/ws": "^8.5.10",
     "@vitest/coverage-v8": "^1.0.0",
     "serverless": "^3.38.0",
     "serverless-plugin-typescript": "^2.1.5",

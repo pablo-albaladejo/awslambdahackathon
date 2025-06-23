@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom';
 
 import { configureAmplify } from './amplify-config';
 import App from './App.tsx';
+import { AuthProvider } from './contexts/AuthContext';
 import { AwsRumProvider } from './contexts/RumContext';
 import './index.css';
 
@@ -13,9 +14,11 @@ configureAmplify();
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <AwsRumProvider>
-      <BrowserRouter>
-        <App />
-      </BrowserRouter>
+      <AuthProvider>
+        <BrowserRouter>
+          <App />
+        </BrowserRouter>
+      </AuthProvider>
     </AwsRumProvider>
   </React.StrictMode>
 );

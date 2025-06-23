@@ -6,6 +6,7 @@ import '@aws-amplify/ui-react/styles.css';
 import { Component, ErrorInfo, ReactNode, useCallback, useEffect } from 'react';
 import { Route, Routes, useLocation } from 'react-router-dom';
 
+import ChatbotPage from './ChatbotPage';
 import DashboardPage from './DashboardPage';
 import HomePage from './HomePage';
 import { useRumTracking } from './hooks/useRumTracking';
@@ -206,6 +207,14 @@ function App({ user, signOut }: WithAuthenticatorProps) {
             element={
               <ProtectedRoute requiredGroup="Admins">
                 <DashboardPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/chatbot"
+            element={
+              <ProtectedRoute requiredGroup="Users">
+                <ChatbotPage />
               </ProtectedRoute>
             }
           />

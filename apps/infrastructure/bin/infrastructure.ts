@@ -18,16 +18,18 @@ const env = {
   region,
 };
 
-// Backend Stack
-const backendStack = new BackendStack(app, `BackendStack-${environment}`, {
-  env,
-  environment,
-});
-
 // Auth Stack
 const authStack = new AuthStack(app, `AuthStack-${environment}`, {
   env,
   environment,
+});
+
+// Backend Stack
+const backendStack = new BackendStack(app, `BackendStack-${environment}`, {
+  env,
+  environment,
+  cognitoUserPoolId: authStack.userPool.userPoolId,
+  cognitoClientId: authStack.userPoolClient.userPoolClientId,
 });
 
 // Web Stack
@@ -49,12 +51,17 @@ const apiStack = new ApiStack(app, `ApiStack-${environment}`, {
   env,
   environment,
   userPool: authStack.userPool,
+  userPoolClient: authStack.userPoolClient,
   healthFunction: backendStack.healthFunction,
+  mcpHostFunction: backendStack.mcpHostFunction,
+  websocketFunction: backendStack.websocketFunction,
   cloudFrontDomain: webStack.cloudFrontDomain,
 });
 
 // Dependencies
 rumStack.addDependency(webStack);
 rumStack.addDependency(authStack);
+backendStack.addDependency(authStack);
 apiStack.addDependency(authStack);
 apiStack.addDependency(webStack);
+apiStack.addDependency(backendStack);

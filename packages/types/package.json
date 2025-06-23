@@ -18,7 +18,5 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {},
-  "devDependencies": {
-    "typescript": "^5.4.5"
-  }
+  "devDependencies": {}
 }

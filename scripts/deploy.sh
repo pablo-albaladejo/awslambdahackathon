@@ -98,6 +98,11 @@ API_URL=$(aws cloudformation describe-stacks --stack-name "$API_STACK_NAME" \
   --output text) \
   || handle_error "Could not get ApiUrl"
 
+WEBSOCKET_URL=$(aws cloudformation describe-stacks --stack-name "$API_STACK_NAME" \
+  --query "Stacks[0].Outputs[?OutputKey=='WebSocketUrl'].OutputValue" \
+  --output text) \
+  || handle_error "Could not get WebSocketUrl"
+
 USER_POOL_ID=$(aws cloudformation describe-stacks --stack-name "$AUTH_STACK_NAME" \
   --query "Stacks[0].Outputs[?OutputKey=='UserPoolId'].OutputValue" \
   --output text) \
@@ -113,6 +118,7 @@ AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text) \
   || handle_error "Could not get AWS Account ID"
 
 echo "📍 API URL: $API_URL"
+echo "🔌 WebSocket URL: $WEBSOCKET_URL"
 echo "🔑 User Pool ID: $USER_POOL_ID"
 echo "📱 User Pool Client ID: $USER_POOL_CLIENT_ID"
 echo "📊 RUM App Monitor ID: $RUM_APP_MONITOR_ID"
@@ -127,6 +133,7 @@ cd apps/web || handle_error "Failed to cd to web"
 rm -f .env.production
 
 export VITE_API_URL="$API_URL"
+export VITE_WEBSOCKET_URL="$WEBSOCKET_URL"
 export VITE_USER_POOL_ID="$USER_POOL_ID"
 export VITE_USER_POOL_CLIENT_ID="$USER_POOL_CLIENT_ID"
 export VITE_AWS_REGION="$AWS_REGION"
@@ -139,6 +146,7 @@ npm run build || handle_error "Failed to build frontend"
 
 # Clear build-time env vars
 unset VITE_API_URL
+unset VITE_WEBSOCKET_URL
 unset VITE_USER_POOL_ID
 unset VITE_USER_POOL_CLIENT_ID
 unset VITE_AWS_REGION
