@@ -46,17 +46,22 @@ export class AuthStack extends cdk.Stack {
       preventUserExistenceErrors: true,
     });
 
-    // Identity Pool
+    // Identity Pool with CfnJson for dynamic keys
+    const supportedLoginProviders = new cdk.CfnJson(
+      this,
+      'SupportedLoginProviders',
+      {
+        value: {
+          [`cognito-idp.${cdk.Aws.REGION}.amazonaws.com/${this.userPool.userPoolId}`]:
+            this.userPoolClient.userPoolClientId,
+        },
+      }
+    );
+
     this.identityPool = new cognito.CfnIdentityPool(this, 'IdentityPool', {
       allowUnauthenticatedIdentities: false,
-      cognitoIdentityProviders: [
-        {
-          clientId: this.userPoolClient.userPoolClientId,
-          providerName: this.userPool.userPoolProviderName,
-          serverSideTokenCheck: false,
-        },
-      ],
       identityPoolName: `awslambdahackathon-identity-pool-${props.environment}`,
+      supportedLoginProviders: supportedLoginProviders,
     });
 
     const authenticatedRole = new iam.Role(
@@ -78,12 +83,21 @@ export class AuthStack extends cdk.Stack {
       }
     );
 
+    // Add essential permissions for Amplify credential flow and RUM
+    authenticatedRole.addToPolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['mobileanalytics:PutEvents', 'cognito-sync:*'],
+        resources: ['*'],
+      })
+    );
+
     authenticatedRole.addToPolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
         actions: ['rum:PutRumEvents'],
         resources: [
-          `arn:aws:rum:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:appmonitor/*`,
+          `arn:aws:rum:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:appmonitor/${`awslambdahackathon-web-${props.environment}`}/*`,
         ],
       })
     );
@@ -128,10 +142,6 @@ export class AuthStack extends cdk.Stack {
 
     new cdk.CfnOutput(this, 'UserPoolClientId', {
       value: this.userPoolClient.userPoolClientId,
-    });
-
-    new cdk.CfnOutput(this, 'IdentityPoolId', {
-      value: this.identityPool.ref,
     });
   }
 }

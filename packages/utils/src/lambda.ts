@@ -16,10 +16,6 @@ export type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
 // HTTP response utilities for Lambda functions
 const defaultHeaders = {
   'Content-Type': 'application/json',
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers':
-    'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
-  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
 };
 
 export const createSuccessResponse = <T>(
@@ -128,7 +124,7 @@ export const createHandler = <
   if (schema) {
     middlewares.push(
       validator({
-        eventSchema: schema,
+        eventSchema: (event: TEvent) => schema.parse(event),
       })
     );
   }
@@ -142,12 +138,15 @@ export const commonSchemas = {
   health: z.object({
     httpMethod: z.string(),
     path: z.string(),
-    queryStringParameters: z.record(z.string()).optional(),
-    pathParameters: z.record(z.string()).optional(),
+    queryStringParameters: z.record(z.string()).optional().nullable(),
+    pathParameters: z.record(z.string()).optional().nullable(),
     headers: z.record(z.string()).optional(),
     body: z.any().optional(),
     requestContext: z.any().optional(),
-    multiValueQueryStringParameters: z.record(z.array(z.string())).optional(),
+    multiValueQueryStringParameters: z
+      .record(z.array(z.string()))
+      .optional()
+      .nullable(),
     multiValueHeaders: z.record(z.array(z.string())).optional(),
     isBase64Encoded: z.boolean().optional(),
   }),
@@ -156,12 +155,15 @@ export const commonSchemas = {
   apiGatewayEvent: z.object({
     httpMethod: z.string(),
     path: z.string(),
-    queryStringParameters: z.record(z.string()).optional(),
-    pathParameters: z.record(z.string()).optional(),
+    queryStringParameters: z.record(z.string()).optional().nullable(),
+    pathParameters: z.record(z.string()).optional().nullable(),
     headers: z.record(z.string()).optional(),
     body: z.any().optional(),
     requestContext: z.any().optional(),
-    multiValueQueryStringParameters: z.record(z.array(z.string())).optional(),
+    multiValueQueryStringParameters: z
+      .record(z.array(z.string()))
+      .optional()
+      .nullable(),
     multiValueHeaders: z.record(z.array(z.string())).optional(),
     isBase64Encoded: z.boolean().optional(),
   }),

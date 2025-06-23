@@ -40,8 +40,11 @@ export class ApiStack extends cdk.Stack {
           'X-Amz-Date',
           'X-Api-Key',
           'X-Amz-Security-Token',
+          'X-Amz-User-Agent',
+          'X-Amz-Cognito-Identity',
         ],
         allowCredentials: true,
+        maxAge: cdk.Duration.seconds(300), // Cache preflight for 5 minutes
       },
     });
 

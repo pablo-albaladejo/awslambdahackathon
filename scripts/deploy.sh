@@ -50,6 +50,7 @@ AUTH_STACK_NAME="AuthStack-$ENVIRONMENT"
 BACKEND_STACK_NAME="BackendStack-$ENVIRONMENT"
 API_STACK_NAME="ApiStack-$ENVIRONMENT"
 WEB_STACK_NAME="WebStack-$ENVIRONMENT"
+RUM_STACK_NAME="RumStack-$ENVIRONMENT"
 
 # Step 3: Deploy the Backend stack first
 echo "🏗️  Deploying Backend stack: $BACKEND_STACK_NAME"
@@ -65,7 +66,13 @@ if ! npx cdk deploy "$AUTH_STACK_NAME" --require-approval never --context defaul
     handle_error "Failed to deploy Auth stack"
 fi
 
-# Step 4.5: Create default users via script
+# Step 4.5: Deploy the RUM stack (independent)
+echo "📊 Deploying RUM stack: $RUM_STACK_NAME"
+if ! npx cdk deploy "$RUM_STACK_NAME" --require-approval never; then
+    handle_error "Failed to deploy RUM stack"
+fi
+
+# Step 4.6: Create default users via script
 echo "🔑 Creating default users..."
 TEMP_PASSWORD_SECRET_ID="awslambdahackathon-default-user-password-$ENVIRONMENT"
 USER_POOL_ID_OUTPUT=$(aws cloudformation describe-stacks --stack-name "$AUTH_STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='UserPoolId'].OutputValue" --output text)
@@ -104,13 +111,18 @@ echo "🔍 Getting stack outputs..."
 API_URL=$(aws cloudformation describe-stacks --stack-name "$API_STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='ApiUrl'].OutputValue" --output text)
 USER_POOL_ID=$(aws cloudformation describe-stacks --stack-name "$AUTH_STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='UserPoolId'].OutputValue" --output text)
 USER_POOL_CLIENT_ID=$(aws cloudformation describe-stacks --stack-name "$AUTH_STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='UserPoolClientId'].OutputValue" --output text)
+RUM_APP_MONITOR_ID=$(aws cloudformation describe-stacks --stack-name "$RUM_STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='RumAppMonitorId'].OutputValue" --output text)
+RUM_IDENTITY_POOL_ID=$(aws cloudformation describe-stacks --stack-name "$RUM_STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='RumIdentityPoolId'].OutputValue" --output text)
 
-if [ -z "$API_URL" ] || [ -z "$USER_POOL_ID" ] || [ -z "$USER_POOL_CLIENT_ID" ]; then
-    handle_error "Could not get all required stack outputs (ApiUrl, UserPoolId, UserPoolClientId)"
+if [ -z "$API_URL" ] || [ -z "$USER_POOL_ID" ] || [ -z "$USER_POOL_CLIENT_ID" ] || [ -z "$RUM_APP_MONITOR_ID" ] || [ -z "$RUM_IDENTITY_POOL_ID" ]; then
+    handle_error "Could not get all required stack outputs"
 fi
+
 echo "📍 API URL: $API_URL"
 echo "🔑 User Pool ID: $USER_POOL_ID"
 echo "📱 User Pool Client ID: $USER_POOL_CLIENT_ID"
+echo "🔍 RUM App Monitor ID: $RUM_APP_MONITOR_ID"
+echo "🔍 RUM Identity Pool ID: $RUM_IDENTITY_POOL_ID"
 
 # Step 7: Build the frontend with environment variables
 echo "📦 Building frontend application..."
@@ -127,6 +139,9 @@ rm -f .env.production
 export VITE_API_URL="$API_URL"
 export VITE_USER_POOL_ID="$USER_POOL_ID"
 export VITE_USER_POOL_CLIENT_ID="$USER_POOL_CLIENT_ID"
+export VITE_AWS_REGION="$AWS_REGION"
+export VITE_RUM_APP_MONITOR_ID="$RUM_APP_MONITOR_ID"
+export VITE_RUM_IDENTITY_POOL_ID="$RUM_IDENTITY_POOL_ID"
 
 # Build with Vite (it will read VITE_API_URL from environment)
 if ! npm run build; then
@@ -137,6 +152,9 @@ fi
 unset VITE_API_URL
 unset VITE_USER_POOL_ID
 unset VITE_USER_POOL_CLIENT_ID
+unset VITE_AWS_REGION
+unset VITE_RUM_APP_MONITOR_ID
+unset VITE_RUM_IDENTITY_POOL_ID
 
 cd ../.. || handle_error "Failed to return to root directory"
 

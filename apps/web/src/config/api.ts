@@ -44,7 +44,6 @@ export const apiClient = {
     const response = await fetch(buildApiUrl(endpoint), {
       method: 'GET',
       headers,
-      credentials: 'include', // Include cookies for CORS
     });
 
     if (!response.ok) {
@@ -71,7 +70,6 @@ export const apiClient = {
       method: 'POST',
       headers,
       body: JSON.stringify(data),
-      credentials: 'include', // Include cookies for CORS
     });
 
     if (!response.ok) {

@@ -5,45 +5,53 @@ import 'source-map-support/register';
 import { ApiStack } from '../src/api-stack';
 import { AuthStack } from '../src/auth-stack';
 import { BackendStack } from '../src/backend-stack';
+import { RumStack } from '../src/rum-stack';
 import { WebStack } from '../src/web-stack';
 
 const app = new cdk.App();
 
-// Get environment from context
-const environment = app.node.tryGetContext('environment') || 'dev';
+const environment = process.env.ENVIRONMENT || 'dev';
+const region = process.env.AWS_REGION || 'us-east-2';
 
-// Common props for stacks
-const stackProps = {
-  env: {
-    account: process.env.CDK_DEFAULT_ACCOUNT,
-    region: process.env.CDK_DEFAULT_REGION,
-  },
-  environment,
+const env = {
+  account: process.env.CDK_DEFAULT_ACCOUNT,
+  region: region,
 };
 
 // Backend Stack
 const backendStack = new BackendStack(app, `BackendStack-${environment}`, {
-  ...stackProps,
+  env,
+  environment,
 });
 
 // Auth Stack
 const authStack = new AuthStack(app, `AuthStack-${environment}`, {
-  ...stackProps,
+  env,
+  environment,
 });
-authStack.addDependency(backendStack);
 
-// Web Stack (needs to be created before API Stack to get CloudFront domain)
+// Web Stack
 const webStack = new WebStack(app, `WebStack-${environment}`, {
-  ...stackProps,
-  identityPoolId: authStack.identityPool.ref,
+  env,
+  environment,
+});
+
+// RUM Stack
+new RumStack(app, `RumStack-${environment}`, {
+  env,
+  environment,
+  domain: environment === 'prod' ? webStack.cloudFrontDomain : 'localhost',
 });
 
 // API Stack
 const apiStack = new ApiStack(app, `ApiStack-${environment}`, {
-  ...stackProps,
-  healthFunction: backendStack.healthFunction,
+  env,
+  environment,
   userPool: authStack.userPool,
+  healthFunction: backendStack.healthFunction,
   cloudFrontDomain: webStack.cloudFrontDomain,
 });
+
+// Dependencies
 apiStack.addDependency(authStack);
 apiStack.addDependency(webStack);

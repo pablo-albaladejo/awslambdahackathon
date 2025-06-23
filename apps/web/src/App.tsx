@@ -3,17 +3,26 @@ import {
   WithAuthenticatorProps,
 } from '@aws-amplify/ui-react';
 import '@aws-amplify/ui-react/styles.css';
+import { logger } from '@awslambdahackathon/utils/frontend';
+import { useEffect } from 'react';
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
 
-import { configureAmplify } from './amplify-config';
 import DashboardPage from './DashboardPage';
 import HomePage from './HomePage';
 import Layout from './Layout';
 import ProtectedRoute from './ProtectedRoute';
-
-configureAmplify();
+import { initializeRUM } from './rum-config';
 
 function App({ user, signOut }: WithAuthenticatorProps) {
+  // Initialize RUM when user is authenticated
+  useEffect(() => {
+    if (user) {
+      initializeRUM().catch(error => {
+        logger.error('Failed to initialize CloudWatch RUM', { error });
+      });
+    }
+  }, [user]);
+
   return (
     <BrowserRouter>
       <Layout user={user} signOut={signOut}>
