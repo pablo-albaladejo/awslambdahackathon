@@ -6,7 +6,9 @@ import { Construct } from 'constructs';
 
 export interface RumStackProps extends StackProps {
   environment: string;
-  domain?: string;
+  domain: string;
+  userPoolId: string;
+  userPoolClientId: string;
 }
 
 export class RumStack extends Stack {
@@ -20,6 +22,58 @@ export class RumStack extends Stack {
     const identityPool = new cognito.CfnIdentityPool(this, 'RumIdentityPool', {
       allowUnauthenticatedIdentities: true,
       identityPoolName: `awslambdahackathon-rum-identity-pool-${props.environment}`,
+      cognitoIdentityProviders: [
+        {
+          clientId: props.userPoolClientId,
+          providerName: `cognito-idp.${this.region}.amazonaws.com/${props.userPoolId}`,
+          serverSideTokenCheck: false,
+        },
+      ],
+    });
+
+    const inlinePolicies = {
+      RumPolicy: new iam.PolicyDocument({
+        statements: [
+          // This statement is the most critical one for sending data.
+          // Using specific AppMonitor ARN for better security
+          new iam.PolicyStatement({
+            effect: iam.Effect.ALLOW,
+            actions: ['rum:PutRumEvents'],
+            resources: [
+              `arn:aws:rum:${this.region}:${this.account}:appmonitor/awslambdahackathon-web-${props.environment}`,
+            ],
+          }),
+          // This statement scopes Cognito permissions specifically to the Identity Pool
+          new iam.PolicyStatement({
+            effect: iam.Effect.ALLOW,
+            actions: [
+              'cognito-identity:GetId',
+              'cognito-identity:GetCredentialsForIdentity',
+            ],
+            // Scope this permission to the specific identity pool
+            resources: [
+              `arn:aws:cognito-identity:${this.region}:${this.account}:identitypool/${identityPool.ref}`,
+            ],
+          }),
+        ],
+      }),
+    };
+
+    const authRole = new iam.Role(this, 'RumAuthenticatedRole', {
+      roleName: `awslambdahackathon-rum-auth-role-${props.environment}`,
+      assumedBy: new iam.FederatedPrincipal(
+        'cognito-identity.amazonaws.com',
+        {
+          StringEquals: {
+            'cognito-identity.amazonaws.com:aud': identityPool.ref,
+          },
+          'ForAnyValue:StringLike': {
+            'cognito-identity.amazonaws.com:amr': 'authenticated',
+          },
+        },
+        'sts:AssumeRoleWithWebIdentity'
+      ),
+      inlinePolicies,
     });
 
     const unauthRole = new iam.Role(this, 'RumUnauthenticatedRole', {
@@ -36,24 +90,14 @@ export class RumStack extends Stack {
         },
         'sts:AssumeRoleWithWebIdentity'
       ),
-
-      inlinePolicies: {
-        RumPolicy: new iam.PolicyDocument({
-          statements: [
-            new iam.PolicyStatement({
-              effect: iam.Effect.ALLOW,
-              actions: ['rum:PutRumEvents', 'rum:PutRumMetrics'],
-              resources: ['*'],
-            }),
-          ],
-        }),
-      },
+      inlinePolicies,
     });
 
     new cognito.CfnIdentityPoolRoleAttachment(this, 'RoleAttachment', {
       identityPoolId: identityPool.ref,
       roles: {
         unauthenticated: unauthRole.roleArn,
+        authenticated: authRole.roleArn,
       },
     });
 

@@ -3,49 +3,46 @@ import {
   WithAuthenticatorProps,
 } from '@aws-amplify/ui-react';
 import '@aws-amplify/ui-react/styles.css';
-import { logger } from '@awslambdahackathon/utils/frontend';
 import { useEffect } from 'react';
-import { BrowserRouter, Route, Routes } from 'react-router-dom';
+import { Route, Routes } from 'react-router-dom';
 
 import DashboardPage from './DashboardPage';
 import HomePage from './HomePage';
+import { useRumTracking } from './hooks/useRumTracking';
 import Layout from './Layout';
 import ProtectedRoute from './ProtectedRoute';
-import { initializeRUM } from './rum-config';
 
 function App({ user, signOut }: WithAuthenticatorProps) {
-  // Initialize RUM when user is authenticated
+  const { setAuthenticatedUser } = useRumTracking();
+
   useEffect(() => {
-    if (user) {
-      initializeRUM().catch(error => {
-        logger.error('Failed to initialize CloudWatch RUM', { error });
-      });
+    // Set authenticated user in RUM when user is available
+    if (user?.userId) {
+      setAuthenticatedUser(user.userId);
     }
-  }, [user]);
+  }, [user?.userId, setAuthenticatedUser]);
 
   return (
-    <BrowserRouter>
-      <Layout user={user} signOut={signOut}>
-        <Routes>
-          <Route
-            path="/"
-            element={
-              <ProtectedRoute requiredGroup="Users">
-                <HomePage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/dashboard"
-            element={
-              <ProtectedRoute requiredGroup="Admins">
-                <DashboardPage />
-              </ProtectedRoute>
-            }
-          />
-        </Routes>
-      </Layout>
-    </BrowserRouter>
+    <Layout user={user} signOut={signOut}>
+      <Routes>
+        <Route
+          path="/"
+          element={
+            <ProtectedRoute requiredGroup="Users">
+              <HomePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dashboard"
+          element={
+            <ProtectedRoute requiredGroup="Admins">
+              <DashboardPage />
+            </ProtectedRoute>
+          }
+        />
+      </Routes>
+    </Layout>
   );
 }
 

@@ -37,10 +37,12 @@ const webStack = new WebStack(app, `WebStack-${environment}`, {
 });
 
 // RUM Stack
-new RumStack(app, `RumStack-${environment}`, {
+const rumStack = new RumStack(app, `RumStack-${environment}`, {
   env,
   environment,
-  domain: environment === 'prod' ? webStack.cloudFrontDomain : 'localhost',
+  domain: webStack.cloudFrontDomain,
+  userPoolId: authStack.userPool.userPoolId,
+  userPoolClientId: authStack.userPoolClient.userPoolClientId,
 });
 
 // API Stack
@@ -53,5 +55,7 @@ const apiStack = new ApiStack(app, `ApiStack-${environment}`, {
 });
 
 // Dependencies
+rumStack.addDependency(webStack);
+rumStack.addDependency(authStack);
 apiStack.addDependency(authStack);
 apiStack.addDependency(webStack);

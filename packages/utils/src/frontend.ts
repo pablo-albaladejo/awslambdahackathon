@@ -1,10 +1,6 @@
 /* eslint-disable no-console */
+import { type AwsRum } from 'aws-rum-web';
 import { z, ZodSchema } from 'zod';
-
-// Extend the Window interface to include awsRum
-export interface AwsRum {
-  recordEvent: (eventName: string, data: unknown) => void;
-}
 
 declare global {
   interface Window {
