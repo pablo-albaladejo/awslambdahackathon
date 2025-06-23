@@ -49,6 +49,8 @@ export class RumStack extends Stack {
     const appMonitor = new rum.CfnAppMonitor(this, 'ReactAppMonitor', {
       name: `awslambdahackathon-web-${props.environment}`,
       domain: props.domain,
+      customEvents: { status: 'ENABLED' },
+      cwLogEnabled: true,
       appMonitorConfiguration: {
         identityPoolId: props.identityPoolId,
         allowCookies: true,

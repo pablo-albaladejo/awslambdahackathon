@@ -23,11 +23,6 @@ const cwrAppMonitorDetails = {
   region: import.meta.env.VITE_AWS_REGION,
 };
 
-logger.info('RUM Unified Config:', {
-  ...cwrAppMonitorDetails,
-  config: cwrConfig,
-});
-
 export interface RumInstance {
   recordPageView: (pageId: string) => void;
   recordError: (error: Error) => void;
@@ -69,6 +64,8 @@ export const AwsRumProvider: React.FC<AwsRumProviderProps> = ({ children }) => {
           cwrAppMonitorDetails.region,
           cwrConfig
         ) as unknown as RumInstance;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (window as any).awsRum = rumInstance;
 
         setRum(rumInstance);
         logger.info('RUM instance created.');
