@@ -1,15 +1,10 @@
 /* eslint-disable no-console */
-import { type AwsRum } from 'aws-rum-web';
 import { z, ZodSchema } from 'zod';
 
-declare global {
-  interface Window {
-    awsRum?: AwsRum;
-  }
-}
+export const logger = console;
 
 // Frontend logger with CloudWatch RUM support
-export const logger = {
+/*export const logger = {
   info: (message: string, data?: unknown) => {
     if (typeof window !== 'undefined') {
       // Try to use CloudWatch RUM if available
@@ -66,7 +61,7 @@ export const logger = {
       }
     }
   },
-};
+};*/
 
 // Export Zod utilities for frontend use
 export { z, ZodSchema };

@@ -15,7 +15,7 @@ const region = process.env.AWS_REGION || 'us-east-2';
 
 const env = {
   account: process.env.CDK_DEFAULT_ACCOUNT,
-  region: region,
+  region,
 };
 
 // Backend Stack
@@ -41,8 +41,7 @@ const rumStack = new RumStack(app, `RumStack-${environment}`, {
   env,
   environment,
   domain: webStack.cloudFrontDomain,
-  userPoolId: authStack.userPool.userPoolId,
-  userPoolClientId: authStack.userPoolClient.userPoolClientId,
+  identityPoolId: authStack.identityPool.ref,
 });
 
 // API Stack

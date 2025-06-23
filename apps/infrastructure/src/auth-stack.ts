@@ -1,6 +1,5 @@
 import * as cdk from 'aws-cdk-lib';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
-import * as iam from 'aws-cdk-lib/aws-iam';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import { Construct } from 'constructs';
 
@@ -59,59 +58,10 @@ export class AuthStack extends cdk.Stack {
     );
 
     this.identityPool = new cognito.CfnIdentityPool(this, 'IdentityPool', {
-      allowUnauthenticatedIdentities: false,
+      allowUnauthenticatedIdentities: true,
       identityPoolName: `awslambdahackathon-identity-pool-${props.environment}`,
-      supportedLoginProviders: supportedLoginProviders,
+      supportedLoginProviders,
     });
-
-    const authenticatedRole = new iam.Role(
-      this,
-      'CognitoDefaultAuthenticatedRole',
-      {
-        assumedBy: new iam.FederatedPrincipal(
-          'cognito-identity.amazonaws.com',
-          {
-            StringEquals: {
-              'cognito-identity.amazonaws.com:aud': this.identityPool.ref,
-            },
-            'ForAnyValue:StringLike': {
-              'cognito-identity.amazonaws.com:amr': 'authenticated',
-            },
-          },
-          'sts:AssumeRoleWithWebIdentity'
-        ),
-      }
-    );
-
-    // Add essential permissions for Amplify credential flow and RUM
-    authenticatedRole.addToPolicy(
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        actions: ['mobileanalytics:PutEvents', 'cognito-sync:*'],
-        resources: ['*'],
-      })
-    );
-
-    authenticatedRole.addToPolicy(
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        actions: ['rum:PutRumEvents'],
-        resources: [
-          `arn:aws:rum:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:appmonitor/${`awslambdahackathon-web-${props.environment}`}/*`,
-        ],
-      })
-    );
-
-    new cognito.CfnIdentityPoolRoleAttachment(
-      this,
-      'IdentityPoolRoleAttachment',
-      {
-        identityPoolId: this.identityPool.ref,
-        roles: {
-          authenticated: authenticatedRole.roleArn,
-        },
-      }
-    );
 
     new cognito.CfnUserPoolGroup(this, 'AdminsGroup', {
       userPoolId: this.userPool.userPoolId,
@@ -142,6 +92,11 @@ export class AuthStack extends cdk.Stack {
 
     new cdk.CfnOutput(this, 'UserPoolClientId', {
       value: this.userPoolClient.userPoolClientId,
+    });
+
+    new cdk.CfnOutput(this, `IdentityPoolId${props.environment}`, {
+      value: this.identityPool.ref,
+      exportName: `IdentityPoolId-${props.environment}`,
     });
   }
 }
