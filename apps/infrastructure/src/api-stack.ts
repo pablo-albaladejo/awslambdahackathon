@@ -34,11 +34,15 @@ export class ApiStack extends cdk.Stack {
     );
 
     // REST API Gateway
+    const allowOrigins = [`https://${props.cloudFrontDomain}`];
+    if (props.environment === 'dev') {
+      allowOrigins.push('http://localhost:5173');
+    }
     const api = new apigateway.RestApi(this, 'ApiGateway', {
       restApiName: `awslambdahackathon-api-${props.environment}`,
       description: 'API for AWS Lambda Hackathon',
       defaultCorsPreflightOptions: {
-        allowOrigins: [`https://${props.cloudFrontDomain}`],
+        allowOrigins,
         allowMethods: apigateway.Cors.ALL_METHODS,
         allowHeaders: [
           'Content-Type',

@@ -1,5 +1,7 @@
+export const logger = console;
+
 /* eslint-disable no-console */
-import { Orchestration } from 'aws-rum-web/dist/cjs/orchestration/Orchestration';
+/*import { Orchestration } from 'aws-rum-web/dist/cjs/orchestration/Orchestration';
 
 declare global {
   interface Window {
@@ -65,4 +67,4 @@ export const logger = {
       }
     }
   },
-};
+};*/

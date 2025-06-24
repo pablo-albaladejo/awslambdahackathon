@@ -1,6 +1,4 @@
 import {
-  commonSchemas,
-  createHandler,
   createSuccessResponse,
   logger,
   metrics,
@@ -58,21 +56,20 @@ const websocketHandler = async (
   try {
     // Handle WebSocket connection
     if (event.requestContext.eventType === 'CONNECT') {
-      // Authentication is handled by API Gateway authorizer
-      // User information is available in event.requestContext.authorizer
-      const userId = event.requestContext.authorizer?.claims?.sub;
-      const username = event.requestContext.authorizer?.claims?.username;
-
+      // For now, accept all connections without authentication
+      // TODO: Add proper authentication later
       logger.info('WebSocket connection established', {
         connectionId: event.requestContext.connectionId,
-        userId,
-        username,
       });
 
-      return createSuccessResponse({
+      // For WebSocket API Gateway v2, CONNECT should return 200 without body
+      return {
         statusCode: 200,
-        body: JSON.stringify({ message: 'Connected' }),
-      });
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: '',
+      };
     }
 
     // Handle WebSocket disconnection
@@ -170,7 +167,6 @@ const websocketHandler = async (
           requestId: event.requestContext.requestId,
           sessionId: currentSessionId,
           messageLength: message.length,
-          userId: event.requestContext.authorizer?.claims?.sub,
           response: response,
         });
 
@@ -214,5 +210,5 @@ const websocketHandler = async (
   }
 };
 
-// Export the handler wrapped with Middy middleware
-export const handler = createHandler(websocketHandler, commonSchemas.health);
+// Export the handler directly (no Middy middleware for WebSocket)
+export const handler = websocketHandler;

@@ -1,5 +1,5 @@
 import { useAuthenticator } from '@aws-amplify/ui-react';
-import { fetchAuthSession } from 'aws-amplify/auth';
+import { logger } from '@awslambdahackathon/utils/frontend';
 import React, { useEffect, useRef, useState } from 'react';
 
 import { websocketConfig } from './config/websocket';
@@ -31,32 +31,17 @@ const ChatbotPage: React.FC = () => {
     scrollToBottom();
   }, [messages]);
 
-  const getAccessToken = async (): Promise<string | null> => {
-    try {
-      const session = await fetchAuthSession();
-      return session.tokens?.accessToken?.toString() || null;
-    } catch (error) {
-      console.error('Error getting access token:', error);
-      return null;
-    }
-  };
-
   const connectWebSocket = async () => {
     if (!user) return;
 
     try {
-      const token = await getAccessToken();
-      if (!token) {
-        console.error('No access token available');
-        return;
-      }
-
-      // Create WebSocket connection with authentication
-      const wsUrl = `${websocketConfig.url}?token=${token}`;
+      // For now, connect without authentication
+      // TODO: Add token-based authentication when authorizer is configured
+      const wsUrl = websocketConfig.url;
       const ws = new WebSocket(wsUrl);
 
       ws.onopen = () => {
-        console.log('WebSocket connected');
+        logger.info('WebSocket connected');
         setIsConnected(true);
         reconnectAttemptsRef.current = 0;
 
@@ -75,7 +60,7 @@ const ChatbotPage: React.FC = () => {
       ws.onmessage = event => {
         try {
           const data = JSON.parse(event.data);
-          console.log('Received message:', data);
+          logger.info('Received message:', data);
 
           if (data.message) {
             setMessages(prev => [
@@ -95,13 +80,13 @@ const ChatbotPage: React.FC = () => {
             }
           }
         } catch (error) {
-          console.error('Error parsing WebSocket message:', error);
+          logger.error('Error parsing WebSocket message:', error);
         }
         setIsLoading(false);
       };
 
       ws.onclose = event => {
-        console.log('WebSocket disconnected:', event.code, event.reason);
+        logger.info('WebSocket disconnected:', event.code, event.reason);
         setIsConnected(false);
 
         // Attempt to reconnect if not a normal closure
@@ -117,13 +102,13 @@ const ChatbotPage: React.FC = () => {
       };
 
       ws.onerror = error => {
-        console.error('WebSocket error:', error);
+        logger.error('WebSocket error:', error);
         setIsConnected(false);
       };
 
       wsRef.current = ws;
     } catch (error) {
-      console.error('Error connecting to WebSocket:', error);
+      logger.error('Error connecting to WebSocket:', error);
       setIsConnected(false);
     }
   };
@@ -195,66 +180,56 @@ const ChatbotPage: React.FC = () => {
   }
 
   return (
-    <div className="chatbot-container">
-      <div className="chatbot-header">
-        <h1>🤖 Chatbot</h1>
-        <div className="connection-status">
+    <div className="chatbot-bg">
+      <div className="chatbot-card">
+        <div className="chatbot-header-row">
+          <h1 className="chatbot-title">🤖 Chatbot</h1>
           <span
-            className={`status-indicator ${isConnected ? 'connected' : 'disconnected'}`}
+            className={`chatbot-status ${isConnected ? 'connected' : 'disconnected'}`}
           >
             {isConnected ? '🟢 Conectado' : '🔴 Desconectado'}
           </span>
         </div>
-      </div>
-
-      <div className="chatbot-content">
-        <div className="messages-container">
-          {messages.map(message => (
+        <div className="chatbot-messages" id="messages">
+          {messages.map((message, idx) => (
             <div
-              key={message.id}
-              className={`message ${message.isUser ? 'user-message' : 'bot-message'}`}
+              key={message.id + idx}
+              className={`chatbot-message-bubble ${message.isUser ? 'user' : 'bot'}`}
             >
-              <div className="message-content">
-                <p>{message.text}</p>
-                <span className="message-time">
-                  {formatTime(message.timestamp)}
-                </span>
-              </div>
+              <span className="chatbot-message-text">{message.text}</span>
+              <span className="chatbot-message-time">
+                {formatTime(message.timestamp)}
+              </span>
             </div>
           ))}
-          {isLoading && (
-            <div className="message bot-message">
-              <div className="message-content">
-                <div className="typing-indicator">
-                  <span></span>
-                  <span></span>
-                  <span></span>
-                </div>
-              </div>
-            </div>
-          )}
           <div ref={messagesEndRef} />
         </div>
-
-        <div className="input-container">
-          <div className="input-wrapper">
-            <textarea
-              value={inputMessage}
-              onChange={e => setInputMessage(e.target.value)}
-              onKeyPress={handleKeyPress}
-              placeholder="Escribe tu mensaje..."
-              disabled={!isConnected || isLoading}
-              rows={1}
-            />
-            <button
-              onClick={sendMessage}
-              disabled={!inputMessage.trim() || !isConnected || isLoading}
-              className="send-button"
-            >
+        <form
+          className="chatbot-input-row"
+          onSubmit={e => {
+            e.preventDefault();
+            sendMessage();
+          }}
+        >
+          <input
+            className="chatbot-input"
+            type="text"
+            placeholder="Escribe tu mensaje..."
+            value={inputMessage}
+            onChange={e => setInputMessage(e.target.value)}
+            onKeyDown={handleKeyPress}
+            disabled={!isConnected || isLoading}
+          />
+          <button
+            className="chatbot-send-btn"
+            type="submit"
+            disabled={!inputMessage.trim() || !isConnected || isLoading}
+          >
+            <span role="img" aria-label="Enviar">
               📤
-            </button>
-          </div>
-        </div>
+            </span>
+          </button>
+        </form>
       </div>
     </div>
   );

@@ -3,12 +3,17 @@ import {
   WithAuthenticatorProps,
 } from '@aws-amplify/ui-react';
 import '@aws-amplify/ui-react/styles.css';
-import { Component, ErrorInfo, ReactNode, useCallback, useEffect } from 'react';
+import {
+  Component,
+  ErrorInfo,
+  lazy,
+  ReactNode,
+  Suspense,
+  useCallback,
+  useEffect,
+} from 'react';
 import { Route, Routes, useLocation } from 'react-router-dom';
 
-import ChatbotPage from './ChatbotPage';
-import DashboardPage from './DashboardPage';
-import HomePage from './HomePage';
 import { useRumTracking } from './hooks/useRumTracking';
 import Layout from './Layout';
 import ProtectedRoute from './ProtectedRoute';
@@ -189,36 +194,42 @@ function App({ user, signOut }: WithAuthenticatorProps) {
     trackError(enhancedError, 'React Component Error');
   };
 
+  // Replace static imports with lazy imports for main pages
+  const ChatbotPage = lazy(() => import('./ChatbotPage'));
+  const DashboardPage = lazy(() => import('./DashboardPage'));
+  const HomePage = lazy(() => import('./HomePage'));
+
   return (
     <ErrorBoundary onError={handleReactError}>
-      {/* Pasamos nuestra nueva función handleSignOut al Layout */}
       <Layout user={user} signOut={handleSignOut}>
-        <Routes>
-          <Route
-            path="/"
-            element={
-              <ProtectedRoute requiredGroup="Users">
-                <HomePage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/dashboard"
-            element={
-              <ProtectedRoute requiredGroup="Admins">
-                <DashboardPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/chatbot"
-            element={
-              <ProtectedRoute requiredGroup="Users">
-                <ChatbotPage />
-              </ProtectedRoute>
-            }
-          />
-        </Routes>
+        <Suspense fallback={<div>Loading...</div>}>
+          <Routes>
+            <Route
+              path="/"
+              element={
+                <ProtectedRoute requiredGroup="Users">
+                  <HomePage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/dashboard"
+              element={
+                <ProtectedRoute requiredGroup="Users">
+                  <DashboardPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/chatbot"
+              element={
+                <ProtectedRoute requiredGroup="Users">
+                  <ChatbotPage />
+                </ProtectedRoute>
+              }
+            />
+          </Routes>
+        </Suspense>
       </Layout>
     </ErrorBoundary>
   );
