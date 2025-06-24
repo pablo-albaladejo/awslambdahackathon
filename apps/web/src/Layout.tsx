@@ -1,70 +1,29 @@
-import { WithAuthenticatorProps } from '@aws-amplify/ui-react';
-import { logger } from '@awslambdahackathon/utils/frontend';
-import { fetchAuthSession, fetchUserAttributes } from 'aws-amplify/auth';
-import { ReactNode, useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React from 'react';
 
-interface LayoutProps extends WithAuthenticatorProps {
-  children: ReactNode;
-}
+import { useCurrentUser } from './hooks/useCurrentUser';
 
-const Layout = ({ user, signOut, children }: LayoutProps) => {
-  const navigate = useNavigate();
-  const [userGroups, setUserGroups] = useState<string[]>([]);
-  const [displayName, setDisplayName] = useState<string>('');
+const Layout = ({
+  children,
+  signOut,
+}: {
+  children: React.ReactNode;
+  signOut?: () => void;
+}) => {
+  const { email, groups, loading } = useCurrentUser();
   const appName = import.meta.env.VITE_APP_NAME || 'MyApp';
-
-  // Debug logs
-  useEffect(() => {
-    logger.info('Layout rendered', {
-      hasUser: !!user,
-      username: user?.username,
-      hasSignOut: !!signOut,
-    });
-  }, [user, signOut]);
-
-  useEffect(() => {
-    const fetchUserData = async () => {
-      if (!user) return; // Guard clause to satisfy linter
-
-      try {
-        const [session, attributes] = await Promise.all([
-          fetchAuthSession(),
-          fetchUserAttributes(),
-        ]);
-
-        const groups =
-          (session.tokens?.accessToken.payload['cognito:groups'] as
-            | string[]
-            | undefined) || [];
-        setUserGroups(groups);
-        setDisplayName(attributes.email || user.username);
-
-        logger.info('User data fetched', {
-          groups,
-          email: attributes.email,
-        });
-      } catch (error) {
-        logger.error('Error fetching user data', { error });
-      }
-    };
-
-    if (user) {
-      fetchUserData();
-    }
-  }, [user]);
 
   const handleLogout = () => {
     if (signOut) {
       signOut();
     }
-    navigate('/');
   };
 
-  if (!user) {
-    // If there is no user, we are in the login view, so we don't show the layout.
-    // The children (routes) will be handled by the authenticator.
-    return <>{children}</>;
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-lg">
+        Cargando...
+      </div>
+    );
   }
 
   return (
@@ -74,37 +33,15 @@ const Layout = ({ user, signOut, children }: LayoutProps) => {
           <div className="flex justify-between h-16">
             <div className="flex items-center space-x-8">
               <span className="font-bold text-xl text-white">{appName}</span>
-              <div className="flex items-center space-x-4">
-                <Link
-                  to="/"
-                  className="text-white hover:text-gray-200 px-3 py-2 rounded-md text-sm font-medium transition-colors"
-                >
-                  Home
-                </Link>
-                <Link
-                  to="/chatbot"
-                  className="text-white hover:text-gray-200 px-3 py-2 rounded-md text-sm font-medium transition-colors"
-                >
-                  Chatbot
-                </Link>
-                {userGroups.includes('Admins') && (
-                  <Link
-                    to="/dashboard"
-                    className="text-white hover:text-gray-200 px-3 py-2 rounded-md text-sm font-medium transition-colors"
-                  >
-                    Dashboard
-                  </Link>
-                )}
-              </div>
             </div>
             <div className="flex items-center">
               <div className="flex items-center space-x-4">
                 <span className="text-white">
-                  Welcome, <strong>{displayName}</strong>
+                  Welcome, <strong>{email}</strong>
                 </span>
-                {userGroups.length > 0 && (
+                {groups.length > 0 && (
                   <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                    {userGroups.join(', ')}
+                    {groups.join(', ')}
                   </span>
                 )}
                 <button

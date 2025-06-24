@@ -12,8 +12,9 @@ import {
   useCallback,
   useEffect,
 } from 'react';
-import { Route, Routes, useLocation } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 
+import { useCurrentUser } from './hooks/useCurrentUser';
 import { useRumTracking } from './hooks/useRumTracking';
 import Layout from './Layout';
 import ProtectedRoute from './ProtectedRoute';
@@ -68,34 +69,20 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
 }
 
-function App({ user, signOut }: WithAuthenticatorProps) {
-  const {
-    setAuthenticatedUser,
-    clearAuthenticatedUser,
-    trackPageView,
-    trackError,
-    trackEvent,
-  } = useRumTracking();
+function App({ signOut }: WithAuthenticatorProps) {
+  const { groups, loading } = useCurrentUser();
+  const { trackPageView, trackError, trackEvent } = useRumTracking();
   const location = useLocation();
-
-  useEffect(() => {
-    if (user?.userId) {
-      setAuthenticatedUser(user.userId);
-    } else {
-      clearAuthenticatedUser();
-    }
-  }, [user, setAuthenticatedUser, clearAuthenticatedUser]);
 
   useEffect(() => {
     trackPageView(location.pathname);
   }, [location.pathname, trackPageView]);
 
   const handleSignOut = useCallback(async () => {
-    clearAuthenticatedUser();
     if (signOut) {
       signOut();
     }
-  }, [signOut, clearAuthenticatedUser]);
+  }, [signOut]);
 
   useEffect(() => {
     const handleError = (event: ErrorEvent) => {
@@ -197,25 +184,46 @@ function App({ user, signOut }: WithAuthenticatorProps) {
   // Replace static imports with lazy imports for main pages
   const ChatbotPage = lazy(() => import('./ChatbotPage'));
   const DashboardPage = lazy(() => import('./DashboardPage'));
-  const HomePage = lazy(() => import('./HomePage'));
+
+  function getUserGroup(): 'Admins' | 'Users' | null {
+    if (Array.isArray(groups)) {
+      if (groups.includes('Admins')) return 'Admins';
+      if (groups.includes('Users')) return 'Users';
+    }
+    return null;
+  }
 
   return (
     <ErrorBoundary onError={handleReactError}>
-      <Layout user={user} signOut={handleSignOut}>
+      <Layout signOut={handleSignOut}>
         <Suspense fallback={<div>Loading...</div>}>
           <Routes>
             <Route
               path="/"
-              element={
-                <ProtectedRoute requiredGroup="Users">
-                  <HomePage />
-                </ProtectedRoute>
-              }
+              element={(() => {
+                if (loading) {
+                  return (
+                    <div className="min-h-screen flex items-center justify-center text-lg">
+                      Cargando...
+                    </div>
+                  );
+                }
+                const group = getUserGroup();
+                if (group === 'Admins')
+                  return <Navigate to="/dashboard" replace />;
+                if (group === 'Users')
+                  return <Navigate to="/chatbot" replace />;
+                return (
+                  <div className="min-h-screen flex items-center justify-center text-lg">
+                    No autorizado
+                  </div>
+                );
+              })()}
             />
             <Route
               path="/dashboard"
               element={
-                <ProtectedRoute requiredGroup="Users">
+                <ProtectedRoute requiredGroup="Admins">
                   <DashboardPage />
                 </ProtectedRoute>
               }

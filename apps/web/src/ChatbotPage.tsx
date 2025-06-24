@@ -1,6 +1,8 @@
 import { useAuthenticator } from '@aws-amplify/ui-react';
 import { logger } from '@awslambdahackathon/utils/frontend';
 import React, { useEffect, useRef, useState } from 'react';
+import './App.css';
+import './index.css';
 
 import { websocketConfig } from './config/websocket';
 
@@ -50,7 +52,7 @@ const ChatbotPage: React.FC = () => {
           ...prev,
           {
             id: Date.now().toString(),
-            text: '¡Hola! Soy tu asistente. ¿En qué puedo ayudarte?',
+            text: 'Hello! I am your assistant. How can I help you?',
             isUser: false,
             timestamp: new Date(),
           },
