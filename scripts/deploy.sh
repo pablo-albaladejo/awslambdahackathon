@@ -31,23 +31,24 @@ npm run build || handle_error "Build verification failed"
 echo "🧹 Cleaning previous build artifacts..."
 npm run clean || handle_error "Failed to clean artifacts"
 
-# Step 2: Build backend packages
-echo "📦 Building backend packages..."
+# Step 2: Build runtime packages
+echo "📦 Building runtime packages..."
+RUNTIME_STACK_NAME="RuntimeStack-$ENVIRONMENT"
 cd packages/types    && npm run build && cd ../..
 cd packages/utils    && npm run build && cd ../..
-cd apps/infrastructure && npm run build && cd ../..
+cd apps/cdk && npm run build && cd ../..
 cd apps/api          && npm run build && cd ../..
 
 # Define stack names
 AUTH_STACK_NAME="AuthStack-$ENVIRONMENT"
-BACKEND_STACK_NAME="BackendStack-$ENVIRONMENT"
+RUNTIME_STACK_NAME="RuntimeStack-$ENVIRONMENT"
 API_STACK_NAME="ApiStack-$ENVIRONMENT"
 WEB_STACK_NAME="WebStack-$ENVIRONMENT"
 RUM_STACK_NAME="RumStack-$ENVIRONMENT"
 
 # Step 3: Deploy all stacks together to handle dependencies properly
 echo "🏗️  Deploying all stacks together..."
-cd apps/infrastructure || handle_error "Failed to cd to infrastructure"
+cd apps/cdk || handle_error "Failed to cd to cdk"
 npx cdk deploy --all \
     --require-approval never \
     --context defaultUserEmail="$DEFAULT_USER_EMAIL" \

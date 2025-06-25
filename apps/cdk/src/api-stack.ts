@@ -9,7 +9,8 @@ interface ApiStackProps extends cdk.StackProps {
   environment: string;
   healthFunction: lambda.IFunction;
   mcpHostFunction: lambda.IFunction;
-  websocketFunction: lambda.IFunction;
+  websocketConnectionFunction: lambda.IFunction;
+  websocketConversationFunction: lambda.IFunction;
   websocketAuthorizerFunction: lambda.IFunction;
 }
 
@@ -44,24 +45,27 @@ export class ApiStack extends cdk.Stack {
       apiName: `awslambdahackathon-websocket-${props.environment}`,
     });
 
-    // WebSocket Lambda integration
-    const websocketIntegration =
+    // WebSocket Lambda integrations
+    const websocketConnectionIntegration =
       new apigatewayv2_integrations.WebSocketLambdaIntegration(
-        'WebSocketIntegration',
-        props.websocketFunction
+        'WebSocketConnectionIntegration',
+        props.websocketConnectionFunction
+      );
+    const websocketConversationIntegration =
+      new apigatewayv2_integrations.WebSocketLambdaIntegration(
+        'WebSocketConversationIntegration',
+        props.websocketConversationFunction
       );
 
     // Add routes
     websocketApi.addRoute('$connect', {
-      integration: websocketIntegration,
+      integration: websocketConnectionIntegration,
     });
-
     websocketApi.addRoute('$disconnect', {
-      integration: websocketIntegration,
+      integration: websocketConnectionIntegration,
     });
-
     websocketApi.addRoute('$default', {
-      integration: websocketIntegration,
+      integration: websocketConversationIntegration,
     });
 
     // WebSocket Stage

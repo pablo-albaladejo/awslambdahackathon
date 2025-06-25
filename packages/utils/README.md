@@ -1,151 +1,137 @@
-# Utils Package
+# @awslambdahackathon/utils
 
-This package provides utilities for both frontend and backend applications with environment-specific exports.
+This package provides utilities for both frontend and runtime applications with environment-specific exports.
+
+## Overview
+
+The utils package is designed to provide shared utilities across the monorepo, with specific exports for different environments:
+
+- **Frontend utilities** (`@awslambdahackathon/utils/frontend`) - Browser-safe utilities
+- **Runtime utilities** (`@awslambdahackathon/utils/lambda`) - Lambda function utilities
+
+## Installation
+
+```bash
+npm install @awslambdahackathon/utils
+```
 
 ## Usage
-
-### General Utilities (Both Environments)
-
-```typescript
-import {
-  isValidEmail,
-  capitalize,
-  generateId,
-  z,
-} from '@awslambdahackathon/utils';
-```
 
 ### Frontend-Specific Utilities
 
 ```typescript
 import { logger } from '@awslambdahackathon/utils/frontend';
+
+logger.info('Hello from frontend!');
 ```
 
-**Features:**
-
-- CloudWatch RUM integration
-- Automatic fallback to console logging
-- Type-safe window interface extensions
-
-### Backend-Specific Utilities (Lambda)
+### Runtime-Specific Utilities (Lambda)
 
 ```typescript
 import {
-  createHandler,
-  createSuccessResponse,
   logger,
-  tracer,
   metrics,
-  commonSchemas,
-} from '@awslambdahackathon/utils/backend';
-```
-
-**Features:**
-
-- Lambda Powertools integration
-- Middy middleware factory
-- HTTP response utilities
-- Zod validation schemas
-
-## Available Exports
-
-### Main Export (`@awslambdahackathon/utils`)
-
-- `isValidEmail` - Email validation utility
-- `isValidUUID` - UUID validation utility
-- `capitalize` - String capitalization utility
-- `generateId` - ID generation utility
-- `z` - Zod schema builder
-- `ZodSchema` - Zod schema type
-- `logger` - Environment-aware logger (frontend/backend)
-
-### Frontend Export (`@awslambdahackathon/utils/frontend`)
-
-- `logger` - Frontend logger with CloudWatch RUM support
-- `z` - Zod utilities
-- `ZodSchema` - Zod schema type
-
-### Backend Export (`@awslambdahackathon/utils/backend`)
-
-- `createHandler` - Middy middleware factory
-- `createSuccessResponse` - HTTP success response utility
-- `createErrorResponse` - HTTP error response utility
-- `logger` - Lambda Powertools logger
-- `tracer` - Lambda Powertools tracer
-- `metrics` - Lambda Powertools metrics
-- `commonSchemas` - Common Zod validation schemas
-- `Logger` - Lambda Powertools Logger class
-- `Tracer` - Lambda Powertools Tracer class
-- `Metrics` - Lambda Powertools Metrics class
-- `middy` - Middy core
-- `cors` - Middy CORS middleware
-- `httpErrorHandler` - Middy error handler
-- `httpJsonBodyParser` - Middy JSON body parser
-- `validator` - Middy validator middleware
-- `requestResponseLogger` - Custom request/response logger
-
-## Examples
-
-### Frontend Usage
-
-```typescript
-import { logger } from '@awslambdahackathon/utils/frontend';
-
-// This will use CloudWatch RUM if available, otherwise console
-logger.info('User logged in', { userId: '123' });
-logger.error('API call failed', { endpoint: '/api/users', status: 500 });
-```
-
-### Backend Usage
-
-```typescript
-import {
+  tracer,
   createHandler,
   createSuccessResponse,
-  logger,
-  commonSchemas,
-} from '@awslambdahackathon/utils/backend';
+} from '@awslambdahackathon/utils/lambda';
 
-const myHandler = async event => {
-  logger.info('Request received', { path: event.path });
-
-  const data = { message: 'Hello from Lambda!' };
-  return createSuccessResponse(data);
-};
-
-export const handler = createHandler(myHandler, commonSchemas.health);
-```
-
-### General Usage
-
-```typescript
-import { isValidEmail, capitalize, z } from '@awslambdahackathon/utils';
-
-// Validation
-if (isValidEmail('user@example.com')) {
-  console.log('Valid email');
-}
-
-// String utilities
-const name = capitalize('john doe'); // "John Doe"
-
-// Zod schemas
-const userSchema = z.object({
-  name: z.string(),
-  email: z.string().email(),
+export const handler = createHandler(async event => {
+  logger.info('Processing request');
+  metrics.addMetric('RequestCount', 'Count', 1);
+  return createSuccessResponse({ message: 'Hello from Lambda!' });
 });
 ```
 
-## Build
+## Available Utilities
 
-The package builds separate files for each export:
+### Common Utilities (from main export)
 
-```bash
-npm run build
+- `isValidEmail` - Email validation
+- `isValidUUID` - UUID validation
+- `capitalize` - String capitalization
+- `generateId` - Generate unique IDs
+
+### Frontend Export (`@awslambdahackathon/utils/frontend`)
+
+- `logger` - Environment-aware logger (frontend/runtime)
+
+### Runtime Export (`@awslambdahackathon/utils/lambda`)
+
+- `logger` - AWS Lambda Powertools logger
+- `metrics` - AWS Lambda Powertools metrics
+- `tracer` - AWS Lambda Powertools tracer
+- `createHandler` - Middy handler factory
+- `createSuccessResponse` - Success response helper
+- `createErrorResponse` - Error response helper
+- `requestResponseLogger` - Request/response logging middleware
+- `commonSchemas` - Common Zod validation schemas
+
+## Package Structure
+
+```
+src/
+├── index.ts          # Common utilities
+├── frontend.ts       # Frontend-specific utilities
+└── lambda.ts         # Runtime-specific utilities
+dist/
+├── index.js          # Common utilities
+├── frontend.js       # Frontend-specific utilities
+└── lambda.js         # Runtime-specific utilities
 ```
 
-This generates:
+## Runtime Usage
 
-- `dist/index.js` - Main export
-- `dist/frontend.js` - Frontend-specific utilities
-- `dist/lambda.js` - Backend-specific utilities
+The runtime export provides comprehensive utilities for AWS Lambda functions:
+
+```typescript
+import {
+  commonSchemas,
+  createHandler,
+  createSuccessResponse,
+  logger,
+  metrics,
+  tracer,
+} from '@awslambdahackathon/utils/lambda';
+
+const handler = async event => {
+  // Add custom metric
+  metrics.addMetric('CustomMetric', 'Count', 1);
+
+  // Log with structured logging
+  logger.info('Processing request', {
+    requestId: event.requestContext.requestId,
+    path: event.path,
+  });
+
+  // Create custom span
+  const segment = tracer.getSegment();
+  const subsegment = segment?.addNewSubsegment('business-logic');
+
+  try {
+    // Your business logic here
+    return createSuccessResponse({ result: 'success' });
+  } finally {
+    subsegment?.close();
+  }
+};
+
+// Export with middleware
+export const lambdaHandler = createHandler(handler, commonSchemas.health);
+```
+
+## Development
+
+```bash
+# Build
+npm run build
+
+# Type check
+npm run type-check
+
+# Test
+npm run test
+
+# Clean
+npm run clean
+```

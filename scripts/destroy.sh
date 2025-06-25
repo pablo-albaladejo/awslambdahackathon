@@ -34,13 +34,14 @@ confirm_destruction() {
 confirm_destruction
 
 # Define stack names
+AUTH_STACK_NAME="AuthStack-$ENVIRONMENT"
+RUNTIME_STACK_NAME="RuntimeStack-$ENVIRONMENT"
 API_STACK_NAME="ApiStack-$ENVIRONMENT"
 WEB_STACK_NAME="WebStack-$ENVIRONMENT"
-BACKEND_STACK_NAME="BackendStack-$ENVIRONMENT"
 
 # Step 1: Destroy all stacks
-echo "🏗️  Destroying stacks: $API_STACK_NAME, $WEB_STACK_NAME, $BACKEND_STACK_NAME"
-cd apps/infrastructure || handle_error "Failed to change to infrastructure directory"
+echo "🏗️  Destroying stacks: $API_STACK_NAME, $WEB_STACK_NAME, $RUNTIME_STACK_NAME"
+cd apps/cdk || handle_error "Failed to change to cdk directory"
 
 # We can destroy them in parallel with --all
 if ! npx cdk destroy --all --context environment="$ENVIRONMENT" --force; then

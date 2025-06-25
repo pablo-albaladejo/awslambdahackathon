@@ -7,19 +7,20 @@ import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import { Construct } from 'constructs';
 
-interface BackendStackProps extends cdk.StackProps {
+interface RuntimeStackProps extends cdk.StackProps {
   environment: string;
   cognitoUserPoolId: string;
   cognitoClientId: string;
 }
 
-export class BackendStack extends cdk.Stack {
+export class RuntimeStack extends cdk.Stack {
   public readonly healthFunction: lambda.IFunction;
   public readonly mcpHostFunction: lambda.IFunction;
-  public readonly websocketFunction: lambda.IFunction;
+  public readonly websocketConnectionFunction: lambda.IFunction;
+  public readonly websocketConversationFunction: lambda.IFunction;
   public readonly websocketAuthorizerFunction: lambda.IFunction;
 
-  constructor(scope: Construct, id: string, props: BackendStackProps) {
+  constructor(scope: Construct, id: string, props: RuntimeStackProps) {
     super(scope, id, props);
 
     // DynamoDB table for WebSocket active connections
@@ -76,7 +77,10 @@ export class BackendStack extends cdk.Stack {
 
     // Lambda function for /health endpoint
     this.healthFunction = new NodejsFunction(this, 'HealthFunction', {
-      entry: path.join(__dirname, '../../../apps/api/src/handlers/health.ts'),
+      entry: path.join(
+        __dirname,
+        '../../../apps/runtime/src/entry-points/handlers/health.ts'
+      ),
       handler: 'handler',
       runtime: lambda.Runtime.NODEJS_22_X,
       environment: commonEnvVars,
@@ -92,7 +96,7 @@ export class BackendStack extends cdk.Stack {
 
     // Lambda function for /mcp-host endpoint
     this.mcpHostFunction = new NodejsFunction(this, 'McpHostFunction', {
-      entry: path.join(__dirname, '../../../apps/services/src/mcp/mcp-host.ts'),
+      entry: path.join(__dirname, '../../../apps/runtime/src/mcp/mcp-host.ts'),
       handler: 'handler',
       runtime: lambda.Runtime.NODEJS_22_X,
       environment: commonEnvVars,
@@ -106,28 +110,63 @@ export class BackendStack extends cdk.Stack {
       memorySize: 512,
     });
 
-    // Lambda function for WebSocket connections
-    this.websocketFunction = new NodejsFunction(this, 'WebSocketFunction', {
-      entry: path.join(
-        __dirname,
-        '../../../apps/api/src/handlers/websockets/websocket.ts'
-      ),
-      handler: 'handler',
-      runtime: lambda.Runtime.NODEJS_22_X,
-      environment: commonEnvVars,
-      logRetention: logs.RetentionDays.ONE_WEEK,
-      bundling: {
-        externalModules: ['@aws-sdk/*'],
-        minify: props.environment === 'prod',
-        sourceMap: props.environment !== 'prod',
-      },
-      timeout: cdk.Duration.seconds(30),
-      memorySize: 1024, // WebSocket needs more memory
-    });
+    // Lambda function for WebSocket connection events (CONNECT/DISCONNECT)
+    this.websocketConnectionFunction = new NodejsFunction(
+      this,
+      'WebSocketConnectionFunction',
+      {
+        entry: path.join(
+          __dirname,
+          '../../../apps/runtime/src/entry-points/handlers/websockets/connection.ts'
+        ),
+        handler: 'handler',
+        runtime: lambda.Runtime.NODEJS_22_X,
+        environment: commonEnvVars,
+        logRetention: logs.RetentionDays.ONE_WEEK,
+        bundling: {
+          externalModules: ['@aws-sdk/*'],
+          minify: props.environment === 'prod',
+          sourceMap: props.environment !== 'prod',
+        },
+        timeout: cdk.Duration.seconds(30),
+        memorySize: 1024,
+      }
+    );
 
-    // Grant DynamoDB permissions to WebSocket function
-    websocketConnectionsTable.grantReadWriteData(this.websocketFunction);
-    websocketMessagesTable.grantReadWriteData(this.websocketFunction);
+    // Lambda function for WebSocket conversation events (MESSAGE)
+    this.websocketConversationFunction = new NodejsFunction(
+      this,
+      'WebSocketConversationFunction',
+      {
+        entry: path.join(
+          __dirname,
+          '../../../apps/runtime/src/entry-points/handlers/websockets/conversation.ts'
+        ),
+        handler: 'handler',
+        runtime: lambda.Runtime.NODEJS_22_X,
+        environment: commonEnvVars,
+        logRetention: logs.RetentionDays.ONE_WEEK,
+        bundling: {
+          externalModules: ['@aws-sdk/*'],
+          minify: props.environment === 'prod',
+          sourceMap: props.environment !== 'prod',
+        },
+        timeout: cdk.Duration.seconds(30),
+        memorySize: 1024,
+      }
+    );
+
+    // Grant DynamoDB permissions to both WebSocket functions
+    websocketConnectionsTable.grantReadWriteData(
+      this.websocketConnectionFunction
+    );
+    websocketMessagesTable.grantReadWriteData(
+      this.websocketConversationFunction
+    );
+    websocketConnectionsTable.grantReadWriteData(
+      this.websocketConversationFunction
+    );
+    websocketMessagesTable.grantReadWriteData(this.websocketConnectionFunction);
 
     // Lambda function for WebSocket authorization
     this.websocketAuthorizerFunction = new NodejsFunction(
@@ -136,7 +175,7 @@ export class BackendStack extends cdk.Stack {
       {
         entry: path.join(
           __dirname,
-          '../../../apps/api/src/handlers/websockets/websocket-authorizer.ts'
+          '../../../apps/runtime/src/entry-points/handlers/websockets/authorizer.ts'
         ),
         handler: 'handler',
         runtime: lambda.Runtime.NODEJS_22_X,

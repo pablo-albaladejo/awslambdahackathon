@@ -1,6 +1,6 @@
-# Infrastructure
+# CDK
 
-This directory contains the AWS CDK infrastructure code for the AWS Lambda Hackathon project.
+This directory contains the AWS CDK code for the AWS Lambda Hackathon project.
 
 ## Stacks
 
@@ -11,7 +11,7 @@ This directory contains the AWS CDK infrastructure code for the AWS Lambda Hacka
 - **User Groups**: Admins and Users groups
 - **Default Password Secret**: Temporary password for default users
 
-### BackendStack
+### RuntimeStack
 
 - **Lambda Functions**: Serverless functions for API endpoints
 - **Health Function**: `/health` endpoint with structured logging and metrics

@@ -1,4 +1,4 @@
-import { logger } from '@awslambdahackathon/utils/backend';
+import { logger } from '@awslambdahackathon/utils/lambda';
 import { CognitoJwtVerifier } from 'aws-jwt-verify';
 
 interface AuthorizerEvent {

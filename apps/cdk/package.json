@@ -1,5 +1,5 @@
 {
-  "name": "@awslambdahackathon/infrastructure",
+  "name": "@awslambdahackathon/cdk",
   "version": "0.0.0",
   "private": true,
   "scripts": {

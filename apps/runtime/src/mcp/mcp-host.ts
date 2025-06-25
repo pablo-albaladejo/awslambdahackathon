@@ -5,7 +5,7 @@ import {
   logger,
   metrics,
   tracer,
-} from '@awslambdahackathon/utils/backend';
+} from '@awslambdahackathon/utils/lambda';
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 
 interface ChatMessage {
