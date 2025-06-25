@@ -14,6 +14,7 @@ import {
 } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 
+import { WebSocketProvider } from './contexts/WebSocketContext';
 import { useCurrentUser } from './hooks/useCurrentUser';
 import { useRumTracking } from './hooks/useRumTracking';
 import Layout from './Layout';
@@ -195,50 +196,42 @@ function App({ signOut }: WithAuthenticatorProps) {
 
   return (
     <ErrorBoundary onError={handleReactError}>
-      <Layout signOut={handleSignOut}>
-        <Suspense fallback={<div>Loading...</div>}>
-          <Routes>
-            <Route
-              path="/"
-              element={(() => {
-                if (loading) {
-                  return (
-                    <div className="min-h-screen flex items-center justify-center text-lg">
-                      Cargando...
-                    </div>
-                  );
+      <WebSocketProvider>
+        <Layout signOut={handleSignOut}>
+          <Suspense fallback={<div>Loading...</div>}>
+            <Routes>
+              <Route
+                path="/"
+                element={
+                  loading ? (
+                    <div>Loading...</div>
+                  ) : getUserGroup() === 'Admins' ? (
+                    <Navigate to="/dashboard" />
+                  ) : (
+                    <Navigate to="/chatbot" />
+                  )
                 }
-                const group = getUserGroup();
-                if (group === 'Admins')
-                  return <Navigate to="/dashboard" replace />;
-                if (group === 'Users')
-                  return <Navigate to="/chatbot" replace />;
-                return (
-                  <div className="min-h-screen flex items-center justify-center text-lg">
-                    No autorizado
-                  </div>
-                );
-              })()}
-            />
-            <Route
-              path="/dashboard"
-              element={
-                <ProtectedRoute requiredGroup="Admins">
-                  <DashboardPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/chatbot"
-              element={
-                <ProtectedRoute requiredGroup="Users">
-                  <ChatbotPage />
-                </ProtectedRoute>
-              }
-            />
-          </Routes>
-        </Suspense>
-      </Layout>
+              />
+              <Route
+                path="/dashboard"
+                element={
+                  <ProtectedRoute requiredGroup="Admins">
+                    <DashboardPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/chatbot"
+                element={
+                  <ProtectedRoute requiredGroup="Users">
+                    <ChatbotPage />
+                  </ProtectedRoute>
+                }
+              />
+            </Routes>
+          </Suspense>
+        </Layout>
+      </WebSocketProvider>
     </ErrorBoundary>
   );
 }

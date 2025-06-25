@@ -28,16 +28,30 @@ class WebSocketClient {
   async connect(): Promise<void> {
     try {
       const session = await fetchAuthSession();
+      logger.info('Auth session fetched', {
+        hasIdToken: !!session.tokens?.idToken,
+        hasAccessToken: !!session.tokens?.accessToken,
+        accessTokenPayload: session.tokens?.accessToken?.payload,
+      });
+
       const token = session.tokens?.accessToken?.toString();
 
       if (!token) {
         throw new Error('No authentication token available');
       }
 
-      this.ws = new WebSocket(`${this.url}?token=${token}`);
+      logger.info('Connecting to WebSocket', {
+        url: this.url,
+        tokenLength: token.length,
+        tokenStart: token.substring(0, 10) + '...',
+      });
+
+      // Ensure the token is properly encoded
+      const encodedToken = encodeURIComponent(token);
+      this.ws = new WebSocket(`${this.url}?Authorization=${encodedToken}`);
 
       this.ws.onopen = () => {
-        logger.info('WebSocket connected');
+        logger.info('WebSocket connected successfully');
         this.reconnectAttempts = 0;
       };
 
@@ -45,15 +59,23 @@ class WebSocketClient {
         logger.info('WebSocket disconnected', {
           code: event.code,
           reason: event.reason,
+          wasClean: event.wasClean,
         });
         this.attemptReconnect();
       };
 
       this.ws.onerror = error => {
-        logger.error('WebSocket error', { error });
+        logger.error('WebSocket error', {
+          error,
+          readyState: this.ws?.readyState,
+          url: this.ws?.url,
+        });
       };
     } catch (error) {
-      logger.error('Error connecting to WebSocket', { error });
+      logger.error('Error connecting to WebSocket', {
+        error,
+        url: this.url,
+      });
       throw error;
     }
   }

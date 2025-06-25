@@ -6,7 +6,7 @@
 ENVIRONMENT=${1:-dev}
 AWS_PROFILE=${2:-awslambdahackathon}
 REGION=${3:-us-east-2}
-OUTPUT_FILE="apps/web/.env"
+OUTPUT_FILE="apps/web/.env.local"
 
 # Helper to get output from a stack
 get_output() {

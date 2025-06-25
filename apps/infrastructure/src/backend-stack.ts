@@ -16,6 +16,7 @@ export class BackendStack extends cdk.Stack {
   public readonly healthFunction: lambda.IFunction;
   public readonly mcpHostFunction: lambda.IFunction;
   public readonly websocketFunction: lambda.IFunction;
+  public readonly websocketAuthorizerFunction: lambda.IFunction;
 
   constructor(scope: Construct, id: string, props: BackendStackProps) {
     super(scope, id, props);
@@ -49,7 +50,7 @@ export class BackendStack extends cdk.Stack {
 
     // Lambda function for /mcp-host endpoint
     this.mcpHostFunction = new NodejsFunction(this, 'McpHostFunction', {
-      entry: path.join(__dirname, '../../../apps/api/src/handlers/mcp-host.ts'),
+      entry: path.join(__dirname, '../../../apps/services/src/mcp/mcp-host.ts'),
       handler: 'handler',
       runtime: lambda.Runtime.NODEJS_22_X,
       environment: commonEnvVars,
@@ -67,7 +68,7 @@ export class BackendStack extends cdk.Stack {
     this.websocketFunction = new NodejsFunction(this, 'WebSocketFunction', {
       entry: path.join(
         __dirname,
-        '../../../apps/api/src/handlers/websocket.ts'
+        '../../../apps/api/src/handlers/websockets/websocket.ts'
       ),
       handler: 'handler',
       runtime: lambda.Runtime.NODEJS_22_X,
@@ -81,5 +82,28 @@ export class BackendStack extends cdk.Stack {
       timeout: cdk.Duration.seconds(30),
       memorySize: 1024, // WebSocket needs more memory
     });
+
+    // Lambda function for WebSocket authorization
+    this.websocketAuthorizerFunction = new NodejsFunction(
+      this,
+      'WebSocketAuthorizerFunction',
+      {
+        entry: path.join(
+          __dirname,
+          '../../../apps/api/src/handlers/websockets/websocket-authorizer.ts'
+        ),
+        handler: 'handler',
+        runtime: lambda.Runtime.NODEJS_22_X,
+        environment: commonEnvVars,
+        logRetention: logs.RetentionDays.ONE_WEEK,
+        bundling: {
+          externalModules: ['@aws-sdk/*'],
+          minify: props.environment === 'prod',
+          sourceMap: props.environment !== 'prod',
+        },
+        timeout: cdk.Duration.seconds(30),
+        memorySize: 512,
+      }
+    );
   }
 }

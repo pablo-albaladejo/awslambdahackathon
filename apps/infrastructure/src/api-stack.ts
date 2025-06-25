@@ -1,8 +1,8 @@
+import { WebSocketApi, WebSocketStage } from '@aws-cdk/aws-apigatewayv2-alpha';
+import { WebSocketLambdaAuthorizer } from '@aws-cdk/aws-apigatewayv2-authorizers-alpha';
+import { WebSocketLambdaIntegration } from '@aws-cdk/aws-apigatewayv2-integrations-alpha';
 import * as cdk from 'aws-cdk-lib';
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
-import * as apigatewayv2 from 'aws-cdk-lib/aws-apigatewayv2';
-import * as apigatewayv2_integrations from 'aws-cdk-lib/aws-apigatewayv2-integrations';
-import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import { Construct } from 'constructs';
 
@@ -11,118 +11,81 @@ interface ApiStackProps extends cdk.StackProps {
   healthFunction: lambda.IFunction;
   mcpHostFunction: lambda.IFunction;
   websocketFunction: lambda.IFunction;
-  userPool: cognito.UserPool;
-  userPoolClient: cognito.UserPoolClient;
-  cloudFrontDomain: string;
+  websocketAuthorizerFunction: lambda.IFunction;
 }
 
 export class ApiStack extends cdk.Stack {
-  public readonly apiUrl: cdk.CfnOutput;
-  public readonly websocketUrl: cdk.CfnOutput;
-
   constructor(scope: Construct, id: string, props: ApiStackProps) {
     super(scope, id, props);
 
-    // Cognito Authorizer for REST API
-    const restAuthorizer = new apigateway.CognitoUserPoolsAuthorizer(
-      this,
-      'CognitoAuthorizer',
-      {
-        cognitoUserPools: [props.userPool],
-        authorizerName: `awslambdahackathon-authorizer-${props.environment}`,
-      }
-    );
-
     // REST API Gateway
-    const allowOrigins = [`https://${props.cloudFrontDomain}`];
-    if (props.environment === 'dev') {
-      allowOrigins.push('http://localhost:5173');
-    }
     const api = new apigateway.RestApi(this, 'ApiGateway', {
       restApiName: `awslambdahackathon-api-${props.environment}`,
-      description: 'API for AWS Lambda Hackathon',
+      description: 'API Gateway for AWS Lambda Hackathon',
       defaultCorsPreflightOptions: {
-        allowOrigins,
+        allowOrigins: apigateway.Cors.ALL_ORIGINS,
         allowMethods: apigateway.Cors.ALL_METHODS,
-        allowHeaders: [
-          'Content-Type',
-          'Authorization',
-          'X-Amz-Date',
-          'X-Api-Key',
-          'X-Amz-Security-Token',
-          'X-Amz-User-Agent',
-          'X-Amz-Cognito-Identity',
-        ],
-        allowCredentials: true,
-        maxAge: cdk.Duration.seconds(300), // Cache preflight for 5 minutes
       },
     });
 
-    // API Gateway Resources and Methods
-    const healthResource = api.root.addResource('health');
-    healthResource.addMethod(
-      'GET',
-      new apigateway.LambdaIntegration(props.healthFunction),
-      {
-        authorizer: restAuthorizer,
-        authorizationType: apigateway.AuthorizationType.COGNITO,
-      }
+    // Health endpoint
+    const healthIntegration = new apigateway.LambdaIntegration(
+      props.healthFunction
     );
+    api.root.addResource('health').addMethod('GET', healthIntegration);
 
     // MCP Host endpoint
-    const mcpHostResource = api.root.addResource('mcp-host');
-    mcpHostResource.addMethod(
-      'POST',
-      new apigateway.LambdaIntegration(props.mcpHostFunction),
+    const mcpHostIntegration = new apigateway.LambdaIntegration(
+      props.mcpHostFunction
+    );
+    api.root.addResource('mcp-host').addMethod('POST', mcpHostIntegration);
+
+    // WebSocket API
+    const authorizer = new WebSocketLambdaAuthorizer(
+      'WebSocketAuthorizer',
+      props.websocketAuthorizerFunction,
       {
-        authorizer: restAuthorizer,
-        authorizationType: apigateway.AuthorizationType.COGNITO,
+        identitySource: ['route.request.querystring.Authorization'],
       }
     );
 
-    // WebSocket API Gateway (without authorizer for now)
-    const websocketApi = new apigatewayv2.WebSocketApi(this, 'WebSocketApi', {
+    const websocketApi = new WebSocketApi(this, 'WebSocketApi', {
       apiName: `awslambdahackathon-websocket-${props.environment}`,
-      description: 'WebSocket API for Chatbot',
       connectRouteOptions: {
-        integration: new apigatewayv2_integrations.WebSocketLambdaIntegration(
-          'ConnectHandler',
+        integration: new WebSocketLambdaIntegration(
+          'ConnectIntegration',
           props.websocketFunction
         ),
+        authorizer,
       },
       disconnectRouteOptions: {
-        integration: new apigatewayv2_integrations.WebSocketLambdaIntegration(
-          'DisconnectHandler',
+        integration: new WebSocketLambdaIntegration(
+          'DisconnectIntegration',
           props.websocketFunction
         ),
       },
       defaultRouteOptions: {
-        integration: new apigatewayv2_integrations.WebSocketLambdaIntegration(
-          'MessageHandler',
+        integration: new WebSocketLambdaIntegration(
+          'DefaultIntegration',
           props.websocketFunction
         ),
       },
     });
 
-    const websocketStage = new apigatewayv2.WebSocketStage(
-      this,
-      'WebSocketStage',
-      {
-        webSocketApi: websocketApi,
-        stageName: props.environment,
-        autoDeploy: true,
-      }
-    );
-
-    // Outputs
-    this.apiUrl = new cdk.CfnOutput(this, 'ApiUrl', {
-      value: api.url,
-      description: 'REST API Gateway URL',
+    // Stage de despliegue
+    const stage = new WebSocketStage(this, 'WebSocketStage', {
+      webSocketApi: websocketApi,
+      stageName: props.environment,
+      autoDeploy: true,
     });
 
-    this.websocketUrl = new cdk.CfnOutput(this, 'WebSocketUrl', {
-      value: websocketStage.url,
-      description: 'WebSocket API Gateway URL',
+    // Outputs
+    new cdk.CfnOutput(this, 'ApiUrl', {
+      value: api.url,
+    });
+
+    new cdk.CfnOutput(this, 'WebSocketUrl', {
+      value: stage.url,
     });
   }
 }

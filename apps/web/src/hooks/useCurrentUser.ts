@@ -1,11 +1,18 @@
-import { fetchAuthSession, fetchUserAttributes } from 'aws-amplify/auth';
+import { logger } from '@awslambdahackathon/utils/frontend';
+import {
+  AuthSession,
+  fetchAuthSession,
+  fetchUserAttributes,
+  FetchUserAttributesOutput,
+  getCurrentUser,
+} from 'aws-amplify/auth';
 import { useEffect, useState } from 'react';
 
 export interface CurrentUser {
   email?: string;
   groups: string[];
-  attributes: Record<string, any>;
-  session: any;
+  attributes: FetchUserAttributesOutput['attributes'];
+  session: AuthSession;
 }
 
 export function useCurrentUser() {
@@ -18,21 +25,37 @@ export function useCurrentUser() {
     const fetchData = async () => {
       setLoading(true);
       try {
+        // First check if we have a current user
+        const currentUser = await getCurrentUser();
+        logger.info('Current user fetched', {
+          username: currentUser.username,
+          userId: currentUser.userId,
+        });
+
+        // Then get the session
         const session = await fetchAuthSession();
+        logger.info('Auth session fetched in useCurrentUser', {
+          hasIdToken: !!session.tokens?.idToken,
+          hasAccessToken: !!session.tokens?.accessToken,
+          accessTokenPayload: session.tokens?.accessToken?.payload,
+        });
+
         const attributes = await fetchUserAttributes();
         const groups =
           session.tokens?.accessToken?.payload?.['cognito:groups'] || [];
-        const email = attributes.email || attributes.username || '';
+        const email = attributes.email || currentUser.username || '';
+
         if (isMounted) {
           setUser({
             email,
-            groups: Array.isArray(groups) ? groups : [],
-            attributes,
+            groups: Array.isArray(groups) ? groups.map(String) : [],
+            attributes: attributes.attributes,
             session,
           });
           setError(null);
         }
       } catch (err) {
+        logger.error('Error fetching user data', { error: err });
         if (isMounted) {
           setUser(null);
           setError(err as Error);

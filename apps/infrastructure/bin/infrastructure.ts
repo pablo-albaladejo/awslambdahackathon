@@ -50,12 +50,10 @@ const rumStack = new RumStack(app, `RumStack-${environment}`, {
 const apiStack = new ApiStack(app, `ApiStack-${environment}`, {
   env,
   environment,
-  userPool: authStack.userPool,
-  userPoolClient: authStack.userPoolClient,
   healthFunction: backendStack.healthFunction,
   mcpHostFunction: backendStack.mcpHostFunction,
   websocketFunction: backendStack.websocketFunction,
-  cloudFrontDomain: webStack.cloudFrontDomain,
+  websocketAuthorizerFunction: backendStack.websocketAuthorizerFunction,
 });
 
 // Dependencies

@@ -4,27 +4,19 @@ import { CognitoJwtVerifier } from 'aws-jwt-verify';
 interface AuthorizerEvent {
   type: string;
   methodArn: string;
-  authorizationToken: string;
   resource: string;
-  path: string;
-  httpMethod: string;
   headers: Record<string, string>;
   queryStringParameters: Record<string, string> | null;
-  pathParameters: Record<string, string> | null;
-  stageVariables: Record<string, string> | null;
   requestContext: {
-    path: string;
     accountId: string;
-    resourceId: string;
+    apiId: string;
+    domainName: string;
     stage: string;
     requestId: string;
     identity: {
       sourceIp: string;
       userAgent: string;
     };
-    resourcePath: string;
-    httpMethod: string;
-    apiId: string;
   };
 }
 
@@ -45,23 +37,34 @@ const websocketAuthorizerHandler = async (
   event: AuthorizerEvent
 ): Promise<AuthorizerResponse> => {
   try {
-    logger.info('WebSocket authorizer called', {
+    logger.info('WebSocket authorizer called with event', {
       type: event.type,
       methodArn: event.methodArn,
       resource: event.resource,
+      queryStringParameters: event.queryStringParameters,
+      headers: event.headers,
     });
 
-    // Extract the token from the Authorization header or query parameter
-    const token =
-      event.authorizationToken || event.queryStringParameters?.token;
+    // Extract the token from the query parameter
+    const token = event.queryStringParameters?.Authorization;
 
     if (!token) {
-      logger.warn('No authorization token provided');
+      logger.warn('No authorization token provided in query parameters', {
+        queryStringParameters: event.queryStringParameters,
+      });
       throw new Error('Unauthorized');
     }
 
-    // Remove 'Bearer ' prefix if present
-    const cleanToken = token.startsWith('Bearer ') ? token.substring(7) : token;
+    logger.info('Authorization token found in query parameters', {
+      tokenLength: token.length,
+      tokenStart: token.substring(0, 10) + '...',
+    });
+
+    // Log environment variables
+    logger.info('Environment variables', {
+      userPoolId: process.env.COGNITO_USER_POOL_ID,
+      clientId: process.env.COGNITO_CLIENT_ID,
+    });
 
     // Verify the JWT token
     const verifier = CognitoJwtVerifier.create({
@@ -70,12 +73,22 @@ const websocketAuthorizerHandler = async (
       clientId: process.env.COGNITO_CLIENT_ID!,
     });
 
-    const payload = await verifier.verify(cleanToken);
-
-    logger.info('WebSocket authorization successful', {
-      userId: payload.sub,
-      username: payload.username,
-    });
+    let payload;
+    try {
+      payload = await verifier.verify(token);
+      logger.info('WebSocket authorization successful', {
+        userId: payload.sub,
+        username: payload.username,
+      });
+    } catch (verifyError) {
+      logger.error('Token verification failed', {
+        error:
+          verifyError instanceof Error
+            ? verifyError.message
+            : String(verifyError),
+      });
+      throw verifyError;
+    }
 
     // Generate policy document
     const policyDocument = {
@@ -102,6 +115,7 @@ const websocketAuthorizerHandler = async (
   } catch (error) {
     logger.error('WebSocket authorization failed', {
       error: error instanceof Error ? error.message : String(error),
+      event,
     });
     throw new Error('Unauthorized');
   }
