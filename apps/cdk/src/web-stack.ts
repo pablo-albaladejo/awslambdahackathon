@@ -1,13 +1,13 @@
 import * as cdk from 'aws-cdk-lib';
-import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
-import * as cloudfront_origins from 'aws-cdk-lib/aws-cloudfront-origins';
-import * as s3 from 'aws-cdk-lib/aws-s3';
-import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
 import { Construct } from 'constructs';
+
+import { RumMonitor, StaticWebsite } from './constructs';
 
 interface WebStackProps extends cdk.StackProps {
   environment: string;
   webAssetPath?: string;
+  appName: string;
+  rumIdentityPoolId?: string;
 }
 
 export class WebStack extends cdk.Stack {
@@ -16,74 +16,22 @@ export class WebStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: WebStackProps) {
     super(scope, id, props);
 
-    // Frontend hosting: S3 Bucket
-    const websiteBucket = new s3.Bucket(this, 'WebsiteBucket', {
-      bucketName: `awslambdahackathon-web-${props.environment}`,
-      websiteIndexDocument: 'index.html',
-      websiteErrorDocument: 'index.html', // For SPA routing
-      publicReadAccess: false, // CloudFront will access it
-      removalPolicy:
-        props.environment === 'prod'
-          ? cdk.RemovalPolicy.RETAIN
-          : cdk.RemovalPolicy.DESTROY,
-      autoDeleteObjects: props.environment !== 'prod',
+    const staticWebsite = new StaticWebsite(this, 'StaticWebsite', {
+      environment: props.environment,
+      appName: props.appName || 'MyAwesomeApp',
+      webAssetPath: props.webAssetPath,
     });
 
-    // CloudFront Origin Access Identity
-    const oai = new cloudfront.OriginAccessIdentity(this, 'OAI');
+    this.cloudFrontDomain = staticWebsite.cloudFrontDomain;
 
-    // CloudFront Distribution for the website
-    const distribution = new cloudfront.Distribution(this, 'Distribution', {
-      defaultBehavior: {
-        origin: cloudfront_origins.S3BucketOrigin.withOriginAccessIdentity(
-          websiteBucket,
-          {
-            originAccessIdentity: oai,
-          }
-        ),
-        viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-        cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
-      },
-      defaultRootObject: 'index.html',
-      errorResponses: [
-        {
-          httpStatus: 404,
-          responseHttpStatus: 200,
-          responsePagePath: '/index.html',
-        },
-        {
-          httpStatus: 403,
-          responseHttpStatus: 200,
-          responsePagePath: '/index.html',
-        },
-      ],
-    });
-
-    // Store CloudFront domain for use in other stacks
-    this.cloudFrontDomain = distribution.distributionDomainName;
-
-    const sources = [];
-
-    if (props.webAssetPath) {
-      sources.push(s3deploy.Source.asset(props.webAssetPath));
+    // Optional: RUM Monitor
+    if (props.rumIdentityPoolId) {
+      new RumMonitor(this, 'RumMonitor', {
+        environment: props.environment,
+        appName: props.appName,
+        domain: this.cloudFrontDomain,
+        identityPoolId: props.rumIdentityPoolId,
+      });
     }
-
-    new s3deploy.BucketDeployment(this, 'DeployWebsite', {
-      sources,
-      destinationBucket: websiteBucket,
-      distribution,
-      distributionPaths: ['/*'],
-    });
-
-    // Outputs
-    new cdk.CfnOutput(this, 'WebsiteUrl', {
-      value: `https://${distribution.distributionDomainName}`,
-      description: 'CloudFront Distribution URL',
-    });
-
-    new cdk.CfnOutput(this, 'DistributionId', {
-      value: distribution.distributionId,
-      description: 'CloudFront Distribution ID',
-    });
   }
 }

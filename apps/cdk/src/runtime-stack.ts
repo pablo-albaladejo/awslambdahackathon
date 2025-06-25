@@ -2,193 +2,167 @@ import * as path from 'path';
 
 import * as cdk from 'aws-cdk-lib';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
-import * as lambda from 'aws-cdk-lib/aws-lambda';
-import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
-import * as logs from 'aws-cdk-lib/aws-logs';
 import { Construct } from 'constructs';
+
+import { DatabaseTable, NodeLambda, RestApi, WebSocketApi } from './constructs';
 
 interface RuntimeStackProps extends cdk.StackProps {
   environment: string;
+  appName: string;
   cognitoUserPoolId: string;
   cognitoClientId: string;
 }
 
 export class RuntimeStack extends cdk.Stack {
-  public readonly healthFunction: lambda.IFunction;
-  public readonly mcpHostFunction: lambda.IFunction;
-  public readonly websocketConnectionFunction: lambda.IFunction;
-  public readonly websocketConversationFunction: lambda.IFunction;
-  public readonly websocketAuthorizerFunction: lambda.IFunction;
+  public readonly mcpHostFunction: cdk.aws_lambda.IFunction;
+  public readonly websocketConnectionFunction: cdk.aws_lambda.IFunction;
+  public readonly websocketConversationFunction: cdk.aws_lambda.IFunction;
+  public readonly websocketAuthorizerFunction: cdk.aws_lambda.IFunction;
+  public readonly websocketApi: cdk.aws_apigatewayv2.WebSocketApi;
+  public readonly restApi: cdk.aws_apigateway.RestApi;
 
   constructor(scope: Construct, id: string, props: RuntimeStackProps) {
     super(scope, id, props);
 
-    // DynamoDB table for WebSocket active connections
-    const websocketConnectionsTable = new dynamodb.Table(
+    // Use default app name if not provided
+    const appName = props.appName || 'MyAwesomeApp';
+
+    // WebSocket Connections table
+    const websocketConnectionsTable = new DatabaseTable(
       this,
-      'WebSocketConnections',
+      'WebSocketConnectionsTable',
       {
-        tableName: `awslambdahackathon-websocket-connections-${props.environment}`,
+        environment: props.environment,
+        appName: appName,
+        tableName: `${appName}-websocket-connections-${props.environment}`,
         partitionKey: {
           name: 'connectionId',
           type: dynamodb.AttributeType.STRING,
         },
         timeToLiveAttribute: 'ttl',
-        removalPolicy:
-          props.environment === 'prod'
-            ? cdk.RemovalPolicy.RETAIN
-            : cdk.RemovalPolicy.DESTROY,
-        billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       }
     );
 
-    // DynamoDB table for WebSocket messages
-    const websocketMessagesTable = new dynamodb.Table(
+    // WebSocket Messages table
+    const websocketMessagesTable = new DatabaseTable(
       this,
-      'WebSocketMessages',
+      'WebSocketMessagesTable',
       {
-        tableName: `awslambdahackathon-websocket-messages-${props.environment}`,
+        environment: props.environment,
+        appName: appName,
+        tableName: `${appName}-websocket-messages-${props.environment}`,
         partitionKey: {
           name: 'sessionId',
           type: dynamodb.AttributeType.STRING,
         },
-        sortKey: { name: 'timestamp', type: dynamodb.AttributeType.STRING },
+        sortKey: {
+          name: 'timestamp',
+          type: dynamodb.AttributeType.STRING,
+        },
         timeToLiveAttribute: 'ttl',
-        removalPolicy:
-          props.environment === 'prod'
-            ? cdk.RemovalPolicy.RETAIN
-            : cdk.RemovalPolicy.DESTROY,
-        billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       }
     );
 
     // Common environment variables for all Lambda functions
     const commonEnvVars = {
-      NODE_ENV: props.environment,
-      ENVIRONMENT: props.environment,
-      LOG_LEVEL: props.environment === 'prod' ? 'INFO' : 'DEBUG',
-      POWERTOOLS_SERVICE_NAME: 'awslambdahackathon-api',
-      POWERTOOLS_METRICS_NAMESPACE: 'awslambdahackathon',
       COGNITO_USER_POOL_ID: props.cognitoUserPoolId,
       COGNITO_CLIENT_ID: props.cognitoClientId,
-      WEBSOCKET_CONNECTIONS_TABLE: websocketConnectionsTable.tableName,
-      WEBSOCKET_MESSAGES_TABLE: websocketMessagesTable.tableName,
+      WEBSOCKET_CONNECTIONS_TABLE: websocketConnectionsTable.table.tableName,
+      WEBSOCKET_MESSAGES_TABLE: websocketMessagesTable.table.tableName,
     };
 
-    // Lambda function for /health endpoint
-    this.healthFunction = new NodejsFunction(this, 'HealthFunction', {
-      entry: path.join(
-        __dirname,
-        '../../../apps/runtime/src/entry-points/handlers/health.ts'
-      ),
-      handler: 'handler',
-      runtime: lambda.Runtime.NODEJS_22_X,
-      environment: commonEnvVars,
-      logRetention: logs.RetentionDays.ONE_WEEK,
-      bundling: {
-        externalModules: ['@aws-sdk/*'],
-        minify: props.environment === 'prod',
-        sourceMap: props.environment !== 'prod',
-      },
-      timeout: cdk.Duration.seconds(30),
-      memorySize: 512,
-    });
-
-    // Lambda function for /mcp-host endpoint
-    this.mcpHostFunction = new NodejsFunction(this, 'McpHostFunction', {
+    // MCP Host Lambda function
+    const mcpHostLambda = new NodeLambda(this, 'McpHostFunction', {
+      environment: props.environment,
+      appName: appName,
       entry: path.join(__dirname, '../../../apps/runtime/src/mcp/mcp-host.ts'),
-      handler: 'handler',
-      runtime: lambda.Runtime.NODEJS_22_X,
-      environment: commonEnvVars,
-      logRetention: logs.RetentionDays.ONE_WEEK,
-      bundling: {
-        externalModules: ['@aws-sdk/*'],
-        minify: props.environment === 'prod',
-        sourceMap: props.environment !== 'prod',
-      },
-      timeout: cdk.Duration.seconds(30),
-      memorySize: 512,
+      description: 'MCP Host endpoint handler',
+      environmentVariables: commonEnvVars,
     });
+    this.mcpHostFunction = mcpHostLambda.function;
 
-    // Lambda function for WebSocket connection events (CONNECT/DISCONNECT)
-    this.websocketConnectionFunction = new NodejsFunction(
+    // WebSocket Connection Lambda function
+    const websocketConnectionLambda = new NodeLambda(
       this,
       'WebSocketConnectionFunction',
       {
+        environment: props.environment,
+        appName: appName,
         entry: path.join(
           __dirname,
           '../../../apps/runtime/src/entry-points/handlers/websockets/connection.ts'
         ),
-        handler: 'handler',
-        runtime: lambda.Runtime.NODEJS_22_X,
-        environment: commonEnvVars,
-        logRetention: logs.RetentionDays.ONE_WEEK,
-        bundling: {
-          externalModules: ['@aws-sdk/*'],
-          minify: props.environment === 'prod',
-          sourceMap: props.environment !== 'prod',
-        },
-        timeout: cdk.Duration.seconds(30),
+        description: 'WebSocket connection/disconnection handler',
         memorySize: 1024,
+        environmentVariables: commonEnvVars,
       }
     );
+    this.websocketConnectionFunction = websocketConnectionLambda.function;
 
-    // Lambda function for WebSocket conversation events (MESSAGE)
-    this.websocketConversationFunction = new NodejsFunction(
+    // WebSocket Conversation Lambda function
+    const websocketConversationLambda = new NodeLambda(
       this,
       'WebSocketConversationFunction',
       {
+        environment: props.environment,
+        appName: appName,
         entry: path.join(
           __dirname,
           '../../../apps/runtime/src/entry-points/handlers/websockets/conversation.ts'
         ),
-        handler: 'handler',
-        runtime: lambda.Runtime.NODEJS_22_X,
-        environment: commonEnvVars,
-        logRetention: logs.RetentionDays.ONE_WEEK,
-        bundling: {
-          externalModules: ['@aws-sdk/*'],
-          minify: props.environment === 'prod',
-          sourceMap: props.environment !== 'prod',
-        },
-        timeout: cdk.Duration.seconds(30),
+        description: 'WebSocket message handler',
         memorySize: 1024,
+        environmentVariables: commonEnvVars,
       }
     );
+    this.websocketConversationFunction = websocketConversationLambda.function;
 
-    // Grant DynamoDB permissions to both WebSocket functions
-    websocketConnectionsTable.grantReadWriteData(
-      this.websocketConnectionFunction
-    );
-    websocketMessagesTable.grantReadWriteData(
-      this.websocketConversationFunction
-    );
-    websocketConnectionsTable.grantReadWriteData(
-      this.websocketConversationFunction
-    );
-    websocketMessagesTable.grantReadWriteData(this.websocketConnectionFunction);
-
-    // Lambda function for WebSocket authorization
-    this.websocketAuthorizerFunction = new NodejsFunction(
+    // WebSocket Authorizer Lambda function
+    const websocketAuthorizerLambda = new NodeLambda(
       this,
       'WebSocketAuthorizerFunction',
       {
+        environment: props.environment,
+        appName: appName,
         entry: path.join(
           __dirname,
           '../../../apps/runtime/src/entry-points/handlers/websockets/authorizer.ts'
         ),
-        handler: 'handler',
-        runtime: lambda.Runtime.NODEJS_22_X,
-        environment: commonEnvVars,
-        logRetention: logs.RetentionDays.ONE_WEEK,
-        bundling: {
-          externalModules: ['@aws-sdk/*'],
-          minify: props.environment === 'prod',
-          sourceMap: props.environment !== 'prod',
-        },
-        timeout: cdk.Duration.seconds(30),
-        memorySize: 512,
+        description: 'WebSocket authorization handler',
+        environmentVariables: commonEnvVars,
       }
     );
+    this.websocketAuthorizerFunction = websocketAuthorizerLambda.function;
+
+    // Grant DynamoDB permissions to both WebSocket functions
+    websocketConnectionsTable.table.grantReadWriteData(
+      this.websocketConnectionFunction
+    );
+    websocketMessagesTable.table.grantReadWriteData(
+      this.websocketConversationFunction
+    );
+    websocketConnectionsTable.table.grantReadWriteData(
+      this.websocketConversationFunction
+    );
+    websocketMessagesTable.table.grantReadWriteData(
+      this.websocketConnectionFunction
+    );
+
+    // REST API construct
+    const restApi = new RestApi(this, 'RestApi', {
+      environment: props.environment,
+      appName: appName,
+      mcpHostFunction: this.mcpHostFunction,
+    });
+    this.restApi = restApi.restApi;
+
+    // WebSocket API construct
+    const websocketApi = new WebSocketApi(this, 'WebSocketApi', {
+      environment: props.environment,
+      appName: appName,
+      websocketConnectionFunction: this.websocketConnectionFunction,
+      websocketConversationFunction: this.websocketConversationFunction,
+    });
+    this.websocketApi = websocketApi.websocketApi;
   }
 }

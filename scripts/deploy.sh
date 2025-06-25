@@ -5,11 +5,13 @@ ENVIRONMENT=${1:-dev}
 AWS_PROFILE=${2:-awslambdahackathon}
 AWS_REGION=${3:-us-east-2}
 DEFAULT_USER_EMAIL=${4:-demo@example.com}
+APP_NAME=${5:-MyAwesomeApp}
 
 echo "🚀 Starting deployment for environment: $ENVIRONMENT"
 echo "🔧 AWS Profile: $AWS_PROFILE"
 echo "🌍 AWS Region: $AWS_REGION"
 echo "📧 Default User Email: $DEFAULT_USER_EMAIL"
+echo "🏷️  App Name: $APP_NAME"
 
 # Set AWS environment variables
 export AWS_PROFILE=$AWS_PROFILE
@@ -42,14 +44,13 @@ cd apps/api          && npm run build && cd ../..
 # Define stack names
 AUTH_STACK_NAME="AuthStack-$ENVIRONMENT"
 RUNTIME_STACK_NAME="RuntimeStack-$ENVIRONMENT"
-API_STACK_NAME="ApiStack-$ENVIRONMENT"
 WEB_STACK_NAME="WebStack-$ENVIRONMENT"
 RUM_STACK_NAME="RumStack-$ENVIRONMENT"
 
 # Step 3: Deploy all stacks together to handle dependencies properly
 echo "🏗️  Deploying all stacks together..."
 cd apps/cdk || handle_error "Failed to cd to cdk"
-npx cdk deploy --all \
+APP_NAME=$APP_NAME npx cdk deploy --all \
     --require-approval never \
     --context defaultUserEmail="$DEFAULT_USER_EMAIL" \
   || handle_error "Failed to deploy stacks"
@@ -81,7 +82,7 @@ USER_POOL_ID=$(aws cloudformation describe-stacks --stack-name "$AUTH_STACK_NAME
 
 cd ../.. || handle_error "Failed to return to project root"
 export USER_POOL_ID
-export TEMP_PASSWORD_SECRET_ID="awslambdahackathon-default-user-password-$ENVIRONMENT"
+export TEMP_PASSWORD_SECRET_ID="$APP_NAME-default-user-password-$ENVIRONMENT"
 export DEFAULT_USER_EMAIL_BASE="$DEFAULT_USER_EMAIL"
 export AWS_REGION=$AWS_REGION
 
@@ -94,12 +95,12 @@ unset DEFAULT_USER_EMAIL_BASE
 
 # Step 7: Get stack outputs for frontend build
 echo "🔍 Getting stack outputs..."
-API_URL=$(aws cloudformation describe-stacks --stack-name "$API_STACK_NAME" \
+API_URL=$(aws cloudformation describe-stacks --stack-name "$RUNTIME_STACK_NAME" \
   --query "Stacks[0].Outputs[?OutputKey=='ApiUrl'].OutputValue" \
   --output text) \
   || handle_error "Could not get ApiUrl"
 
-WEBSOCKET_URL=$(aws cloudformation describe-stacks --stack-name "$API_STACK_NAME" \
+WEBSOCKET_URL=$(aws cloudformation describe-stacks --stack-name "$RUNTIME_STACK_NAME" \
   --query "Stacks[0].Outputs[?OutputKey=='WebSocketUrl'].OutputValue" \
   --output text) \
   || handle_error "Could not get WebSocketUrl"
@@ -140,6 +141,7 @@ export VITE_USER_POOL_CLIENT_ID="$USER_POOL_CLIENT_ID"
 export VITE_AWS_REGION="$AWS_REGION"
 export VITE_AWS_ACCOUNT_ID="$AWS_ACCOUNT_ID"
 export VITE_ENVIRONMENT="$ENVIRONMENT"
+export VITE_APP_NAME="$APP_NAME"
 export VITE_RUM_APP_MONITOR_ID="$RUM_APP_MONITOR_ID"
 export VITE_RUM_IDENTITY_POOL_ID="$AUTH_IDENTITY_POOL_ID"
 
@@ -153,6 +155,7 @@ unset VITE_USER_POOL_CLIENT_ID
 unset VITE_AWS_REGION
 unset VITE_AWS_ACCOUNT_ID
 unset VITE_ENVIRONMENT
+unset VITE_APP_NAME
 unset VITE_RUM_GUEST_APP_MONITOR_ID
 unset VITE_RUM_AUTH_APP_MONITOR_ID
 unset VITE_RUM_IDENTITY_POOL_ID
@@ -161,7 +164,7 @@ cd ../.. || handle_error "Failed to return to root"
 
 # Step 9: Deploy frontend files to S3
 echo "📤 Deploying frontend files to S3..."
-WEBSITE_BUCKET_NAME="awslambdahackathon-web-$ENVIRONMENT"
+WEBSITE_BUCKET_NAME="$APP_NAME-web-$ENVIRONMENT"
 aws s3 sync apps/web/dist/ s3://$WEBSITE_BUCKET_NAME/ --delete
 
 # Step 10: Invalidate CloudFront cache

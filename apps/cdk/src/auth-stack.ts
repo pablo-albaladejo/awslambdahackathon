@@ -5,6 +5,7 @@ import { Construct } from 'constructs';
 
 interface AuthStackProps extends cdk.StackProps {
   environment: string;
+  appName: string;
 }
 
 export class AuthStack extends cdk.Stack {
@@ -16,7 +17,7 @@ export class AuthStack extends cdk.Stack {
     super(scope, id, props);
 
     this.userPool = new cognito.UserPool(this, 'UserPool', {
-      userPoolName: `awslambdahackathon-users-${props.environment}`,
+      userPoolName: `${props.appName}-users-${props.environment}`,
       selfSignUpEnabled: false,
       signInAliases: { email: true },
       autoVerify: { email: true },
@@ -59,7 +60,7 @@ export class AuthStack extends cdk.Stack {
 
     this.identityPool = new cognito.CfnIdentityPool(this, 'IdentityPool', {
       allowUnauthenticatedIdentities: true,
-      identityPoolName: `awslambdahackathon-identity-pool-${props.environment}`,
+      identityPoolName: `${props.appName}-identity-pool-${props.environment}`,
       supportedLoginProviders,
     });
 
@@ -77,7 +78,7 @@ export class AuthStack extends cdk.Stack {
 
     // Temporary password for default users
     new secretsmanager.Secret(this, 'DefaultUserTempPassword', {
-      secretName: `awslambdahackathon-default-user-password-${props.environment}`,
+      secretName: `${props.appName}-default-user-password-${props.environment}`,
       generateSecretString: {
         passwordLength: 16,
         excludePunctuation: false,

@@ -1,21 +1,26 @@
-import { CfnOutput, Stack, StackProps } from 'aws-cdk-lib';
+import { CfnOutput } from 'aws-cdk-lib';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as rum from 'aws-cdk-lib/aws-rum';
 import { Construct } from 'constructs';
 
-export interface RumStackProps extends StackProps {
+export interface RumMonitorProps {
   environment: string;
+  appName: string;
   domain: string;
   identityPoolId: string;
 }
 
-export class RumStack extends Stack {
-  constructor(scope: Construct, id: string, props: RumStackProps) {
-    super(scope, id, props);
+export class RumMonitor extends Construct {
+  public readonly appMonitor: rum.CfnAppMonitor;
+  public readonly unauthRole: iam.Role;
+  public readonly authRole: iam.Role;
 
-    const unauthRole = new iam.Role(this, 'RumUnauthenticatedRole', {
-      roleName: `awslambdahackathon-rum-unauth-role-${props.environment}`,
+  constructor(scope: Construct, id: string, props: RumMonitorProps) {
+    super(scope, id);
+
+    this.unauthRole = new iam.Role(this, 'RumUnauthenticatedRole', {
+      roleName: `${props.appName}-rum-unauth-role-${props.environment}`,
       assumedBy: new iam.FederatedPrincipal(
         'cognito-identity.amazonaws.com',
         {
@@ -30,8 +35,8 @@ export class RumStack extends Stack {
       ),
     });
 
-    const authRole = new iam.Role(this, 'RumAuthenticatedRole', {
-      roleName: `awslambdahackathon-rum-auth-role-${props.environment}`,
+    this.authRole = new iam.Role(this, 'RumAuthenticatedRole', {
+      roleName: `${props.appName}-rum-auth-role-${props.environment}`,
       assumedBy: new iam.FederatedPrincipal(
         'cognito-identity.amazonaws.com',
         {
@@ -46,8 +51,8 @@ export class RumStack extends Stack {
       ),
     });
 
-    const appMonitor = new rum.CfnAppMonitor(this, 'ReactAppMonitor', {
-      name: `awslambdahackathon-web-${props.environment}`,
+    this.appMonitor = new rum.CfnAppMonitor(this, 'ReactAppMonitor', {
+      name: `${props.appName}-web-${props.environment}`,
       domain: props.domain,
       customEvents: { status: 'ENABLED' },
       cwLogEnabled: true,
@@ -59,26 +64,26 @@ export class RumStack extends Stack {
       },
     });
 
-    unauthRole.addToPolicy(
+    this.unauthRole.addToPolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
         actions: ['rum:PutRumEvents'],
         resources: [
-          `arn:aws:rum:${this.region}:${this.account}:appmonitor/${appMonitor.name}`,
+          `arn:aws:rum:${scope.node.tryGetContext('region') || 'us-east-2'}:${scope.node.tryGetContext('account') || '*'}:appmonitor/${this.appMonitor.name}`,
         ],
       })
     );
 
-    authRole.addToPolicy(
+    this.authRole.addToPolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
         actions: ['rum:PutRumEvents'],
         resources: [
-          `arn:aws:rum:${this.region}:${this.account}:appmonitor/${appMonitor.name}`,
+          `arn:aws:rum:${scope.node.tryGetContext('region') || 'us-east-2'}:${scope.node.tryGetContext('account') || '*'}:appmonitor/${this.appMonitor.name}`,
         ],
       })
     );
-    authRole.addToPolicy(
+    this.authRole.addToPolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
         actions: ['mobileanalytics:PutEvents', 'cognito-sync:*'],
@@ -89,13 +94,13 @@ export class RumStack extends Stack {
     new cognito.CfnIdentityPoolRoleAttachment(this, 'RumPoolRoleAttachment', {
       identityPoolId: props.identityPoolId,
       roles: {
-        unauthenticated: unauthRole.roleArn,
-        authenticated: authRole.roleArn,
+        unauthenticated: this.unauthRole.roleArn,
+        authenticated: this.authRole.roleArn,
       },
     });
 
     new CfnOutput(this, `RumAppMonitorId${props.environment}`, {
-      value: appMonitor.attrId,
+      value: this.appMonitor.attrId,
       exportName: `RumAppMonitorId${props.environment}`,
     });
   }

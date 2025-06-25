@@ -1,12 +1,20 @@
 #!/bin/bash
 
 # Script to generate .env file for apps/web with AWS CDK stack outputs
-# Usage: ./scripts/generate-web-env.sh [environment] [aws_profile] [region]
+# Usage: ./scripts/generate-web-env.sh [environment] [aws_profile] [region] [app_name]
+# Default values: dev awslambdahackathon us-east-2 MyAwesomeApp
 
 ENVIRONMENT=${1:-dev}
 AWS_PROFILE=${2:-awslambdahackathon}
 REGION=${3:-us-east-2}
+APP_NAME=${4:-MyAwesomeApp}
 OUTPUT_FILE="apps/web/.env.local"
+
+echo "🔧 Generating environment file for:"
+echo "   Environment: $ENVIRONMENT"
+echo "   AWS Profile: $AWS_PROFILE"
+echo "   Region: $REGION"
+echo "   App Name: $APP_NAME"
 
 # Helper to get output from a stack
 get_output() {
@@ -22,7 +30,7 @@ get_output() {
 
 # Stack names
 AUTH_STACK="AuthStack-$ENVIRONMENT"
-API_STACK="ApiStack-$ENVIRONMENT"
+API_STACK="RuntimeStack-$ENVIRONMENT"
 WEB_STACK="WebStack-$ENVIRONMENT"
 RUM_STACK="RumStack-$ENVIRONMENT"
 
@@ -46,6 +54,7 @@ CLOUDFRONT_URL=$(get_output "$WEB_STACK" "WebsiteUrl")
 
 cat > $OUTPUT_FILE <<EOL
 VITE_REGION=$REGION
+VITE_APP_NAME=$APP_NAME
 VITE_USER_POOL_ID=$USER_POOL_ID
 VITE_USER_POOL_CLIENT_ID=$USER_POOL_CLIENT_ID
 VITE_IDENTITY_POOL_ID=$IDENTITY_POOL_ID

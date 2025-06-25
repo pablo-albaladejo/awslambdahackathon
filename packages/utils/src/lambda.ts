@@ -44,17 +44,17 @@ export const createErrorResponse = (
 
 // Create centralized logger, tracer, and metrics instances
 export const logger = new Logger({
-  serviceName: 'awslambdahackathon-api',
+  serviceName: process.env.POWERTOOLS_SERVICE_NAME || 'api',
   logLevel: (process.env.LOG_LEVEL as LogLevel) || 'INFO',
 });
 
 export const tracer = new Tracer({
-  serviceName: 'awslambdahackathon-api',
+  serviceName: process.env.POWERTOOLS_SERVICE_NAME || 'api',
 });
 
 export const metrics = new Metrics({
-  namespace: 'awslambdahackathon',
-  serviceName: 'awslambdahackathon-api',
+  namespace: process.env.POWERTOOLS_METRICS_NAMESPACE || 'MyAwesomeApp',
+  serviceName: process.env.POWERTOOLS_SERVICE_NAME || 'api',
 });
 
 // Lambda Powertools utilities

@@ -2,6 +2,30 @@
 
 This directory contains the AWS CDK code for the AWS Lambda Hackathon project.
 
+## Configuration
+
+### Environment Variables
+
+The project uses environment variables for configuration:
+
+```bash
+# Required variables
+export ENVIRONMENT=dev                    # Deployment environment (dev, prod, etc.)
+export AWS_REGION=us-east-2              # AWS Region
+export APP_NAME=MyAwesomeApp             # Application name (default: MyAwesomeApp)
+export CDK_DEFAULT_ACCOUNT=123456789012  # AWS Account ID
+
+# Optional variables
+export AWS_PROFILE=awslambdahackathon    # AWS Profile for deployment
+```
+
+### Default Values
+
+- `ENVIRONMENT`: `dev`
+- `AWS_REGION`: `us-east-2`
+- `APP_NAME`: `MyAwesomeApp`
+- `AWS_PROFILE`: `awslambdahackathon`
+
 ## Stacks
 
 ### AuthStack
@@ -15,19 +39,57 @@ This directory contains the AWS CDK code for the AWS Lambda Hackathon project.
 
 - **Lambda Functions**: Serverless functions for API endpoints
 - **Health Function**: `/health` endpoint with structured logging and metrics
-
-### ApiStack
-
-- **API Gateway**: REST API with Cognito authorization
-- **CORS Configuration**: Restricted to CloudFront domain only
-- **Authorized Endpoints**: All endpoints require valid Cognito JWT token
-- **Public Endpoints**: `/public` endpoint for testing (no auth required)
+- **MCP Host Function**: `/mcp-host` endpoint for MCP protocol
+- **WebSocket Functions**: Connection and conversation handlers
+- **DynamoDB Tables**: WebSocket connections and messages storage
 
 ### WebStack
 
 - **S3 Bucket**: Static website hosting
 - **CloudFront Distribution**: CDN for the frontend application
 - **Origin Access Identity**: Secure access to S3 bucket
+
+### RumStack
+
+- **RUM App Monitor**: Real User Monitoring for performance insights
+
+## Deployment Scripts
+
+### Deploy
+
+```bash
+# Deploy with default settings
+./scripts/deploy.sh
+
+# Deploy with custom parameters
+./scripts/deploy.sh dev awslambdahackathon us-east-2 demo@example.com MyAwesomeApp
+
+# Parameters: [environment] [aws_profile] [region] [default_user_email] [app_name]
+```
+
+### Destroy
+
+```bash
+# Destroy with default settings
+./scripts/destroy.sh
+
+# Destroy with custom parameters
+./scripts/destroy.sh dev awslambdahackathon us-east-2 MyAwesomeApp
+
+# Parameters: [environment] [aws_profile] [region] [app_name]
+```
+
+### Generate Environment Variables
+
+```bash
+# Generate .env file for frontend
+./scripts/generate-web-env.sh
+
+# Generate with custom parameters
+./scripts/generate-web-env.sh dev awslambdahackathon us-east-2 MyAwesomeApp
+
+# Parameters: [environment] [aws_profile] [region] [app_name]
+```
 
 ## Security Configuration
 
@@ -53,27 +115,16 @@ This directory contains the AWS CDK code for the AWS Lambda Hackathon project.
 
 ## API Endpoints
 
-### Protected Endpoints (Require Authentication)
+### REST API Endpoints
 
 - `GET /health` - Health check with user context
+- `POST /mcp-host` - MCP Host endpoint
 
-### Public Endpoints (No Authentication Required)
+### WebSocket API Routes
 
-- `GET /public` - Public health check for testing
-
-## Deployment
-
-```bash
-# Deploy all stacks
-npm run deploy
-
-# Deploy specific environment
-npm run deploy:dev
-npm run deploy:prod
-
-# Destroy all stacks
-npm run destroy
-```
+- `$connect` - Handle WebSocket connections
+- `$disconnect` - Handle WebSocket disconnections
+- `$default` - Handle WebSocket messages
 
 ## Testing
 
@@ -100,18 +151,14 @@ curl -H "Authorization: Bearer $TOKEN" \
   https://your-api-gateway-url.amazonaws.com/prod/health
 ```
 
-## Environment Variables
-
-- `CDK_DEFAULT_ACCOUNT`: AWS Account ID
-- `CDK_DEFAULT_REGION`: AWS Region
-- `environment`: Deployment environment (dev/prod)
-
 ## Outputs
 
 After deployment, the following outputs are available:
 
 - **ApiUrl**: API Gateway URL
+- **WebSocketUrl**: WebSocket API URL
 - **UserPoolId**: Cognito User Pool ID
 - **UserPoolClientId**: Cognito User Pool Client ID
 - **WebsiteUrl**: CloudFront Distribution URL
 - **DistributionId**: CloudFront Distribution ID
+- **RumAppMonitorId**: RUM App Monitor ID

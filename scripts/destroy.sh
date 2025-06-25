@@ -4,10 +4,12 @@
 ENVIRONMENT=${1:-dev}
 AWS_PROFILE=${2:-awslambdahackathon}
 AWS_REGION=${3:-us-east-2}
+APP_NAME=${4:-MyAwesomeApp}
 
 echo "🗑️  Starting destruction for environment: $ENVIRONMENT"
 echo "🔧 AWS Profile: $AWS_PROFILE"
 echo "🌍 AWS Region: $AWS_REGION"
+echo "🏷️  App Name: $APP_NAME"
 
 # Set AWS environment variables
 export AWS_PROFILE=$AWS_PROFILE
@@ -36,15 +38,15 @@ confirm_destruction
 # Define stack names
 AUTH_STACK_NAME="AuthStack-$ENVIRONMENT"
 RUNTIME_STACK_NAME="RuntimeStack-$ENVIRONMENT"
-API_STACK_NAME="ApiStack-$ENVIRONMENT"
 WEB_STACK_NAME="WebStack-$ENVIRONMENT"
+RUM_STACK_NAME="RumStack-$ENVIRONMENT"
 
 # Step 1: Destroy all stacks
-echo "🏗️  Destroying stacks: $API_STACK_NAME, $WEB_STACK_NAME, $RUNTIME_STACK_NAME"
+echo "🏗️  Destroying stacks: $WEB_STACK_NAME, $RUNTIME_STACK_NAME, $RUM_STACK_NAME, $AUTH_STACK_NAME"
 cd apps/cdk || handle_error "Failed to change to cdk directory"
 
 # We can destroy them in parallel with --all
-if ! npx cdk destroy --all --context environment="$ENVIRONMENT" --force; then
+if ! APP_NAME=$APP_NAME npx cdk destroy --all --context environment="$ENVIRONMENT" --force; then
     handle_error "Failed to destroy stacks"
 fi
 
