@@ -1,6 +1,7 @@
 import * as path from 'path';
 
 import * as cdk from 'aws-cdk-lib';
+import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as logs from 'aws-cdk-lib/aws-logs';
@@ -21,6 +22,45 @@ export class BackendStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: BackendStackProps) {
     super(scope, id, props);
 
+    // DynamoDB table for WebSocket active connections
+    const websocketConnectionsTable = new dynamodb.Table(
+      this,
+      'WebSocketConnections',
+      {
+        tableName: `awslambdahackathon-websocket-connections-${props.environment}`,
+        partitionKey: {
+          name: 'connectionId',
+          type: dynamodb.AttributeType.STRING,
+        },
+        timeToLiveAttribute: 'ttl',
+        removalPolicy:
+          props.environment === 'prod'
+            ? cdk.RemovalPolicy.RETAIN
+            : cdk.RemovalPolicy.DESTROY,
+        billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      }
+    );
+
+    // DynamoDB table for WebSocket messages
+    const websocketMessagesTable = new dynamodb.Table(
+      this,
+      'WebSocketMessages',
+      {
+        tableName: `awslambdahackathon-websocket-messages-${props.environment}`,
+        partitionKey: {
+          name: 'sessionId',
+          type: dynamodb.AttributeType.STRING,
+        },
+        sortKey: { name: 'timestamp', type: dynamodb.AttributeType.STRING },
+        timeToLiveAttribute: 'ttl',
+        removalPolicy:
+          props.environment === 'prod'
+            ? cdk.RemovalPolicy.RETAIN
+            : cdk.RemovalPolicy.DESTROY,
+        billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      }
+    );
+
     // Common environment variables for all Lambda functions
     const commonEnvVars = {
       NODE_ENV: props.environment,
@@ -30,6 +70,8 @@ export class BackendStack extends cdk.Stack {
       POWERTOOLS_METRICS_NAMESPACE: 'awslambdahackathon',
       COGNITO_USER_POOL_ID: props.cognitoUserPoolId,
       COGNITO_CLIENT_ID: props.cognitoClientId,
+      WEBSOCKET_CONNECTIONS_TABLE: websocketConnectionsTable.tableName,
+      WEBSOCKET_MESSAGES_TABLE: websocketMessagesTable.tableName,
     };
 
     // Lambda function for /health endpoint
@@ -82,6 +124,10 @@ export class BackendStack extends cdk.Stack {
       timeout: cdk.Duration.seconds(30),
       memorySize: 1024, // WebSocket needs more memory
     });
+
+    // Grant DynamoDB permissions to WebSocket function
+    websocketConnectionsTable.grantReadWriteData(this.websocketFunction);
+    websocketMessagesTable.grantReadWriteData(this.websocketFunction);
 
     // Lambda function for WebSocket authorization
     this.websocketAuthorizerFunction = new NodejsFunction(

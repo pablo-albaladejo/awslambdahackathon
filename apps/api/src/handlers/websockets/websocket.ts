@@ -1,3 +1,10 @@
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import {
+  DeleteCommand,
+  DynamoDBDocumentClient,
+  PutCommand,
+  QueryCommand,
+} from '@aws-sdk/lib-dynamodb';
 import {
   createSuccessResponse,
   logger,
@@ -25,11 +32,16 @@ interface WebSocketEvent {
   sessionId?: string;
 }
 
-// In-memory session storage (in production, use DynamoDB or similar)
-const sessions = new Map<
-  string,
-  { messages: ChatMessage[]; lastActivity: Date }
->();
+interface Connection {
+  connectionId: string;
+  sessionId?: string;
+  ttl: number;
+  timestamp: string;
+}
+
+// Initialize DynamoDB client
+const ddbClient = new DynamoDBClient({});
+const ddbDocClient = DynamoDBDocumentClient.from(ddbClient);
 
 const websocketHandler = async (
   event: APIGatewayProxyEvent
@@ -54,15 +66,39 @@ const websocketHandler = async (
   const subsegment = segment?.addNewSubsegment('websocket-logic');
 
   try {
+    // Ensure we have a connectionId
+    const connectionId = event.requestContext.connectionId;
+    if (!connectionId) {
+      return createSuccessResponse(
+        {
+          statusCode: 400,
+          body: JSON.stringify({ error: 'Missing connection ID' }),
+        },
+        400
+      );
+    }
+
     // Handle WebSocket connection
     if (event.requestContext.eventType === 'CONNECT') {
-      // For now, accept all connections without authentication
-      // TODO: Add proper authentication later
+      const now = new Date();
+      const connection: Connection = {
+        connectionId,
+        timestamp: now.toISOString(),
+        ttl: Math.floor(now.getTime() / 1000) + 2 * 60 * 60, // 2 hours TTL for connections
+      };
+
+      // Store connection in DynamoDB
+      await ddbDocClient.send(
+        new PutCommand({
+          TableName: process.env.WEBSOCKET_CONNECTIONS_TABLE,
+          Item: connection,
+        })
+      );
+
       logger.info('WebSocket connection established', {
-        connectionId: event.requestContext.connectionId,
+        connectionId,
       });
 
-      // For WebSocket API Gateway v2, CONNECT should return 200 without body
       return {
         statusCode: 200,
         headers: {
@@ -74,8 +110,18 @@ const websocketHandler = async (
 
     // Handle WebSocket disconnection
     if (event.requestContext.eventType === 'DISCONNECT') {
+      // Remove connection from DynamoDB
+      await ddbDocClient.send(
+        new DeleteCommand({
+          TableName: process.env.WEBSOCKET_CONNECTIONS_TABLE,
+          Key: {
+            connectionId,
+          },
+        })
+      );
+
       logger.info('WebSocket disconnected', {
-        connectionId: event.requestContext.connectionId,
+        connectionId,
       });
 
       return createSuccessResponse({
@@ -115,24 +161,42 @@ const websocketHandler = async (
           sessionId ||
           `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-        // Get or create session
-        if (!sessions.has(currentSessionId)) {
-          sessions.set(currentSessionId, {
-            messages: [],
-            lastActivity: new Date(),
-          });
+        const now = new Date();
+        const timestamp = now.toISOString();
+
+        // Update connection with session ID if needed
+        if (sessionId) {
+          await ddbDocClient.send(
+            new PutCommand({
+              TableName: process.env.WEBSOCKET_CONNECTIONS_TABLE,
+              Item: {
+                connectionId,
+                sessionId: currentSessionId,
+                timestamp: now.toISOString(),
+                ttl: Math.floor(now.getTime() / 1000) + 2 * 60 * 60, // 2 hours TTL
+              },
+            })
+          );
         }
 
-        const session = sessions.get(currentSessionId)!;
-        session.lastActivity = new Date();
-
-        // Add user message to session
+        // Add user message to DynamoDB
         const userMessage: ChatMessage = {
           message,
           sessionId: currentSessionId,
-          timestamp: new Date().toISOString(),
+          timestamp,
         };
-        session.messages.push(userMessage);
+
+        await ddbDocClient.send(
+          new PutCommand({
+            TableName: process.env.WEBSOCKET_MESSAGES_TABLE,
+            Item: {
+              ...userMessage,
+              ttl: Math.floor(now.getTime() / 1000) + 24 * 60 * 60, // 24 hours TTL
+              type: 'user',
+              connectionId,
+            },
+          })
+        );
 
         // Echo the message back (initial behavior)
         const echoMessage = message;
@@ -143,24 +207,37 @@ const websocketHandler = async (
           isEcho: true,
         };
 
-        // Add bot response to session
+        // Add bot response to DynamoDB
         const botMessage: ChatMessage = {
           message: echoMessage,
           sessionId: currentSessionId,
           timestamp: new Date().toISOString(),
         };
-        session.messages.push(botMessage);
 
-        // Clean up old sessions (older than 24 hours)
-        const now = new Date();
-        for (const [sid, sessionData] of sessions.entries()) {
-          if (
-            now.getTime() - sessionData.lastActivity.getTime() >
-            24 * 60 * 60 * 1000
-          ) {
-            sessions.delete(sid);
-          }
-        }
+        await ddbDocClient.send(
+          new PutCommand({
+            TableName: process.env.WEBSOCKET_MESSAGES_TABLE,
+            Item: {
+              ...botMessage,
+              ttl: Math.floor(now.getTime() / 1000) + 24 * 60 * 60, // 24 hours TTL
+              type: 'bot',
+              connectionId,
+            },
+          })
+        );
+
+        // Get session messages for logging
+        const { Items: sessionMessages } = await ddbDocClient.send(
+          new QueryCommand({
+            TableName: process.env.WEBSOCKET_MESSAGES_TABLE,
+            KeyConditionExpression: 'sessionId = :sessionId',
+            ExpressionAttributeValues: {
+              ':sessionId': currentSessionId,
+            },
+            ScanIndexForward: false, // Get most recent messages first
+            Limit: 10,
+          })
+        );
 
         // Log successful response
         logger.info('WebSocket message processed successfully', {
@@ -168,6 +245,7 @@ const websocketHandler = async (
           sessionId: currentSessionId,
           messageLength: message.length,
           response: response,
+          recentMessages: sessionMessages,
         });
 
         return createSuccessResponse({
