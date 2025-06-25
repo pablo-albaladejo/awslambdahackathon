@@ -39,13 +39,11 @@ RUNTIME_STACK_NAME="RuntimeStack-$ENVIRONMENT"
 cd packages/types    && npm run build && cd ../..
 cd packages/utils    && npm run build && cd ../..
 cd apps/cdk && npm run build && cd ../..
-cd apps/api          && npm run build && cd ../..
 
 # Define stack names
 AUTH_STACK_NAME="AuthStack-$ENVIRONMENT"
 RUNTIME_STACK_NAME="RuntimeStack-$ENVIRONMENT"
 WEB_STACK_NAME="WebStack-$ENVIRONMENT"
-RUM_STACK_NAME="RumStack-$ENVIRONMENT"
 
 # Step 3: Deploy all stacks together to handle dependencies properly
 echo "🏗️  Deploying all stacks together..."
@@ -64,15 +62,19 @@ AUTH_IDENTITY_POOL_ID=$(aws cloudformation describe-stacks \
 
 echo "🔑 Auth Identity Pool ID: $AUTH_IDENTITY_POOL_ID"
 
-# Step 5: Retrieve the UNIFIED RUM AppMonitor ID # MODIFICADO
+# Step 5: Retrieve the RUM AppMonitor ID from WebStack
 echo "🔍 Retrieving RUM AppMonitor ID..."
 RUM_APP_MONITOR_ID=$(aws cloudformation describe-stacks \
-  --stack-name "$RUM_STACK_NAME" \
-  --query "Stacks[0].Outputs[?OutputKey=='RumAppMonitorId${ENVIRONMENT}'].OutputValue" \
-  --output text) || handle_error "Could not get RumAppMonitorId"
+  --stack-name "$WEB_STACK_NAME" \
+  --query "Stacks[0].Outputs[?OutputKey=='RumMonitorRumAppMonitorId${ENVIRONMENT}06824759'].OutputValue" \
+  --output text 2>/dev/null || echo "")
 
-echo "📊 RUM App Monitor ID: $RUM_APP_MONITOR_ID"
-
+if [ -z "$RUM_APP_MONITOR_ID" ]; then
+  echo "⚠️  Warning: Could not get RUM App Monitor ID. RUM monitoring might not be available."
+  RUM_APP_MONITOR_ID=""
+else
+  echo "📊 RUM App Monitor ID: $RUM_APP_MONITOR_ID"
+fi
 
 # Step 6: Create default users via script
 echo "🔑 Creating default users..."
@@ -96,28 +98,46 @@ unset DEFAULT_USER_EMAIL_BASE
 # Step 7: Get stack outputs for frontend build
 echo "🔍 Getting stack outputs..."
 API_URL=$(aws cloudformation describe-stacks --stack-name "$RUNTIME_STACK_NAME" \
-  --query "Stacks[0].Outputs[?OutputKey=='ApiUrl'].OutputValue" \
-  --output text) \
-  || handle_error "Could not get ApiUrl"
+  --query "Stacks[0].Outputs[?OutputKey=='RestApiApiUrlC810DFE9'].OutputValue" \
+  --output text 2>/dev/null || echo "")
+
+if [ -z "$API_URL" ]; then
+  handle_error "Could not get API URL from RuntimeStack. Make sure the stack was deployed successfully."
+fi
 
 WEBSOCKET_URL=$(aws cloudformation describe-stacks --stack-name "$RUNTIME_STACK_NAME" \
-  --query "Stacks[0].Outputs[?OutputKey=='WebSocketUrl'].OutputValue" \
-  --output text) \
-  || handle_error "Could not get WebSocketUrl"
+  --query "Stacks[0].Outputs[?OutputKey=='WebSocketApiWebSocketUrlE961D745'].OutputValue" \
+  --output text 2>/dev/null || echo "")
+
+if [ -z "$WEBSOCKET_URL" ]; then
+  handle_error "Could not get WebSocket URL from RuntimeStack. Make sure the stack was deployed successfully."
+fi
 
 USER_POOL_ID=$(aws cloudformation describe-stacks --stack-name "$AUTH_STACK_NAME" \
   --query "Stacks[0].Outputs[?OutputKey=='UserPoolId'].OutputValue" \
-  --output text) \
-  || handle_error "Could not get UserPoolId"
+  --output text 2>/dev/null || echo "")
+
+if [ -z "$USER_POOL_ID" ]; then
+  handle_error "Could not get User Pool ID from AuthStack. Make sure the stack was deployed successfully."
+fi
 
 USER_POOL_CLIENT_ID=$(aws cloudformation describe-stacks --stack-name "$AUTH_STACK_NAME" \
   --query "Stacks[0].Outputs[?OutputKey=='UserPoolClientId'].OutputValue" \
-  --output text) \
-  || handle_error "Could not get UserPoolClientId"
+  --output text 2>/dev/null || echo "")
+
+if [ -z "$USER_POOL_CLIENT_ID" ]; then
+  handle_error "Could not get User Pool Client ID from AuthStack. Make sure the stack was deployed successfully."
+fi
 
 # Get AWS Account ID dynamically
-AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text) \
-  || handle_error "Could not get AWS Account ID"
+echo "🔍 Getting AWS Account ID..."
+AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text 2>/dev/null || echo "")
+
+if [ -z "$AWS_ACCOUNT_ID" ]; then
+  echo "⚠️  Warning: Could not get AWS Account ID. This might be due to missing credentials or permissions."
+  echo "   The deployment will continue, but some features might not work correctly."
+  AWS_ACCOUNT_ID="unknown"
+fi
 
 echo "📍 API URL: $API_URL"
 echo "🔌 WebSocket URL: $WEBSOCKET_URL"
@@ -163,15 +183,20 @@ unset VITE_RUM_IDENTITY_POOL_ID
 cd ../.. || handle_error "Failed to return to root"
 
 # Step 9: Deploy frontend files to S3
-echo "📤 Deploying frontend files to S3..."
-WEBSITE_BUCKET_NAME="$APP_NAME-web-$ENVIRONMENT"
-aws s3 sync apps/web/dist/ s3://$WEBSITE_BUCKET_NAME/ --delete
+WEBSITE_BUCKET_NAME=$(aws cloudformation describe-stacks \
+  --stack-name "$WEB_STACK_NAME" \
+  --query "Stacks[0].Outputs[?OutputKey=='WebsiteBucketName'].OutputValue" \
+  --output text)
+
+WEB_ASSET_PATH=${WEB_ASSET_PATH:-apps/web/dist}
+echo "📤 Deploying frontend files to S3 from $WEB_ASSET_PATH to $WEBSITE_BUCKET_NAME..."
+aws s3 sync "$WEB_ASSET_PATH/" "s3://$WEBSITE_BUCKET_NAME/" --delete
 
 # Step 10: Invalidate CloudFront cache
 echo "🔄 Invalidating CloudFront cache..."
 DISTRIBUTION_ID=$(aws cloudformation describe-stacks \
   --stack-name "$WEB_STACK_NAME" \
-  --query "Stacks[0].Outputs[?OutputKey=='DistributionId'].OutputValue" \
+  --query "Stacks[0].Outputs[?OutputKey=='StaticWebsiteDistributionIdCDE18798'].OutputValue" \
   --output text)
 
 if [ -n "$DISTRIBUTION_ID" ]; then
@@ -183,7 +208,7 @@ fi
 echo "🔍 Getting Website URL from $WEB_STACK_NAME..."
 WEBSITE_URL=$(aws cloudformation describe-stacks \
   --stack-name "$WEB_STACK_NAME" \
-  --query "Stacks[0].Outputs[?OutputKey=='WebsiteUrl'].OutputValue" \
+  --query "Stacks[0].Outputs[?OutputKey=='StaticWebsiteWebsiteUrl11BA0871'].OutputValue" \
   --output text)
 
 echo "✅ Deployment completed successfully!"

@@ -86,5 +86,9 @@ export class StaticWebsite extends Construct {
       value: this.distribution.distributionId,
       description: 'CloudFront Distribution ID',
     });
+    new cdk.CfnOutput(this, 'WebsiteBucketName', {
+      value: this.websiteBucket.bucketName,
+      description: 'S3 bucket name for static website',
+    });
   }
 }

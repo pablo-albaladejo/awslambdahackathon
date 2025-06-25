@@ -18,11 +18,17 @@ export class WebStack extends cdk.Stack {
 
     const staticWebsite = new StaticWebsite(this, 'StaticWebsite', {
       environment: props.environment,
-      appName: props.appName || 'MyAwesomeApp',
+      appName: props.appName,
       webAssetPath: props.webAssetPath,
     });
 
     this.cloudFrontDomain = staticWebsite.cloudFrontDomain;
+
+    // Propagate the WebsiteBucketName output to the stack
+    new cdk.CfnOutput(this, 'WebsiteBucketName', {
+      value: staticWebsite.websiteBucket.bucketName,
+      description: 'S3 bucket name for static website',
+    });
 
     // Optional: RUM Monitor
     if (props.rumIdentityPoolId) {
