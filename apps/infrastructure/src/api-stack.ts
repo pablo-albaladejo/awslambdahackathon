@@ -1,8 +1,7 @@
-import { WebSocketApi, WebSocketStage } from '@aws-cdk/aws-apigatewayv2-alpha';
-import { WebSocketLambdaAuthorizer } from '@aws-cdk/aws-apigatewayv2-authorizers-alpha';
-import { WebSocketLambdaIntegration } from '@aws-cdk/aws-apigatewayv2-integrations-alpha';
 import * as cdk from 'aws-cdk-lib';
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
+import * as apigatewayv2 from 'aws-cdk-lib/aws-apigatewayv2';
+import * as apigatewayv2_integrations from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import { Construct } from 'constructs';
 
@@ -41,39 +40,32 @@ export class ApiStack extends cdk.Stack {
     api.root.addResource('mcp-host').addMethod('POST', mcpHostIntegration);
 
     // WebSocket API
-    const authorizer = new WebSocketLambdaAuthorizer(
-      'WebSocketAuthorizer',
-      props.websocketAuthorizerFunction,
-      {
-        identitySource: ['route.request.querystring.Authorization'],
-      }
-    );
-
-    const websocketApi = new WebSocketApi(this, 'WebSocketApi', {
+    const websocketApi = new apigatewayv2.WebSocketApi(this, 'WebSocketApi', {
       apiName: `awslambdahackathon-websocket-${props.environment}`,
-      connectRouteOptions: {
-        integration: new WebSocketLambdaIntegration(
-          'ConnectIntegration',
-          props.websocketFunction
-        ),
-        authorizer,
-      },
-      disconnectRouteOptions: {
-        integration: new WebSocketLambdaIntegration(
-          'DisconnectIntegration',
-          props.websocketFunction
-        ),
-      },
-      defaultRouteOptions: {
-        integration: new WebSocketLambdaIntegration(
-          'DefaultIntegration',
-          props.websocketFunction
-        ),
-      },
     });
 
-    // Stage de despliegue
-    const stage = new WebSocketStage(this, 'WebSocketStage', {
+    // WebSocket Lambda integration
+    const websocketIntegration =
+      new apigatewayv2_integrations.WebSocketLambdaIntegration(
+        'WebSocketIntegration',
+        props.websocketFunction
+      );
+
+    // Add routes
+    websocketApi.addRoute('$connect', {
+      integration: websocketIntegration,
+    });
+
+    websocketApi.addRoute('$disconnect', {
+      integration: websocketIntegration,
+    });
+
+    websocketApi.addRoute('$default', {
+      integration: websocketIntegration,
+    });
+
+    // WebSocket Stage
+    const stage = new apigatewayv2.WebSocketStage(this, 'WebSocketStage', {
       webSocketApi: websocketApi,
       stageName: props.environment,
       autoDeploy: true,

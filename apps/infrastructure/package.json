@@ -18,9 +18,6 @@
     "synth": "cdk synth",
     "bootstrap": "cdk bootstrap"
   },
-  "dependencies": {
-    "@aws-cdk/aws-apigatewayv2-alpha": "^2.114.1-alpha.0",
-    "@aws-cdk/aws-apigatewayv2-authorizers-alpha": "^2.114.1-alpha.0",
-    "@aws-cdk/aws-apigatewayv2-integrations-alpha": "^2.114.1-alpha.0"
-  }
+  "dependencies": {},
+  "devDependencies": {}
 }
