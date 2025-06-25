@@ -21,7 +21,23 @@ const Layout = ({
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center text-lg">
-        Cargando...
+        <svg
+          className="spinner"
+          width="32"
+          height="32"
+          viewBox="0 0 50 50"
+          style={{ marginRight: '1rem' }}
+        >
+          <circle
+            className="path"
+            cx="25"
+            cy="25"
+            r="20"
+            fill="none"
+            stroke="#6366f1"
+            strokeWidth="5"
+          />
+        </svg>
       </div>
     );
   }

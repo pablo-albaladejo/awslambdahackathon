@@ -68,7 +68,11 @@ const websocketHandler = async (
   try {
     // Ensure we have a connectionId
     const connectionId = event.requestContext.connectionId;
+    logger.info('RequestContext', { requestContext: event.requestContext });
     if (!connectionId) {
+      logger.error('Missing connectionId in requestContext', {
+        requestContext: event.requestContext,
+      });
       return createSuccessResponse(
         {
           statusCode: 400,
@@ -78,6 +82,8 @@ const websocketHandler = async (
       );
     }
 
+    logger.info('Event type', { eventType: event.requestContext.eventType });
+
     // Handle WebSocket connection
     if (event.requestContext.eventType === 'CONNECT') {
       const now = new Date();
@@ -86,18 +92,14 @@ const websocketHandler = async (
         timestamp: now.toISOString(),
         ttl: Math.floor(now.getTime() / 1000) + 2 * 60 * 60, // 2 hours TTL for connections
       };
-
-      // Store connection in DynamoDB
+      logger.info('Storing connection in DynamoDB', { connection });
       await ddbDocClient.send(
         new PutCommand({
           TableName: process.env.WEBSOCKET_CONNECTIONS_TABLE,
           Item: connection,
         })
       );
-
-      logger.info('WebSocket connection established', {
-        connectionId,
-      });
+      logger.info('Connection stored successfully', { connectionId });
 
       return {
         statusCode: 200,
@@ -110,7 +112,7 @@ const websocketHandler = async (
 
     // Handle WebSocket disconnection
     if (event.requestContext.eventType === 'DISCONNECT') {
-      // Remove connection from DynamoDB
+      logger.info('Deleting connection from DynamoDB', { connectionId });
       await ddbDocClient.send(
         new DeleteCommand({
           TableName: process.env.WEBSOCKET_CONNECTIONS_TABLE,
@@ -119,10 +121,7 @@ const websocketHandler = async (
           },
         })
       );
-
-      logger.info('WebSocket disconnected', {
-        connectionId,
-      });
+      logger.info('Connection deleted successfully', { connectionId });
 
       return createSuccessResponse({
         statusCode: 200,
@@ -132,7 +131,9 @@ const websocketHandler = async (
 
     // Handle WebSocket message
     if (event.requestContext.eventType === 'MESSAGE') {
+      logger.info('Processing MESSAGE event', { body: event.body });
       if (!event.body) {
+        logger.error('Missing body in MESSAGE event', { event });
         return createSuccessResponse(
           {
             statusCode: 400,
@@ -142,11 +143,30 @@ const websocketHandler = async (
         );
       }
 
-      const websocketEvent: WebSocketEvent = JSON.parse(event.body);
+      let websocketEvent: WebSocketEvent;
+      try {
+        websocketEvent = JSON.parse(event.body);
+      } catch (parseError) {
+        logger.error('Failed to parse event.body as JSON', {
+          body: event.body,
+          parseError,
+        });
+        return createSuccessResponse(
+          {
+            statusCode: 400,
+            body: JSON.stringify({ error: 'Invalid JSON in request body' }),
+          },
+          400
+        );
+      }
       const { action, message, sessionId } = websocketEvent;
+      logger.info('Parsed WebSocketEvent', { action, message, sessionId });
 
       if (action === 'sendMessage') {
         if (!message) {
+          logger.error('Missing message in sendMessage action', {
+            websocketEvent,
+          });
           return createSuccessResponse(
             {
               statusCode: 400,
@@ -166,6 +186,10 @@ const websocketHandler = async (
 
         // Update connection with session ID if needed
         if (sessionId) {
+          logger.info('Updating connection with sessionId', {
+            connectionId,
+            sessionId: currentSessionId,
+          });
           await ddbDocClient.send(
             new PutCommand({
               TableName: process.env.WEBSOCKET_CONNECTIONS_TABLE,
@@ -177,6 +201,10 @@ const websocketHandler = async (
               },
             })
           );
+          logger.info('Connection updated with sessionId', {
+            connectionId,
+            sessionId: currentSessionId,
+          });
         }
 
         // Add user message to DynamoDB
@@ -185,7 +213,7 @@ const websocketHandler = async (
           sessionId: currentSessionId,
           timestamp,
         };
-
+        logger.info('Storing user message in DynamoDB', { userMessage });
         await ddbDocClient.send(
           new PutCommand({
             TableName: process.env.WEBSOCKET_MESSAGES_TABLE,
@@ -197,6 +225,7 @@ const websocketHandler = async (
             },
           })
         );
+        logger.info('User message stored successfully', { userMessage });
 
         // Echo the message back (initial behavior)
         const echoMessage = message;
@@ -213,7 +242,7 @@ const websocketHandler = async (
           sessionId: currentSessionId,
           timestamp: new Date().toISOString(),
         };
-
+        logger.info('Storing bot message in DynamoDB', { botMessage });
         await ddbDocClient.send(
           new PutCommand({
             TableName: process.env.WEBSOCKET_MESSAGES_TABLE,
@@ -225,8 +254,12 @@ const websocketHandler = async (
             },
           })
         );
+        logger.info('Bot message stored successfully', { botMessage });
 
         // Get session messages for logging
+        logger.info('Querying recent session messages', {
+          sessionId: currentSessionId,
+        });
         const { Items: sessionMessages } = await ddbDocClient.send(
           new QueryCommand({
             TableName: process.env.WEBSOCKET_MESSAGES_TABLE,
@@ -238,6 +271,7 @@ const websocketHandler = async (
             Limit: 10,
           })
         );
+        logger.info('Recent session messages', { sessionMessages });
 
         // Log successful response
         logger.info('WebSocket message processed successfully', {
@@ -254,6 +288,7 @@ const websocketHandler = async (
         });
       }
 
+      logger.error('Invalid action in MESSAGE event', { action });
       return createSuccessResponse(
         {
           statusCode: 400,
@@ -263,6 +298,9 @@ const websocketHandler = async (
       );
     }
 
+    logger.error('Invalid event type', {
+      eventType: event.requestContext.eventType,
+    });
     return createSuccessResponse(
       {
         statusCode: 400,
@@ -276,6 +314,7 @@ const websocketHandler = async (
       error: error instanceof Error ? error.message : String(error),
       stack: error instanceof Error ? error.stack : undefined,
       requestId: event.requestContext.requestId,
+      event,
     });
 
     // Add error metric
