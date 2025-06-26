@@ -24,19 +24,33 @@ export class WebStack extends cdk.Stack {
 
     this.cloudFrontDomain = staticWebsite.cloudFrontDomain;
 
-    // Propagate the WebsiteBucketName output to the stack
     new cdk.CfnOutput(this, 'WebsiteBucketName', {
       value: staticWebsite.websiteBucket.bucketName,
       description: 'S3 bucket name for static website',
     });
 
+    new cdk.CfnOutput(this, 'WebsiteUrl', {
+      value: `https://${staticWebsite.distribution.distributionDomainName}`,
+      description: 'CloudFront Distribution URL',
+    });
+
+    new cdk.CfnOutput(this, 'DistributionId', {
+      exportName: `DistributionId`,
+      value: staticWebsite.distribution.distributionId,
+      description: 'CloudFront Distribution ID',
+    });
+
     // Optional: RUM Monitor
     if (props.rumIdentityPoolId) {
-      new RumMonitor(this, 'RumMonitor', {
+      const rumMonitor = new RumMonitor(this, 'RumMonitor', {
         environment: props.environment,
         appName: props.appName,
         domain: this.cloudFrontDomain,
         identityPoolId: props.rumIdentityPoolId,
+      });
+      new cdk.CfnOutput(this, `RumAppMonitorId`, {
+        value: rumMonitor.appMonitor.attrId,
+        description: 'RUM Monitor ID',
       });
     }
   }

@@ -42,18 +42,40 @@ export class AuthenticationService {
    */
   async authenticateUser(token: string): Promise<AuthenticationResult> {
     try {
+      logger.info('Starting authentication process', {
+        tokenLength: token?.length,
+        hasToken: !!token,
+      });
+
       if (!token) {
+        logger.warn('Authentication failed: Missing token');
         return {
           success: false,
           error: 'Missing authentication token',
         };
       }
 
+      logger.info('Verifying JWT token', {
+        userPoolId: process.env.COGNITO_USER_POOL_ID,
+        clientId: process.env.COGNITO_CLIENT_ID,
+      });
+
       const payload = await this.verifier.verify(token);
+
+      logger.info('JWT token verified successfully', {
+        sub: payload.sub,
+        username: payload.username,
+        email: payload.email,
+        exp: payload.exp,
+      });
 
       // Verify token expiration
       const now = Math.floor(Date.now() / 1000);
       if (payload.exp && payload.exp < now) {
+        logger.warn('Authentication failed: Token expired', {
+          exp: payload.exp,
+          now,
+        });
         return {
           success: false,
           error: 'Token expired',
@@ -71,6 +93,7 @@ export class AuthenticationService {
         userId: user.userId,
         username: user.username,
         email: user.email,
+        groups: user.groups,
       });
 
       return {
@@ -80,6 +103,7 @@ export class AuthenticationService {
     } catch (error) {
       logger.error('Authentication failed', {
         error: error instanceof Error ? error.message : String(error),
+        errorStack: error instanceof Error ? error.stack : undefined,
       });
 
       return {

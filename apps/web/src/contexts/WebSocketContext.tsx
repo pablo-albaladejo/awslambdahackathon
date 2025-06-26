@@ -30,6 +30,8 @@ interface WebSocketState {
   sendMessage: (text: string) => Promise<void>;
   error?: string;
   isReconnecting: boolean;
+  reconnectFailed: boolean;
+  retryConnect: () => void;
 }
 
 const initialState: WebSocketState = {
@@ -40,6 +42,8 @@ const initialState: WebSocketState = {
   sendMessage: async () => {},
   error: undefined,
   isReconnecting: false,
+  reconnectFailed: false,
+  retryConnect: () => {},
 };
 
 export const WebSocketContext = createContext<WebSocketState>(initialState);
@@ -52,17 +56,17 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
   children,
 }) => {
   const [state, setState] = useState<WebSocketState>(initialState);
-  const [ws, setWs] = useState<WebSocket | null>(null);
+  const wsRef = useRef<(WebSocket & { cleanup?: () => void }) | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
     null
   );
   const reconnectAttemptsRef = useRef(0);
   const isConnectingRef = useRef(false);
+  const [token, setToken] = useState<string | null>(null);
+  const [reconnectFailed, setReconnectFailed] = useState(false);
 
-  // Get WebSocket configuration from centralized config
   const websocketConfig = getWebSocketConfig();
 
-  // Memoized error handling utility
   const handleError = useCallback(
     (error: string, isReconnecting: boolean = false) => {
       setState(prev => ({
@@ -71,27 +75,24 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
         isReconnecting,
         isConnected: false,
       }));
-
-      logger.error('WebSocket error', { error, isReconnecting });
+      logger.error('WebSocketProvider error', { error, isReconnecting });
     },
     []
   );
 
-  // Memoized clear error utility
   const clearError = useCallback(() => {
     setState(prev => ({ ...prev, error: undefined }));
   }, []);
 
-  // Memoized send message function with validation
   const sendMessage = useCallback(
     async (text: string) => {
+      const ws = wsRef.current;
       if (!ws || ws.readyState !== WebSocket.OPEN) {
         const error = 'WebSocket is not connected';
         setState(prev => ({ ...prev, error }));
         throw new Error(error);
       }
 
-      // Validate message before sending
       const validation = webSocketValidation.validateCompleteMessage(
         text,
         state.sessionId
@@ -103,9 +104,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
       }
 
       try {
-        // Send the validated message
         ws.send(JSON.stringify(validation.data));
-
         setState(prev => ({
           ...prev,
           messages: [
@@ -119,211 +118,199 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
             },
           ],
           isLoading: true,
-          error: undefined, // Clear any previous errors
+          error: undefined,
         }));
-      } catch (error) {
+      } catch {
         const errorMessage = 'Failed to send message';
         setState(prev => ({ ...prev, error: errorMessage }));
         throw new Error(errorMessage);
       }
     },
-    [ws, state.sessionId]
+    [state.sessionId]
   );
 
-  // Memoized connection function
-  const connect = useCallback(async () => {
-    if (isConnectingRef.current) return;
-    isConnectingRef.current = true;
+  const handleOpen = useCallback(() => {
+    const ws = wsRef.current;
+    if (!ws || !token) return;
+    logger.info('WebSocket connected successfully, sending authentication');
+    setState(prev => ({
+      ...prev,
+      isReconnecting: false,
+      error: undefined,
+    }));
+    reconnectAttemptsRef.current = 0;
+    const authMessage = webSocketValidation.createAuthMessage(token);
+    ws.send(JSON.stringify(authMessage));
+  }, [token]);
 
-    try {
-      clearError();
-
-      const session = await fetchAuthSession();
-      const token = session.tokens?.accessToken.toString();
-
-      if (!token) {
-        throw new Error('JWT token not available. Please log in again.');
-      }
-
-      logger.info('Connecting to WebSocket', {
-        url: websocketConfig.url,
-        tokenLength: token.length,
-        tokenStart: token.substring(0, 10) + '...',
+  const handleClose = useCallback(
+    (event: CloseEvent) => {
+      logger.info('WebSocket disconnected', {
+        code: event.code,
+        reason: event.reason,
+        wasClean: event.wasClean,
       });
+      wsRef.current = null;
+      setState(prev => ({
+        ...prev,
+        isConnected: false,
+        messages: [
+          ...prev.messages,
+          {
+            id: Date.now().toString(),
+            text: 'Disconnected from chatbot',
+            isUser: false,
+            timestamp: new Date(),
+          },
+        ],
+      }));
 
-      // Connect without token in URL for security (Post-Connection Auth)
-      const newWs = new WebSocket(websocketConfig.url);
-
-      // Memoized event handlers to prevent recreation
-      const handleOpen = useCallback(() => {
-        logger.info('WebSocket connected successfully, sending authentication');
-        setWs(newWs);
-        setState(prev => ({
-          ...prev,
-          isReconnecting: false,
-          error: undefined,
-        }));
-
-        // Send authentication token as first message using validation service
-        const authMessage = webSocketValidation.createAuthMessage(token);
-        newWs.send(JSON.stringify(authMessage));
-      }, [token]);
-
-      const handleClose = useCallback((event: CloseEvent) => {
-        logger.info('WebSocket disconnected', {
-          code: event.code,
-          reason: event.reason,
-          wasClean: event.wasClean,
-        });
-
-        setWs(null);
-        setState(prev => ({
-          ...prev,
-          isConnected: false,
-          messages: [
-            ...prev.messages,
-            {
-              id: Date.now().toString(),
-              text: 'Disconnected from chatbot',
-              isUser: false,
-              timestamp: new Date(),
-            },
-          ],
-        }));
-
-        // Implement exponential backoff for reconnection using config
-        if (reconnectAttemptsRef.current < websocketConfig.reconnectAttempts) {
-          const delay = Math.min(
+      if (reconnectAttemptsRef.current < websocketConfig.reconnectAttempts) {
+        const delay = Math.max(
+          1000,
+          Math.min(
             websocketConfig.reconnectDelay *
               Math.pow(2, reconnectAttemptsRef.current),
             websocketConfig.maxReconnectDelay
-          );
-          setState(prev => ({ ...prev, isReconnecting: true }));
+          )
+        );
+        setState(prev => ({ ...prev, isReconnecting: true }));
+        reconnectTimeoutRef.current = setTimeout(() => {
+          reconnectAttemptsRef.current++;
+          connect();
+        }, delay);
+        return;
+      }
+      setReconnectFailed(true);
+      handleError(
+        'Failed to reconnect after multiple attempts. Please refresh the page or click retry.'
+      );
+    },
+    [websocketConfig, handleError]
+  );
 
-          reconnectTimeoutRef.current = setTimeout(() => {
-            reconnectAttemptsRef.current++;
-            connect();
-          }, delay);
-        } else {
-          handleError(
-            'Failed to reconnect after multiple attempts. Please refresh the page.'
-          );
+  const handleWebSocketError = useCallback((event: Event) => {
+    const error = event as ErrorEvent;
+    logger.error('WebSocket error:', {
+      message: error.message,
+      type: error.type,
+      error: error.error,
+    });
+    setState(prev => ({
+      ...prev,
+      isConnected: false,
+      error: `WebSocket error: ${error.message}`,
+    }));
+  }, []);
+
+  const handleMessage = useCallback(
+    (event: MessageEvent<string>) => {
+      try {
+        const validation = webSocketValidation.validateMessage(
+          JSON.parse(event.data)
+        );
+        if (!validation.success || !validation.data) {
+          logger.error('Invalid message received:', validation.error);
+          return;
         }
-      }, []);
+        const data = validation.data;
+        logger.info('Message received', { data });
 
-      const handleWebSocketError = useCallback((event: Event) => {
-        const error = event as ErrorEvent;
-        logger.error('WebSocket error:', {
-          message: error.message,
-          type: error.type,
-          error: error.error,
-        });
-
-        setState(prev => ({
-          ...prev,
-          isConnected: false,
-          error: `WebSocket error: ${error.message}`,
-        }));
-      }, []);
-
-      const handleMessage = useCallback((event: MessageEvent<string>) => {
-        try {
-          // Validate incoming message using validation service
-          const validation = webSocketValidation.validateMessage(
-            JSON.parse(event.data)
-          );
-
-          if (!validation.success || !validation.data) {
-            logger.error('Invalid message received:', validation.error);
-            return;
-          }
-
-          const data = validation.data;
-          logger.info('Message received', { data });
-
-          // Handle authentication response
-          if (data.type === 'auth_response') {
-            if (data.data.success) {
-              setState(prev => ({
-                ...prev,
-                isConnected: true,
-                error: undefined,
-                messages: [
-                  ...prev.messages,
-                  {
-                    id: Date.now().toString(),
-                    text: 'Connected to chatbot',
-                    isUser: false,
-                    timestamp: new Date(),
-                  },
-                ],
-              }));
-              logger.info('WebSocket authentication successful');
-            } else {
-              const errorMessage =
-                data.data.error ||
-                'Authentication failed. Please log in again.';
-              handleError(errorMessage);
-              newWs.close();
-            }
-            return;
-          }
-
-          // Handle error messages
-          if (data.type === 'error') {
-            handleError(`Server error: ${data.data.message}`);
-            return;
-          }
-
-          // Handle regular chat messages
-          if (data.type === 'message_response') {
+        if (data.type === 'auth_response') {
+          if (data.data.success) {
             setState(prev => ({
               ...prev,
-              isLoading: false,
-              error: undefined, // Clear errors on successful message
-              sessionId: data.data.sessionId || prev.sessionId,
+              isConnected: true,
+              error: undefined,
               messages: [
                 ...prev.messages,
                 {
-                  id: data.data.messageId,
-                  text: data.data.message,
+                  id: Date.now().toString(),
+                  text: 'Connected to chatbot',
                   isUser: false,
-                  timestamp: new Date(data.data.timestamp),
-                  sessionId: data.data.sessionId,
+                  timestamp: new Date(),
                 },
               ],
             }));
+            logger.info('WebSocket authentication successful');
+          } else {
+            const errorMessage =
+              data.data.error || 'Authentication failed. Please log in again.';
+            handleError(errorMessage);
+            wsRef.current?.close();
+            reconnectAttemptsRef.current = websocketConfig.reconnectAttempts;
           }
-        } catch (error) {
-          logger.error('Error parsing WebSocket message', {
-            error,
-            data: event.data,
-          });
-          handleError('Failed to parse server message');
+          return;
         }
-      }, []);
 
-      // Add event listeners
+        if (data.type === 'error') {
+          handleError(`Server error: ${data.data.message}`);
+          return;
+        }
+
+        if (data.type === 'message_response') {
+          setState(prev => ({
+            ...prev,
+            isLoading: false,
+            error: undefined,
+            sessionId: data.data.sessionId || prev.sessionId,
+            messages: [
+              ...prev.messages,
+              {
+                id: data.data.messageId,
+                text: data.data.message,
+                isUser: false,
+                timestamp: new Date(data.data.timestamp),
+                sessionId: data.data.sessionId,
+              },
+            ],
+          }));
+        }
+      } catch (error) {
+        logger.error('Error parsing WebSocket message', {
+          error,
+          data: event.data,
+        });
+        handleError('Failed to parse server message');
+      }
+    },
+    [handleError, websocketConfig]
+  );
+
+  const connect = useCallback(async () => {
+    if (isConnectingRef.current) return;
+    isConnectingRef.current = true;
+    try {
+      clearError();
+      const session = await fetchAuthSession();
+      const tokenValue = session.tokens?.accessToken.toString();
+      setToken(tokenValue || null);
+      if (!tokenValue) {
+        throw new Error('JWT token not available. Please log in again.');
+      }
+      logger.info('Connecting to WebSocket', {
+        url: websocketConfig.url,
+        tokenLength: tokenValue.length,
+        tokenStart: tokenValue.substring(0, 10) + '...',
+      });
+      const newWs = new WebSocket(websocketConfig.url);
       newWs.addEventListener('open', handleOpen);
       newWs.addEventListener('close', handleClose);
       newWs.addEventListener('error', handleWebSocketError);
       newWs.addEventListener('message', handleMessage);
 
-      // Store cleanup function
-      const cleanup = () => {
+      // Guardamos cleanup en el ref
+      (newWs as WebSocket & { cleanup: () => void }).cleanup = () => {
         newWs.removeEventListener('open', handleOpen);
         newWs.removeEventListener('close', handleClose);
         newWs.removeEventListener('error', handleWebSocketError);
         newWs.removeEventListener('message', handleMessage);
       };
-
-      // Store cleanup function on the WebSocket instance
-      (newWs as WebSocket & { cleanup: () => void }).cleanup = cleanup;
+      wsRef.current = newWs as WebSocket & { cleanup: () => void };
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : 'Could not connect to chatbot';
       handleError(errorMessage);
-
       setState(prev => ({
         ...prev,
         isConnected: false,
@@ -340,41 +327,50 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
     } finally {
       isConnectingRef.current = false;
     }
-  }, [websocketConfig, handleError, clearError]);
+  }, [
+    websocketConfig,
+    handleError,
+    clearError,
+    handleOpen,
+    handleClose,
+    handleWebSocketError,
+    handleMessage,
+  ]);
 
-  // Effect for initial connection
   useEffect(() => {
     connect();
 
-    // Cleanup function
     return () => {
-      // Clear any pending reconnection timeout
+      // Limpiamos timeout de reconexión
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
         reconnectTimeoutRef.current = null;
       }
-
-      // Close WebSocket connection and cleanup listeners
+      // Cerramos socket si sigue vivo
+      const ws = wsRef.current;
       if (ws) {
-        // Call cleanup function if it exists
-        if ((ws as WebSocket & { cleanup?: () => void }).cleanup) {
-          (ws as WebSocket & { cleanup: () => void }).cleanup();
-        }
-
+        ws.cleanup?.();
         if (ws.readyState === WebSocket.OPEN) {
           ws.close();
         }
       }
     };
-  }, [connect, ws]);
+  }, [connect]);
 
-  // Memoized state with sendMessage function
+  const retryConnect = useCallback(() => {
+    setReconnectFailed(false);
+    reconnectAttemptsRef.current = 0;
+    connect();
+  }, [connect]);
+
   const contextValue = useMemo(
     () => ({
       ...state,
       sendMessage,
+      reconnectFailed,
+      retryConnect,
     }),
-    [state, sendMessage]
+    [state, sendMessage, reconnectFailed, retryConnect]
   );
 
   return (

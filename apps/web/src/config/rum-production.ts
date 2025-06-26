@@ -20,19 +20,19 @@ interface LayoutShift extends PerformanceEntry {
 // Production RUM configuration
 export const PRODUCTION_RUM_CONFIG = {
   // AWS RUM Application ID (from CloudWatch RUM console)
-  applicationId: process.env.VITE_AWS_RUM_APPLICATION_ID || '',
+  applicationId: import.meta.env.VITE_AWS_RUM_APPLICATION_ID || '',
 
   // AWS RUM Application Version
-  applicationVersion: process.env.VITE_APP_VERSION || '1.0.0',
+  applicationVersion: import.meta.env.VITE_APP_VERSION || '1.0.0',
 
   // AWS RUM Application Region
-  applicationRegion: process.env.VITE_AWS_REGION || 'us-east-1',
+  applicationRegion: import.meta.env.VITE_AWS_REGION || 'us-east-1',
 
   // Guest Role ARN (for authenticated users)
-  guestRoleArn: process.env.VITE_AWS_RUM_GUEST_ROLE_ARN || '',
+  guestRoleArn: import.meta.env.VITE_AWS_RUM_GUEST_ROLE_ARN || '',
 
   // Identity Pool ID (for authenticated users)
-  identityPoolId: process.env.VITE_AWS_RUM_IDENTITY_POOL_ID || '',
+  identityPoolId: import.meta.env.VITE_AWS_RUM_IDENTITY_POOL_ID || '',
 
   // Telemetries to collect
   telemetries: ['performance', 'errors', 'http', 'interaction', 'user-session'],
@@ -343,9 +343,7 @@ const configureErrorTracking = (rum: AwsRum) => {
   });
 
   // Track console errors
-  // eslint-disable-next-line no-console
-  const originalConsoleError = console.error;
-  // eslint-disable-next-line no-console
+  /*const originalConsoleError = console.error;
   console.error = (...args) => {
     rum.recordEvent('console_error', {
       message: args.join(' '),
@@ -355,7 +353,7 @@ const configureErrorTracking = (rum: AwsRum) => {
     });
 
     originalConsoleError.apply(console, args);
-  };
+  };*/
 };
 
 // Utility functions for custom metrics

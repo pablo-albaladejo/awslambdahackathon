@@ -1,4 +1,3 @@
-import * as cdk from 'aws-cdk-lib';
 import * as apigatewayv2 from 'aws-cdk-lib/aws-apigatewayv2';
 import * as apigatewayv2_integrations from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import * as iam from 'aws-cdk-lib/aws-iam';
@@ -13,6 +12,7 @@ export interface WebSocketApiProps {
 }
 
 export class WebSocketApi extends Construct {
+  public readonly websocketStage: apigatewayv2.WebSocketStage;
   public readonly websocketApi: apigatewayv2.WebSocketApi;
 
   constructor(scope: Construct, id: string, props: WebSocketApiProps) {
@@ -47,11 +47,15 @@ export class WebSocketApi extends Construct {
     });
 
     // WebSocket Stage
-    const stage = new apigatewayv2.WebSocketStage(this, 'WebSocketStage', {
-      webSocketApi: this.websocketApi,
-      stageName: props.environment,
-      autoDeploy: true,
-    });
+    this.websocketStage = new apigatewayv2.WebSocketStage(
+      this,
+      'WebSocketStage',
+      {
+        webSocketApi: this.websocketApi,
+        stageName: props.environment,
+        autoDeploy: true,
+      }
+    );
 
     // Grant WebSocket API permissions to Lambda functions
     const websocketApiArn = `arn:aws:execute-api:${this.node.tryGetContext('region') || 'us-east-2'}:${this.node.tryGetContext('account') || '*'}:${this.websocketApi.apiId}/*`;
@@ -73,15 +77,5 @@ export class WebSocketApi extends Construct {
         resources: [websocketApiArn],
       })
     );
-
-    // Outputs
-    new cdk.CfnOutput(this, 'WebSocketUrl', {
-      value: stage.url,
-    });
-
-    new cdk.CfnOutput(this, 'WebSocketApiId', {
-      value: this.websocketApi.apiId,
-      exportName: `${props.appName}-WebSocketApiId-${props.environment}`,
-    });
   }
 }

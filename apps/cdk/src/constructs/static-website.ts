@@ -76,19 +76,5 @@ export class StaticWebsite extends Construct {
       distribution: this.distribution,
       distributionPaths: ['/*'],
     });
-
-    // Outputs
-    new cdk.CfnOutput(this, 'WebsiteUrl', {
-      value: `https://${this.distribution.distributionDomainName}`,
-      description: 'CloudFront Distribution URL',
-    });
-    new cdk.CfnOutput(this, 'DistributionId', {
-      value: this.distribution.distributionId,
-      description: 'CloudFront Distribution ID',
-    });
-    new cdk.CfnOutput(this, 'WebsiteBucketName', {
-      value: this.websiteBucket.bucketName,
-      description: 'S3 bucket name for static website',
-    });
   }
 }

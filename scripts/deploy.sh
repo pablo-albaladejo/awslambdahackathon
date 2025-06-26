@@ -57,7 +57,7 @@ APP_NAME=$APP_NAME npx cdk deploy --all \
 echo "🔍 Retrieving Auth Identity Pool ID..."
 AUTH_IDENTITY_POOL_ID=$(aws cloudformation describe-stacks \
   --stack-name "$AUTH_STACK_NAME" \
-  --query "Stacks[0].Outputs[?OutputKey=='IdentityPoolId${ENVIRONMENT}'].OutputValue" \
+  --query "Stacks[0].Outputs[?OutputKey=='IdentityPoolId'].OutputValue" \
   --output text) || handle_error "Could not get IdentityPoolId from Auth stack output"
 
 echo "🔑 Auth Identity Pool ID: $AUTH_IDENTITY_POOL_ID"
@@ -66,7 +66,7 @@ echo "🔑 Auth Identity Pool ID: $AUTH_IDENTITY_POOL_ID"
 echo "🔍 Retrieving RUM AppMonitor ID..."
 RUM_APP_MONITOR_ID=$(aws cloudformation describe-stacks \
   --stack-name "$WEB_STACK_NAME" \
-  --query "Stacks[0].Outputs[?OutputKey=='RumMonitorRumAppMonitorId${ENVIRONMENT}06824759'].OutputValue" \
+  --query "Stacks[0].Outputs[?OutputKey=='RumAppMonitorId'].OutputValue" \
   --output text 2>/dev/null || echo "")
 
 if [ -z "$RUM_APP_MONITOR_ID" ]; then
@@ -98,7 +98,7 @@ unset DEFAULT_USER_EMAIL_BASE
 # Step 7: Get stack outputs for frontend build
 echo "🔍 Getting stack outputs..."
 API_URL=$(aws cloudformation describe-stacks --stack-name "$RUNTIME_STACK_NAME" \
-  --query "Stacks[0].Outputs[?OutputKey=='RestApiApiUrlC810DFE9'].OutputValue" \
+  --query "Stacks[0].Outputs[?OutputKey=='ApiUrl'].OutputValue" \
   --output text 2>/dev/null || echo "")
 
 if [ -z "$API_URL" ]; then
@@ -106,7 +106,7 @@ if [ -z "$API_URL" ]; then
 fi
 
 WEBSOCKET_URL=$(aws cloudformation describe-stacks --stack-name "$RUNTIME_STACK_NAME" \
-  --query "Stacks[0].Outputs[?OutputKey=='WebSocketApiWebSocketUrlE961D745'].OutputValue" \
+  --query "Stacks[0].Outputs[?OutputKey=='WebSocketUrl'].OutputValue" \
   --output text 2>/dev/null || echo "")
 
 if [ -z "$WEBSOCKET_URL" ]; then
@@ -154,31 +154,26 @@ cd apps/web || handle_error "Failed to cd to web"
 # Remove any existing .env.production for security
 rm -f .env.production
 
-export VITE_API_URL="$API_URL"
+export VITE_API_BASE_URL="$API_URL"
 export VITE_WEBSOCKET_URL="$WEBSOCKET_URL"
 export VITE_USER_POOL_ID="$USER_POOL_ID"
 export VITE_USER_POOL_CLIENT_ID="$USER_POOL_CLIENT_ID"
 export VITE_AWS_REGION="$AWS_REGION"
-export VITE_AWS_ACCOUNT_ID="$AWS_ACCOUNT_ID"
-export VITE_ENVIRONMENT="$ENVIRONMENT"
-export VITE_APP_NAME="$APP_NAME"
-export VITE_RUM_APP_MONITOR_ID="$RUM_APP_MONITOR_ID"
-export VITE_RUM_IDENTITY_POOL_ID="$AUTH_IDENTITY_POOL_ID"
+export VITE_IDENTITY_POOL_ID="$AUTH_IDENTITY_POOL_ID"
+export VITE_AWS_RUM_APPLICATION_ID="$RUM_APP_MONITOR_ID"
+export VITE_AWS_RUM_IDENTITY_POOL_ID="$AUTH_IDENTITY_POOL_ID"
 
 npm run build || handle_error "Failed to build frontend"
 
 # Clear build-time env vars
-unset VITE_API_URL
+unset VITE_API_BASE_URL
 unset VITE_WEBSOCKET_URL
 unset VITE_USER_POOL_ID
 unset VITE_USER_POOL_CLIENT_ID
 unset VITE_AWS_REGION
-unset VITE_AWS_ACCOUNT_ID
-unset VITE_ENVIRONMENT
-unset VITE_APP_NAME
-unset VITE_RUM_GUEST_APP_MONITOR_ID
-unset VITE_RUM_AUTH_APP_MONITOR_ID
-unset VITE_RUM_IDENTITY_POOL_ID
+unset VITE_IDENTITY_POOL_ID
+unset VITE_AWS_RUM_APPLICATION_ID
+unset VITE_AWS_RUM_IDENTITY_POOL_ID
 
 cd ../.. || handle_error "Failed to return to root"
 
@@ -196,7 +191,7 @@ aws s3 sync "$WEB_ASSET_PATH/" "s3://$WEBSITE_BUCKET_NAME/" --delete
 echo "🔄 Invalidating CloudFront cache..."
 DISTRIBUTION_ID=$(aws cloudformation describe-stacks \
   --stack-name "$WEB_STACK_NAME" \
-  --query "Stacks[0].Outputs[?OutputKey=='StaticWebsiteDistributionIdCDE18798'].OutputValue" \
+  --query "Stacks[0].Outputs[?OutputKey=='DistributionId'].OutputValue" \
   --output text)
 
 if [ -n "$DISTRIBUTION_ID" ]; then
@@ -208,7 +203,7 @@ fi
 echo "🔍 Getting Website URL from $WEB_STACK_NAME..."
 WEBSITE_URL=$(aws cloudformation describe-stacks \
   --stack-name "$WEB_STACK_NAME" \
-  --query "Stacks[0].Outputs[?OutputKey=='StaticWebsiteWebsiteUrl11BA0871'].OutputValue" \
+  --query "Stacks[0].Outputs[?OutputKey=='WebsiteUrl'].OutputValue" \
   --output text)
 
 echo "✅ Deployment completed successfully!"

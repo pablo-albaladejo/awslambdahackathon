@@ -9,7 +9,7 @@ import { z } from 'zod';
 // Environment variables schema
 const EnvironmentVarsSchema = z.object({
   // WebSocket configuration
-  VITE_WEBSOCKET_URL: z.string().url().optional(),
+  VITE_WEBSOCKET_URL: z.string().optional(),
 
   // RUM configuration
   VITE_AWS_RUM_APPLICATION_ID: z.string().optional(),
@@ -79,7 +79,7 @@ const EnvironmentVarsSchema = z.object({
 // Parse and validate environment variables
 const parseEnvironmentVars = (): z.infer<typeof EnvironmentVarsSchema> => {
   try {
-    return EnvironmentVarsSchema.parse(process.env);
+    return EnvironmentVarsSchema.parse(import.meta.env);
   } catch (error) {
     logger.error('Environment variables validation failed:', error);
     throw new Error('Invalid environment configuration');

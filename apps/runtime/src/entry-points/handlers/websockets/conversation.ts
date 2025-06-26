@@ -47,59 +47,36 @@ export const handler = async (
     eventType: event.requestContext.eventType,
   });
 
-  const segment = tracer.getSegment();
-  const subsegment = segment?.addNewSubsegment('websocket-conversation-logic');
+  const subsegment = tracer
+    .getSegment()
+    ?.addNewSubsegment('websocket_conversation');
+  const connectionId = event.requestContext.connectionId!;
 
   try {
-    const connectionId = event.requestContext.connectionId;
-    if (!connectionId) {
-      const error = createError(
-        ErrorType.VALIDATION_ERROR,
-        'Missing connection ID',
-        'MISSING_CONNECTION_ID',
-        { requestContext: event.requestContext }
-      );
-
-      logger.error('Missing connectionId in requestContext', {
-        requestContext: event.requestContext,
-      });
-
-      return createErrorResponse(error, event);
-    }
-
-    if (event.requestContext.eventType !== 'MESSAGE') {
-      const error = createError(
-        ErrorType.VALIDATION_ERROR,
-        'Invalid event type for conversation handler',
-        'INVALID_EVENT_TYPE',
-        {
-          expectedType: 'MESSAGE',
-          actualType: event.requestContext.eventType,
-        }
-      );
-
-      logger.error('Invalid event type for conversation handler', {
-        eventType: event.requestContext.eventType,
-      });
-
-      return createErrorResponse(error, event);
-    }
+    logger.info('WebSocket conversation event received', {
+      connectionId,
+      eventType: event.requestContext.eventType,
+      routeKey: event.requestContext.routeKey,
+    });
 
     if (!event.body) {
       const error = createError(
         ErrorType.VALIDATION_ERROR,
         'Request body is required',
-        'MISSING_REQUEST_BODY'
+        'MISSING_BODY',
+        { connectionId }
       );
 
-      logger.error('Missing body in MESSAGE event', { event });
+      logger.error('Missing request body in WebSocket event', { connectionId });
 
       return createErrorResponse(error, event);
     }
 
     let websocketEvent: WebSocketEvent;
+    let parsedBody: any;
+
     try {
-      websocketEvent = JSON.parse(event.body);
+      parsedBody = JSON.parse(event.body);
     } catch (parseError) {
       const error = createError(
         ErrorType.VALIDATION_ERROR,
@@ -118,6 +95,54 @@ export const handler = async (
         body: event.body,
         parseError,
       });
+
+      return createErrorResponse(error, event);
+    }
+
+    // Handle different message formats
+    if (parsedBody.type === 'auth' && parsedBody.data) {
+      // New format: {type: "auth", data: {action: "authenticate", token: "..."}}
+      websocketEvent = {
+        action: parsedBody.data.action,
+        token: parsedBody.data.token,
+        sessionId: parsedBody.data.sessionId,
+      };
+      logger.info('Parsed auth message (new format)', {
+        connectionId,
+        action: websocketEvent.action,
+        hasToken: !!websocketEvent.token,
+        tokenLength: websocketEvent.token?.length,
+      });
+    } else if (parsedBody.type === 'message' && parsedBody.data) {
+      // New format: {type: "message", data: {action: "sendMessage", message: "...", sessionId: "..."}}
+      websocketEvent = {
+        action: parsedBody.data.action,
+        message: parsedBody.data.message,
+        sessionId: parsedBody.data.sessionId,
+      };
+      logger.info('Parsed message (new format)', {
+        connectionId,
+        action: websocketEvent.action,
+        messageLength: websocketEvent.message?.length,
+      });
+    } else if (parsedBody.action) {
+      // Legacy format: {action: "authenticate", token: "..."} or {action: "sendMessage", message: "..."}
+      websocketEvent = parsedBody;
+      logger.info('Parsed message (legacy format)', {
+        connectionId,
+        action: websocketEvent.action,
+        hasToken: !!websocketEvent.token,
+        messageLength: websocketEvent.message?.length,
+      });
+    } else {
+      const error = createError(
+        ErrorType.VALIDATION_ERROR,
+        'Invalid message format',
+        'INVALID_MESSAGE_FORMAT',
+        { parsedBody }
+      );
+
+      logger.error('Invalid message format', { parsedBody });
 
       return createErrorResponse(error, event);
     }

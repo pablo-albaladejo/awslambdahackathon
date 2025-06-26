@@ -1,4 +1,3 @@
-import { CfnOutput } from 'aws-cdk-lib';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as rum from 'aws-cdk-lib/aws-rum';
@@ -97,11 +96,6 @@ export class RumMonitor extends Construct {
         unauthenticated: this.unauthRole.roleArn,
         authenticated: this.authRole.roleArn,
       },
-    });
-
-    new CfnOutput(this, `RumAppMonitorId${props.environment}`, {
-      value: this.appMonitor.attrId,
-      exportName: `RumAppMonitorId${props.environment}`,
     });
   }
 }

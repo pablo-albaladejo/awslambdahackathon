@@ -1,4 +1,3 @@
-import * as cdk from 'aws-cdk-lib';
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import { Construct } from 'constructs';
@@ -54,10 +53,5 @@ export class RestApi extends Construct {
     this.restApi.root
       .addResource('mcp-host')
       .addMethod('POST', mcpHostIntegration);
-
-    // Outputs
-    new cdk.CfnOutput(this, 'ApiUrl', {
-      value: this.restApi.url,
-    });
   }
 }

@@ -133,18 +133,32 @@ export class RuntimeStack extends cdk.Stack {
     // REST API construct
     const restApi = new RestApi(this, 'RestApi', {
       environment: props.environment,
-      appName: appName,
+      appName,
       mcpHostFunction: this.mcpHostFunction,
     });
     this.restApi = restApi.restApi;
+    new cdk.CfnOutput(this, 'ApiUrl', {
+      exportName: `ApiUrl-${props.environment}`,
+      value: restApi.restApi.url,
+      description: 'API URL',
+    });
 
     // WebSocket API construct without authorizer
     const websocketApi = new WebSocketApi(this, 'WebSocketApi', {
       environment: props.environment,
-      appName: appName,
+      appName,
       websocketConnectionFunction: this.websocketConnectionFunction,
       websocketConversationFunction: this.websocketConversationFunction,
     });
+
     this.websocketApi = websocketApi.websocketApi;
+    new cdk.CfnOutput(this, 'WebSocketUrl', {
+      value: websocketApi.websocketStage.url,
+      description: 'WebSocket URL',
+    });
+    new cdk.CfnOutput(this, 'WebSocketApiId', {
+      value: websocketApi.websocketApi.apiId,
+      description: 'WebSocket API ID',
+    });
   }
 }

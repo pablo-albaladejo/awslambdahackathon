@@ -32,16 +32,32 @@ get_output() {
 AUTH_STACK="AuthStack-$ENVIRONMENT"
 API_STACK="RuntimeStack-$ENVIRONMENT"
 WEB_STACK="WebStack-$ENVIRONMENT"
-RUM_STACK="RumStack-$ENVIRONMENT"
 
 # Get values from stack outputs
 USER_POOL_ID=$(get_output "$AUTH_STACK" "UserPoolId")
+if [ -z "$USER_POOL_ID" ]; then
+  echo "⚠️  Warning: USER_POOL_ID is empty. Check output 'UserPoolId' in stack $AUTH_STACK."
+fi
 USER_POOL_CLIENT_ID=$(get_output "$AUTH_STACK" "UserPoolClientId")
-IDENTITY_POOL_ID=$(get_output "$AUTH_STACK" "IdentityPoolId$ENVIRONMENT")
+if [ -z "$USER_POOL_CLIENT_ID" ]; then
+  echo "⚠️  Warning: USER_POOL_CLIENT_ID is empty. Check output 'UserPoolClientId' in stack $AUTH_STACK."
+fi
+IDENTITY_POOL_ID=$(get_output "$AUTH_STACK" "IdentityPoolId")
+if [ -z "$IDENTITY_POOL_ID" ]; then
+  echo "⚠️  Warning: IDENTITY_POOL_ID is empty. Check output 'IdentityPoolId' in stack $AUTH_STACK."
+fi
 API_URL=$(get_output "$API_STACK" "ApiUrl")
+if [ -z "$API_URL" ]; then
+  echo "⚠️  Warning: API_URL is empty. Check output 'ApiUrl' in stack $API_STACK."
+fi
 WEBSOCKET_URL=$(get_output "$API_STACK" "WebSocketUrl")
-RUM_APP_MONITOR_ID=$(get_output "$RUM_STACK" "RumAppMonitorId$ENVIRONMENT")
-CLOUDFRONT_URL=$(get_output "$WEB_STACK" "WebsiteUrl")
+if [ -z "$WEBSOCKET_URL" ]; then
+  echo "⚠️  Warning: WEBSOCKET_URL is empty. Check output 'WebSocketUrl' in stack $API_STACK."
+fi
+RUM_APP_MONITOR_ID=$(get_output "$WEB_STACK" "RumAppMonitorId")
+if [ -z "$RUM_APP_MONITOR_ID" ]; then
+  echo "⚠️  Warning: RUM_APP_MONITOR_ID is empty. Check output 'RumAppMonitorId' in stack $WEB_STACK."
+fi
 
 # Fallback for missing values
 : "${USER_POOL_ID:=}"
@@ -50,18 +66,16 @@ CLOUDFRONT_URL=$(get_output "$WEB_STACK" "WebsiteUrl")
 : "${API_URL:=}"
 : "${WEBSOCKET_URL:=}"
 : "${RUM_APP_MONITOR_ID:=}"
-: "${CLOUDFRONT_URL:=}"
 
 cat > $OUTPUT_FILE <<EOL
-VITE_REGION=$REGION
-VITE_APP_NAME=$APP_NAME
+VITE_AWS_REGION=$REGION
 VITE_USER_POOL_ID=$USER_POOL_ID
 VITE_USER_POOL_CLIENT_ID=$USER_POOL_CLIENT_ID
 VITE_IDENTITY_POOL_ID=$IDENTITY_POOL_ID
-VITE_API_URL=$API_URL
+VITE_API_BASE_URL=$API_URL
 VITE_WEBSOCKET_URL=$WEBSOCKET_URL
-VITE_RUM_APP_MONITOR_ID=$RUM_APP_MONITOR_ID
-VITE_CLOUDFRONT_URL=$CLOUDFRONT_URL
+VITE_AWS_RUM_APPLICATION_ID=$RUM_APP_MONITOR_ID
+VITE_AWS_RUM_IDENTITY_POOL_ID=$IDENTITY_POOL_ID
 EOL
 
-echo ".env file generated at $OUTPUT_FILE with values from CDK outputs." 
+echo ".env.local file generated at $OUTPUT_FILE with values from CDK outputs." 

@@ -10,10 +10,6 @@ import './index.css';
 // Initialize Amplify configuration
 configureAmplify();
 
-const isLocal =
-  window.location.hostname === 'localhost' ||
-  window.location.hostname === '127.0.0.1';
-
 const AppTree = (
   <BrowserRouter>
     <App />
@@ -22,6 +18,6 @@ const AppTree = (
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    {isLocal ? AppTree : <RumProvider>{AppTree}</RumProvider>}
+    <RumProvider>{AppTree}</RumProvider>
   </React.StrictMode>
 );

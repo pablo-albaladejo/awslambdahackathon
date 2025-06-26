@@ -12,18 +12,12 @@ import React, {
   useMemo,
   useRef,
 } from 'react';
-import {
-  Navigate,
-  Route,
-  BrowserRouter as Router,
-  Routes,
-  useLocation,
-} from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 
 import { configureAmplify } from './amplify-config';
 import './App.css';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { RumProvider, useRumTracking } from './contexts/RumContext';
+import { useRumTracking } from './contexts/RumContext';
 import { WebSocketProvider } from './contexts/WebSocketContext';
 import { useCurrentUser } from './hooks/useCurrentUser';
 import Layout from './Layout';
@@ -254,17 +248,13 @@ function App({ signOut }: WithAuthenticatorProps) {
 
   return (
     <ErrorBoundary onError={handleReactError}>
-      <RumProvider>
-        <Router>
-          <WebSocketProvider>
-            <Layout signOut={handleSignOut}>
-              <Suspense fallback={<LoadingSpinner />}>
-                <Routes>{routes}</Routes>
-              </Suspense>
-            </Layout>
-          </WebSocketProvider>
-        </Router>
-      </RumProvider>
+      <WebSocketProvider>
+        <Layout signOut={handleSignOut}>
+          <Suspense fallback={<LoadingSpinner />}>
+            <Routes>{routes}</Routes>
+          </Suspense>
+        </Layout>
+      </WebSocketProvider>
     </ErrorBoundary>
   );
 }

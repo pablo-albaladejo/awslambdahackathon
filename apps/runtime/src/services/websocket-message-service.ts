@@ -1,3 +1,5 @@
+import crypto from 'crypto';
+
 import {
   ApiGatewayManagementApiClient,
   PostToConnectionCommand,
@@ -97,9 +99,11 @@ export class WebSocketMessageService {
     data: AuthResponse
   ): Promise<boolean> {
     const message: WebSocketMessage = {
-      type: 'auth',
-      success,
-      ...data,
+      type: 'auth_response',
+      data: {
+        success,
+        ...data,
+      },
     };
 
     return this.sendMessage(connectionId, event, message);
@@ -116,11 +120,14 @@ export class WebSocketMessageService {
     isEcho: boolean
   ): Promise<boolean> {
     const response: WebSocketMessage = {
-      type: 'chat',
-      message,
-      sessionId,
-      timestamp: new Date().toISOString(),
-      isEcho,
+      type: 'message_response',
+      data: {
+        message,
+        sessionId,
+        messageId: crypto.randomUUID(),
+        timestamp: new Date().toISOString(),
+        isEcho,
+      },
     };
 
     return this.sendMessage(connectionId, event, response);
@@ -136,7 +143,11 @@ export class WebSocketMessageService {
   ): Promise<boolean> {
     const message: WebSocketMessage = {
       type: 'error',
-      error: errorMessage,
+      data: {
+        message: errorMessage,
+        code: 'ERROR',
+        timestamp: new Date().toISOString(),
+      },
     };
 
     return this.sendMessage(connectionId, event, message);
