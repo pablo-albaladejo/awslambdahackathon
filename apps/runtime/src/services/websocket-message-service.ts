@@ -7,7 +7,24 @@ import type { APIGatewayProxyEvent } from 'aws-lambda';
 
 export interface WebSocketMessage {
   type: string;
-  [key: string]: any;
+  message?: string;
+  sessionId?: string;
+  success?: boolean;
+  error?: string;
+  isEcho?: boolean;
+  [key: string]: unknown;
+}
+
+export interface AuthResponse {
+  userId?: string;
+  username?: string;
+  error?: string;
+}
+
+export interface ChatResponse {
+  message: string;
+  sessionId: string;
+  isEcho: boolean;
 }
 
 export class WebSocketMessageService {
@@ -77,7 +94,7 @@ export class WebSocketMessageService {
     connectionId: string,
     event: APIGatewayProxyEvent,
     success: boolean,
-    data?: { userId?: string; username?: string; error?: string }
+    data: AuthResponse
   ): Promise<boolean> {
     const message: WebSocketMessage = {
       type: 'auth',
@@ -96,7 +113,7 @@ export class WebSocketMessageService {
     event: APIGatewayProxyEvent,
     message: string,
     sessionId: string,
-    isEcho: boolean = false
+    isEcho: boolean
   ): Promise<boolean> {
     const response: WebSocketMessage = {
       type: 'chat',
@@ -115,11 +132,11 @@ export class WebSocketMessageService {
   async sendErrorMessage(
     connectionId: string,
     event: APIGatewayProxyEvent,
-    error: string
+    errorMessage: string
   ): Promise<boolean> {
     const message: WebSocketMessage = {
       type: 'error',
-      error,
+      error: errorMessage,
     };
 
     return this.sendMessage(connectionId, event, message);

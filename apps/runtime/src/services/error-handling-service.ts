@@ -1,3 +1,8 @@
+import {
+  DynamoDBServiceException,
+  InternalServerError,
+  ProvisionedThroughputExceededException,
+} from '@aws-sdk/client-dynamodb';
 import { logger } from '@awslambdahackathon/utils/lambda';
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 
@@ -179,34 +184,58 @@ export class ErrorHandlingService {
   }
 
   /**
-   * Handle database errors specifically
+   * Handle database errors specifically with proper error casting
    */
   handleDatabaseError(
-    error: DatabaseError,
+    error: unknown,
     operation: string,
     context?: Record<string, unknown>
   ): AppError {
-    const isRetryable = this.isDatabaseErrorRetryable(error);
+    // Check if it's a DynamoDB error
+    if (this.isDynamoDBError(error)) {
+      const isRetryable = this.isDatabaseErrorRetryable(error);
 
+      return this.createError(
+        ErrorType.DATABASE_ERROR,
+        `Database operation failed: ${operation}`,
+        'DATABASE_ERROR',
+        {
+          operation,
+          errorCode: error.name,
+          errorMessage: error.message,
+          context,
+          retryable: isRetryable,
+        }
+      );
+    }
+
+    // Handle non-DynamoDB errors
+    const errorMessage = error instanceof Error ? error.message : String(error);
     return this.createError(
       ErrorType.DATABASE_ERROR,
       `Database operation failed: ${operation}`,
       'DATABASE_ERROR',
       {
         operation,
-        errorCode: error.code,
-        errorName: error.name,
+        errorMessage,
         context,
-        retryable: isRetryable,
+        retryable: false,
       }
     );
   }
 
   /**
+   * Check if error is a DynamoDB error
+   */
+  private isDynamoDBError(error: unknown): error is DynamoDBServiceException {
+    return error instanceof DynamoDBServiceException;
+  }
+
+  /**
    * Check if database error is retryable
    */
-  private isDatabaseErrorRetryable(error: DatabaseError): boolean {
-    const retryableCodes = [
+  private isDatabaseErrorRetryable(error: DynamoDBServiceException): boolean {
+    const retryableErrorNames = [
       'ProvisionedThroughputExceededException',
       'ThrottlingException',
       'ServiceUnavailable',
@@ -214,10 +243,12 @@ export class ErrorHandlingService {
     ];
 
     return (
-      retryableCodes.includes(error.code || '') ||
-      retryableCodes.includes(error.name || '') ||
-      error.statusCode === 429 ||
-      (error.statusCode !== undefined && error.statusCode >= 500)
+      error instanceof ProvisionedThroughputExceededException ||
+      error instanceof InternalServerError ||
+      retryableErrorNames.includes(error.name) ||
+      error.$metadata?.httpStatusCode === 429 ||
+      (error.$metadata?.httpStatusCode !== undefined &&
+        error.$metadata.httpStatusCode >= 500)
     );
   }
 
