@@ -1,6 +1,7 @@
 {
   "name": "@awslambdahackathon/types",
-  "version": "0.0.0",
+  "version": "1.0.0",
+  "description": "Shared types and schemas for AWS Lambda Hackathon",
   "private": true,
   "license": "ISC",
   "main": "./dist/index.js",
@@ -17,6 +18,13 @@
     "clean": "rm -rf dist",
     "type-check": "tsc --noEmit"
   },
-  "dependencies": {},
-  "devDependencies": {}
+  "dependencies": {
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "peerDependencies": {
+    "zod": "^3.22.4"
+  }
 }

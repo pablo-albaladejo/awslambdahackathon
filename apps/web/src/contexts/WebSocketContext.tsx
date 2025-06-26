@@ -11,6 +11,9 @@ import React, {
   useState,
 } from 'react';
 
+import { getWebSocketConfig } from '../config/app-config';
+import { webSocketValidation } from '../services/validation-service';
+
 export interface Message {
   id: string;
   text: string;
@@ -56,10 +59,8 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
   const reconnectAttemptsRef = useRef(0);
   const isConnectingRef = useRef(false);
 
-  const websocketBaseUrl = useMemo(
-    () => import.meta.env.VITE_WEBSOCKET_URL || 'wss://localhost:3001',
-    []
-  );
+  // Get WebSocket configuration from centralized config
+  const websocketConfig = getWebSocketConfig();
 
   // Memoized error handling utility
   const handleError = useCallback(
@@ -81,7 +82,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
     setState(prev => ({ ...prev, error: undefined }));
   }, []);
 
-  // Memoized send message function
+  // Memoized send message function with validation
   const sendMessage = useCallback(
     async (text: string) => {
       if (!ws || ws.readyState !== WebSocket.OPEN) {
@@ -90,14 +91,21 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
         throw new Error(error);
       }
 
-      const message = {
-        action: 'sendMessage',
-        message: text,
-        sessionId: state.sessionId,
-      };
+      // Validate message before sending
+      const validation = webSocketValidation.validateCompleteMessage(
+        text,
+        state.sessionId
+      );
+      if (!validation.success) {
+        const errorMessage = validation.error || 'Message validation failed';
+        setState(prev => ({ ...prev, error: errorMessage }));
+        throw new Error(errorMessage);
+      }
 
       try {
-        ws.send(JSON.stringify(message));
+        // Send the validated message
+        ws.send(JSON.stringify(validation.data));
+
         setState(prev => ({
           ...prev,
           messages: [
@@ -138,14 +146,13 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
       }
 
       logger.info('Connecting to WebSocket', {
-        url: websocketBaseUrl,
+        url: websocketConfig.url,
         tokenLength: token.length,
         tokenStart: token.substring(0, 10) + '...',
       });
 
       // Connect without token in URL for security (Post-Connection Auth)
-      const websocketUrl = websocketBaseUrl;
-      const newWs = new WebSocket(websocketUrl);
+      const newWs = new WebSocket(websocketConfig.url);
 
       // Memoized event handlers to prevent recreation
       const handleOpen = useCallback(() => {
@@ -157,12 +164,8 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
           error: undefined,
         }));
 
-        // Send authentication token as first message
-        const authMessage = {
-          action: 'authenticate',
-          token: token,
-        };
-
+        // Send authentication token as first message using validation service
+        const authMessage = webSocketValidation.createAuthMessage(token);
         newWs.send(JSON.stringify(authMessage));
       }, [token]);
 
@@ -188,12 +191,12 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
           ],
         }));
 
-        // Implement exponential backoff for reconnection
-        const maxReconnectAttempts = 5;
-        if (reconnectAttemptsRef.current < maxReconnectAttempts) {
+        // Implement exponential backoff for reconnection using config
+        if (reconnectAttemptsRef.current < websocketConfig.reconnectAttempts) {
           const delay = Math.min(
-            1000 * Math.pow(2, reconnectAttemptsRef.current),
-            30000
+            websocketConfig.reconnectDelay *
+              Math.pow(2, reconnectAttemptsRef.current),
+            websocketConfig.maxReconnectDelay
           );
           setState(prev => ({ ...prev, isReconnecting: true }));
 
@@ -225,12 +228,22 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
 
       const handleMessage = useCallback((event: MessageEvent<string>) => {
         try {
-          const data = JSON.parse(event.data);
+          // Validate incoming message using validation service
+          const validation = webSocketValidation.validateMessage(
+            JSON.parse(event.data)
+          );
+
+          if (!validation.success || !validation.data) {
+            logger.error('Invalid message received:', validation.error);
+            return;
+          }
+
+          const data = validation.data;
           logger.info('Message received', { data });
 
           // Handle authentication response
-          if (data.type === 'auth') {
-            if (data.success) {
+          if (data.type === 'auth_response') {
+            if (data.data.success) {
               setState(prev => ({
                 ...prev,
                 isConnected: true,
@@ -248,7 +261,8 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
               logger.info('WebSocket authentication successful');
             } else {
               const errorMessage =
-                data.error || 'Authentication failed. Please log in again.';
+                data.data.error ||
+                'Authentication failed. Please log in again.';
               handleError(errorMessage);
               newWs.close();
             }
@@ -257,27 +271,29 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
 
           // Handle error messages
           if (data.type === 'error') {
-            handleError(`Server error: ${data.error}`);
+            handleError(`Server error: ${data.data.message}`);
             return;
           }
 
           // Handle regular chat messages
-          setState(prev => ({
-            ...prev,
-            isLoading: false,
-            error: undefined, // Clear errors on successful message
-            sessionId: data.sessionId || prev.sessionId,
-            messages: [
-              ...prev.messages,
-              {
-                id: Date.now().toString(),
-                text: data.message,
-                isUser: false,
-                timestamp: new Date(data.timestamp || Date.now()),
-                sessionId: data.sessionId,
-              },
-            ],
-          }));
+          if (data.type === 'message_response') {
+            setState(prev => ({
+              ...prev,
+              isLoading: false,
+              error: undefined, // Clear errors on successful message
+              sessionId: data.data.sessionId || prev.sessionId,
+              messages: [
+                ...prev.messages,
+                {
+                  id: data.data.messageId,
+                  text: data.data.message,
+                  isUser: false,
+                  timestamp: new Date(data.data.timestamp),
+                  sessionId: data.data.sessionId,
+                },
+              ],
+            }));
+          }
         } catch (error) {
           logger.error('Error parsing WebSocket message', {
             error,
@@ -324,7 +340,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
     } finally {
       isConnectingRef.current = false;
     }
-  }, [websocketBaseUrl, handleError, clearError]);
+  }, [websocketConfig, handleError, clearError]);
 
   // Effect for initial connection
   useEffect(() => {
