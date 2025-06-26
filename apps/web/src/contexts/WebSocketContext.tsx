@@ -355,7 +355,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
         }
       }
     };
-  }, [connect]);
+  }, [websocketConfig.url, connect]);
 
   const retryConnect = useCallback(() => {
     setReconnectFailed(false);
