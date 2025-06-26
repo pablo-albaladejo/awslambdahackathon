@@ -202,20 +202,27 @@ code {
 }
 
 .status-dot {
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
   display: inline-block;
-  margin-right: 0.2rem;
-  box-shadow: 0 0 8px currentColor;
+  margin-right: 8px;
 }
+
 .status-dot.connected {
   background-color: #4caf50;
-  color: #4caf50;
+  box-shadow: 0 0 8px rgba(76, 175, 80, 0.5);
 }
+
+.status-dot.reconnecting {
+  background-color: #ff9800;
+  box-shadow: 0 0 8px rgba(255, 152, 0, 0.5);
+  animation: pulse 1.5s infinite;
+}
+
 .status-dot.disconnected {
-  background-color: #e53935;
-  color: #e53935;
+  background-color: #f44336;
+  box-shadow: 0 0 8px rgba(244, 67, 54, 0.5);
 }
 
 .chatbot-connection-text {
@@ -248,15 +255,17 @@ code {
   margin-bottom: 1.2rem;
   display: flex;
   flex-direction: column;
-  gap: 0.7rem;
+  gap: 0.8rem;
   padding-right: 2px;
+  padding-left: 2px;
 }
 
 .chatbot-message-bubble {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  max-width: 80%;
+  max-width: 75%;
+  min-width: 120px;
   padding: 0.7rem 1.1rem 0.5rem 1.1rem;
   border-radius: 16px 16px 16px 6px;
   background: rgba(255, 255, 255, 0.85);
@@ -266,28 +275,41 @@ code {
   margin-bottom: 0.1rem;
   position: relative;
   animation: fadeIn 0.3s;
+  align-self: flex-start;
 }
 .chatbot-message-bubble.user {
   align-self: flex-end;
   background: linear-gradient(90deg, #667eea 60%, #764ba2 100%);
   color: #fff;
   border-radius: 16px 16px 6px 16px;
+  margin-left: auto;
 }
 .chatbot-message-bubble.bot {
   align-self: flex-start;
   background: rgba(255, 255, 255, 0.85);
   color: #333;
   border-radius: 16px 16px 16px 6px;
+  margin-right: auto;
 }
 .chatbot-message-text {
   margin-bottom: 0.2rem;
   word-break: break-word;
+  line-height: 1.4;
+  white-space: pre-wrap;
 }
 .chatbot-message-time {
   font-size: 0.82rem;
   color: #888;
   align-self: flex-end;
   margin-top: 0.1rem;
+}
+
+.chatbot-message-bubble.user .chatbot-message-time {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.chatbot-message-bubble.bot .chatbot-message-time {
+  color: #888;
 }
 
 @keyframes fadeIn {

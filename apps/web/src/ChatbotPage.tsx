@@ -32,23 +32,11 @@ const MessageItem = React.memo<{
   );
 
   return (
-    <div className={`flex ${message.isUser ? 'justify-end' : 'justify-start'}`}>
-      <div
-        className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
-          message.isUser
-            ? 'bg-blue-600 text-white'
-            : 'bg-white text-gray-900 border border-gray-200'
-        }`}
-      >
-        <p className="text-sm">{message.text}</p>
-        <p
-          className={`text-xs mt-1 ${
-            message.isUser ? 'text-blue-100' : 'text-gray-500'
-          }`}
-        >
-          {messageTime}
-        </p>
-      </div>
+    <div
+      className={`chatbot-message-bubble ${message.isUser ? 'user' : 'bot'}`}
+    >
+      <span className="chatbot-message-text">{message.text}</span>
+      <span className="chatbot-message-time">{messageTime}</span>
     </div>
   );
 });
@@ -57,22 +45,20 @@ MessageItem.displayName = 'MessageItem';
 
 // Memoized Loading Indicator
 const LoadingIndicator = React.memo(() => (
-  <div className="flex justify-start">
-    <div className="bg-white text-gray-900 border border-gray-200 rounded-lg px-4 py-2">
-      <div className="flex items-center space-x-2">
-        <div className="flex space-x-1">
-          <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-          <div
-            className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
-            style={{ animationDelay: '0.1s' }}
-          ></div>
-          <div
-            className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
-            style={{ animationDelay: '0.2s' }}
-          ></div>
-        </div>
-        <span className="text-sm text-gray-500">AI is thinking...</span>
+  <div className="chatbot-message-bubble bot">
+    <div className="flex items-center space-x-2">
+      <div className="flex space-x-1">
+        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+        <div
+          className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+          style={{ animationDelay: '0.1s' }}
+        ></div>
+        <div
+          className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+          style={{ animationDelay: '0.2s' }}
+        ></div>
       </div>
+      <span className="text-sm text-gray-500">AI is thinking...</span>
     </div>
   </div>
 ));
@@ -145,17 +131,17 @@ const ConnectionStatus = React.memo<{
   isConnected: boolean;
   isReconnecting: boolean;
 }>(({ isConnected, isReconnecting }) => (
-  <div className="flex items-center space-x-2">
+  <div className="chatbot-connection-indicator">
     <div
-      className={`w-3 h-3 rounded-full ${
+      className={`status-dot ${
         isConnected
-          ? 'bg-green-500'
+          ? 'connected'
           : isReconnecting
-            ? 'bg-yellow-500'
-            : 'bg-red-500'
+            ? 'reconnecting'
+            : 'disconnected'
       }`}
     />
-    <span className="text-sm text-gray-600">
+    <span className="chatbot-connection-text">
       {isConnected
         ? 'Connected'
         : isReconnecting
@@ -200,12 +186,6 @@ const ChatbotPage = React.memo(() => {
     if (isSending) return 'Sending...';
     return 'Type your message...';
   }, [isConnected, isSending]);
-
-  // Memoized button text
-  const buttonText = useMemo(
-    () => (isSending ? 'Sending...' : 'Send'),
-    [isSending]
-  );
 
   // Memoized should show welcome
   const shouldShowWelcome = useMemo(
@@ -324,68 +304,67 @@ const ChatbotPage = React.memo(() => {
   );
 
   return (
-    <div className="flex flex-col h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white shadow-sm border-b px-6 py-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-semibold text-gray-900">AI Chatbot</h1>
-            <p className="text-sm text-gray-500">
-              Welcome, {userInfo.username}!
-            </p>
+    <div className="chatbot-bg">
+      <div className="chatbot-container">
+        {/* Header */}
+        <div className="chatbot-header">
+          <div className="chatbot-header-left">
+            <div className="chatbot-icon-bg">
+              <span className="chatbot-icon">🤖</span>
+            </div>
+            <h1 className="chatbot-title">AI Chatbot</h1>
           </div>
-
           <ConnectionStatus
             isConnected={isConnected}
             isReconnecting={isReconnecting}
           />
         </div>
-      </div>
 
-      {/* Error Banner */}
-      {error && (
-        <ErrorBanner
-          error={error}
-          isReconnecting={isReconnecting}
-          onRetry={handleRetry}
-        />
-      )}
-
-      {/* Messages Container */}
-      <div ref={messagesContainerRef} className="flex-1 overflow-hidden p-6">
-        {shouldShowWelcome && <WelcomeMessage />}
-
-        {/* Use virtualized list for better performance with large message counts */}
-        {messages.length > 0 && (
-          <VirtualizedMessageList
-            messages={messages}
-            itemHeight={80}
-            containerHeight={containerHeight}
-            overscan={5}
+        {/* Error Banner */}
+        {error && (
+          <ErrorBanner
+            error={error}
+            isReconnecting={isReconnecting}
+            onRetry={handleRetry}
           />
         )}
 
-        {/* Loading indicator */}
-        {isLoading && <LoadingIndicator />}
-      </div>
+        {/* Messages Container */}
+        <div ref={messagesContainerRef} className="chatbot-messages">
+          {shouldShowWelcome && <WelcomeMessage />}
 
-      {/* Input Form */}
-      <div className="bg-white border-t px-6 py-4">
-        <form onSubmit={handleSubmit} className="flex space-x-4">
+          {/* Use virtualized list for better performance with large message counts */}
+          {messages.length > 0 && (
+            <VirtualizedMessageList
+              messages={messages}
+              itemHeight={80}
+              containerHeight={containerHeight}
+              overscan={5}
+            />
+          )}
+
+          {/* Loading indicator */}
+          {isLoading && <LoadingIndicator />}
+        </div>
+
+        {/* Input Form */}
+        <form onSubmit={handleSubmit} className="chatbot-input-row">
           <input
             type="text"
             value={inputValue}
             onChange={handleInputChange}
             placeholder={placeholderText}
             disabled={!isConnected || isSending}
-            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:text-gray-500"
+            className="chatbot-input"
           />
           <button
             type="submit"
             disabled={isFormDisabled}
-            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+            className="chatbot-send-btn"
           >
-            {buttonText}
+            <span role="img" aria-label="Send">
+              📤
+            </span>
           </button>
         </form>
       </div>

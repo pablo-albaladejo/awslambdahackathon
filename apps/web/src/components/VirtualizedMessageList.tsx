@@ -37,24 +37,10 @@ const VirtualMessageItem = React.memo<{
   return (
     <div style={style} className="message-item">
       <div
-        className={`flex ${message.isUser ? 'justify-end' : 'justify-start'}`}
+        className={`chatbot-message-bubble ${message.isUser ? 'user' : 'bot'}`}
       >
-        <div
-          className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
-            message.isUser
-              ? 'bg-blue-600 text-white'
-              : 'bg-white text-gray-900 border border-gray-200'
-          }`}
-        >
-          <p className="text-sm">{message.text}</p>
-          <p
-            className={`text-xs mt-1 ${
-              message.isUser ? 'text-blue-100' : 'text-gray-500'
-            }`}
-          >
-            {messageTime}
-          </p>
-        </div>
+        <span className="chatbot-message-text">{message.text}</span>
+        <span className="chatbot-message-time">{messageTime}</span>
       </div>
     </div>
   );
