@@ -3,72 +3,26 @@ import {
   WithAuthenticatorProps,
 } from '@aws-amplify/ui-react';
 import '@aws-amplify/ui-react/styles.css';
+import { ErrorInfo, lazy, Suspense, useCallback, useEffect } from 'react';
 import {
-  Component,
-  ErrorInfo,
-  lazy,
-  ReactNode,
-  Suspense,
-  useCallback,
-  useEffect,
-} from 'react';
-import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
+  Navigate,
+  Route,
+  BrowserRouter as Router,
+  Routes,
+  useLocation,
+} from 'react-router-dom';
 
+import { configureAmplify } from './amplify-config';
+import './App.css';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { AwsRumProvider } from './contexts/RumContext';
 import { WebSocketProvider } from './contexts/WebSocketContext';
 import { useCurrentUser } from './hooks/useCurrentUser';
 import { useRumTracking } from './hooks/useRumTracking';
 import Layout from './Layout';
 import ProtectedRoute from './ProtectedRoute';
 
-// Error Boundary component for React errors
-interface ErrorBoundaryProps {
-  children: ReactNode;
-  onError: (error: Error, errorInfo: ErrorInfo) => void;
-}
-
-interface ErrorBoundaryState {
-  hasError: boolean;
-}
-
-class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  constructor(props: ErrorBoundaryProps) {
-    super(props);
-    this.state = { hasError: false };
-  }
-
-  static getDerivedStateFromError(): ErrorBoundaryState {
-    return { hasError: true };
-  }
-
-  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    this.props.onError(error, errorInfo);
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-100">
-          <div className="text-center">
-            <h1 className="text-2xl font-bold text-gray-900 mb-4">
-              Something went wrong
-            </h1>
-            <p className="text-gray-600 mb-4">
-              An unexpected error occurred. Please refresh the page.
-            </p>
-            <button
-              onClick={() => window.location.reload()}
-              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-            >
-              Refresh Page
-            </button>
-          </div>
-        </div>
-      );
-    }
-
-    return this.props.children;
-  }
-}
+configureAmplify();
 
 function App({ signOut }: WithAuthenticatorProps) {
   const { groups, loading } = useCurrentUser();
@@ -196,42 +150,46 @@ function App({ signOut }: WithAuthenticatorProps) {
 
   return (
     <ErrorBoundary onError={handleReactError}>
-      <WebSocketProvider>
-        <Layout signOut={handleSignOut}>
-          <Suspense fallback={<div>Loading...</div>}>
-            <Routes>
-              <Route
-                path="/"
-                element={
-                  loading ? (
-                    <div>Loading...</div>
-                  ) : getUserGroup() === 'Admins' ? (
-                    <Navigate to="/dashboard" />
-                  ) : (
-                    <Navigate to="/chatbot" />
-                  )
-                }
-              />
-              <Route
-                path="/dashboard"
-                element={
-                  <ProtectedRoute requiredGroup="Admins">
-                    <DashboardPage />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/chatbot"
-                element={
-                  <ProtectedRoute requiredGroup="Users">
-                    <ChatbotPage />
-                  </ProtectedRoute>
-                }
-              />
-            </Routes>
-          </Suspense>
-        </Layout>
-      </WebSocketProvider>
+      <AwsRumProvider>
+        <Router>
+          <WebSocketProvider>
+            <Layout signOut={handleSignOut}>
+              <Suspense fallback={<div>Loading...</div>}>
+                <Routes>
+                  <Route
+                    path="/"
+                    element={
+                      loading ? (
+                        <div>Loading...</div>
+                      ) : getUserGroup() === 'Admins' ? (
+                        <Navigate to="/dashboard" />
+                      ) : (
+                        <Navigate to="/chatbot" />
+                      )
+                    }
+                  />
+                  <Route
+                    path="/dashboard"
+                    element={
+                      <ProtectedRoute requiredGroup="Admins">
+                        <DashboardPage />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/chatbot"
+                    element={
+                      <ProtectedRoute requiredGroup="Users">
+                        <ChatbotPage />
+                      </ProtectedRoute>
+                    }
+                  />
+                </Routes>
+              </Suspense>
+            </Layout>
+          </WebSocketProvider>
+        </Router>
+      </AwsRumProvider>
     </ErrorBoundary>
   );
 }

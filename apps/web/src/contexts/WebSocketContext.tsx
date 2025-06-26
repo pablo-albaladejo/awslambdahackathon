@@ -23,6 +23,8 @@ interface WebSocketState {
   isLoading: boolean;
   sessionId?: string;
   sendMessage: (text: string) => Promise<void>;
+  error?: string;
+  isReconnecting: boolean;
 }
 
 const initialState: WebSocketState = {
@@ -31,6 +33,8 @@ const initialState: WebSocketState = {
   isLoading: false,
   sessionId: undefined,
   sendMessage: async () => {},
+  error: undefined,
+  isReconnecting: false,
 };
 
 export const WebSocketContext = createContext<WebSocketState>(initialState);
@@ -51,7 +55,9 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
   const sendMessage = useCallback(
     async (text: string) => {
       if (!ws || ws.readyState !== WebSocket.OPEN) {
-        throw new Error('WebSocket is not connected');
+        const error = 'WebSocket is not connected';
+        setState(prev => ({ ...prev, error }));
+        throw new Error(error);
       }
 
       const message = {
@@ -60,24 +66,51 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
         sessionId: state.sessionId,
       };
 
-      ws.send(JSON.stringify(message));
-      setState(prev => ({
-        ...prev,
-        messages: [
-          ...prev.messages,
-          {
-            id: Date.now().toString(),
-            text,
-            isUser: true,
-            timestamp: new Date(),
-            sessionId: state.sessionId,
-          },
-        ],
-        isLoading: true,
-      }));
+      try {
+        ws.send(JSON.stringify(message));
+        setState(prev => ({
+          ...prev,
+          messages: [
+            ...prev.messages,
+            {
+              id: Date.now().toString(),
+              text,
+              isUser: true,
+              timestamp: new Date(),
+              sessionId: state.sessionId,
+            },
+          ],
+          isLoading: true,
+          error: undefined, // Clear any previous errors
+        }));
+      } catch (error) {
+        const errorMessage = 'Failed to send message';
+        setState(prev => ({ ...prev, error: errorMessage }));
+        throw new Error(errorMessage);
+      }
     },
     [ws, state.sessionId]
   );
+
+  // Error handling utility
+  const handleError = useCallback(
+    (error: string, isReconnecting: boolean = false) => {
+      setState(prev => ({
+        ...prev,
+        error,
+        isReconnecting,
+        isConnected: false,
+      }));
+
+      logger.error('WebSocket error', { error, isReconnecting });
+    },
+    []
+  );
+
+  // Clear error utility
+  const clearError = useCallback(() => {
+    setState(prev => ({ ...prev, error: undefined }));
+  }, []);
 
   useEffect(() => {
     let reconnectTimeout: ReturnType<typeof setTimeout>;
@@ -86,6 +119,8 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
 
     const connect = async () => {
       try {
+        clearError();
+
         const session = await fetchAuthSession();
         const token = session.tokens?.accessToken.toString();
 
@@ -108,6 +143,11 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
             'WebSocket connected successfully, sending authentication'
           );
           setWs(newWs);
+          setState(prev => ({
+            ...prev,
+            isReconnecting: false,
+            error: undefined,
+          }));
 
           // Send authentication token as first message
           const authMessage = {
@@ -146,23 +186,16 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
               1000 * Math.pow(2, reconnectAttempts),
               30000
             );
+            setState(prev => ({ ...prev, isReconnecting: true }));
+
             reconnectTimeout = setTimeout(() => {
               reconnectAttempts++;
               connect();
             }, delay);
           } else {
-            setState(prev => ({
-              ...prev,
-              messages: [
-                ...prev.messages,
-                {
-                  id: Date.now().toString(),
-                  text: 'Failed to reconnect after multiple attempts. Please refresh the page.',
-                  isUser: false,
-                  timestamp: new Date(),
-                },
-              ],
-            }));
+            handleError(
+              'Failed to reconnect after multiple attempts. Please refresh the page.'
+            );
           }
         };
 
@@ -172,6 +205,8 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
             readyState: newWs?.readyState,
             url: newWs?.url,
           });
+
+          handleError('Connection error occurred');
         };
 
         newWs.onmessage = event => {
@@ -185,6 +220,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
                 setState(prev => ({
                   ...prev,
                   isConnected: true,
+                  error: undefined,
                   messages: [
                     ...prev.messages,
                     {
@@ -197,19 +233,9 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
                 }));
                 logger.info('WebSocket authentication successful');
               } else {
-                logger.error('WebSocket authentication failed', { data });
-                setState(prev => ({
-                  ...prev,
-                  messages: [
-                    ...prev.messages,
-                    {
-                      id: Date.now().toString(),
-                      text: 'Authentication failed. Please log in again.',
-                      isUser: false,
-                      timestamp: new Date(),
-                    },
-                  ],
-                }));
+                const errorMessage =
+                  data.error || 'Authentication failed. Please log in again.';
+                handleError(errorMessage);
                 newWs.close();
               }
               return;
@@ -217,18 +243,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
 
             // Handle error messages
             if (data.type === 'error') {
-              setState(prev => ({
-                ...prev,
-                messages: [
-                  ...prev.messages,
-                  {
-                    id: Date.now().toString(),
-                    text: `Error: ${data.error}`,
-                    isUser: false,
-                    timestamp: new Date(),
-                  },
-                ],
-              }));
+              handleError(`Server error: ${data.error}`);
               return;
             }
 
@@ -236,6 +251,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
             setState(prev => ({
               ...prev,
               isLoading: false,
+              error: undefined, // Clear errors on successful message
               sessionId: data.sessionId || prev.sessionId,
               messages: [
                 ...prev.messages,
@@ -253,10 +269,16 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
               error,
               data: event.data,
             });
+            handleError('Failed to parse server message');
           }
         };
       } catch (error) {
-        logger.error('Error connecting to WebSocket', { error });
+        const errorMessage =
+          error instanceof Error
+            ? error.message
+            : 'Could not connect to chatbot';
+        handleError(errorMessage);
+
         setState(prev => ({
           ...prev,
           isConnected: false,
@@ -264,7 +286,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
             ...prev.messages,
             {
               id: Date.now().toString(),
-              text: 'Error: Could not connect to chatbot',
+              text: `Error: ${errorMessage}`,
               isUser: false,
               timestamp: new Date(),
             },
@@ -283,7 +305,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
         ws.close();
       }
     };
-  }, [websocketBaseUrl]);
+  }, [websocketBaseUrl, handleError, clearError]);
 
   // Update state with the stable sendMessage function
   useEffect(() => {
