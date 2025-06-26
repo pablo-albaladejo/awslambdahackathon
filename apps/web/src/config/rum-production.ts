@@ -1,4 +1,21 @@
+import { logger } from '@awslambdahackathon/utils/frontend';
 import { AwsRum } from 'aws-rum-web';
+
+// Type definitions for Performance API
+interface PerformanceMemory {
+  usedJSHeapSize: number;
+  totalJSHeapSize: number;
+  jsHeapSizeLimit: number;
+}
+
+interface PerformanceEventTiming extends PerformanceEntry {
+  processingStart: number;
+}
+
+interface LayoutShift extends PerformanceEntry {
+  value: number;
+  hadRecentInput: boolean;
+}
 
 // Production RUM configuration
 export const PRODUCTION_RUM_CONFIG = {
@@ -125,13 +142,13 @@ export const initializeProductionRUM = async (): Promise<AwsRum | null> => {
   try {
     // Check if RUM is already initialized
     if (window.AWS_RUM) {
-      console.log('RUM already initialized');
+      logger.info('RUM already initialized');
       return window.AWS_RUM;
     }
 
     // Validate required configuration
     if (!PRODUCTION_RUM_CONFIG.applicationId) {
-      console.warn('AWS RUM Application ID not configured');
+      logger.warn('AWS RUM Application ID not configured');
       return null;
     }
 
@@ -163,10 +180,10 @@ export const initializeProductionRUM = async (): Promise<AwsRum | null> => {
     // Configure error tracking
     configureErrorTracking(rum);
 
-    console.log('Production RUM initialized successfully');
+    logger.info('Production RUM initialized successfully');
     return rum;
   } catch (error) {
-    console.error('Failed to initialize production RUM:', error);
+    logger.error('Failed to initialize production RUM:', error);
     return null;
   }
 };
@@ -229,7 +246,7 @@ const configurePerformanceMonitoring = (rum: AwsRum) => {
     try {
       lcpObserver.observe({ entryTypes: ['largest-contentful-paint'] });
     } catch (e) {
-      console.warn('LCP observer not supported');
+      logger.warn('LCP observer not supported');
     }
 
     // First Input Delay
@@ -237,7 +254,7 @@ const configurePerformanceMonitoring = (rum: AwsRum) => {
       const entries = list.getEntries();
 
       entries.forEach(entry => {
-        const firstInputEntry = entry as any;
+        const firstInputEntry = entry as PerformanceEventTiming;
         rum.recordEvent('first_input_delay', {
           value: firstInputEntry.processingStart - firstInputEntry.startTime,
           timestamp: new Date().toISOString(),
@@ -248,7 +265,7 @@ const configurePerformanceMonitoring = (rum: AwsRum) => {
     try {
       fidObserver.observe({ entryTypes: ['first-input'] });
     } catch (e) {
-      console.warn('FID observer not supported');
+      logger.warn('FID observer not supported');
     }
 
     // Cumulative Layout Shift
@@ -256,7 +273,7 @@ const configurePerformanceMonitoring = (rum: AwsRum) => {
       let clsValue = 0;
 
       for (const entry of list.getEntries()) {
-        const layoutShiftEntry = entry as any;
+        const layoutShiftEntry = entry as LayoutShift;
         if (!layoutShiftEntry.hadRecentInput) {
           clsValue += layoutShiftEntry.value;
         }
@@ -271,14 +288,16 @@ const configurePerformanceMonitoring = (rum: AwsRum) => {
     try {
       clsObserver.observe({ entryTypes: ['layout-shift'] });
     } catch (e) {
-      console.warn('CLS observer not supported');
+      logger.warn('CLS observer not supported');
     }
   }
 
   // Monitor memory usage
   if ('memory' in performance) {
     setInterval(() => {
-      const memory = (performance as any).memory;
+      const memory = (
+        performance as Performance & { memory: PerformanceMemory }
+      ).memory;
       const memoryUsage = {
         used: memory.usedJSHeapSize / 1024 / 1024, // MB
         total: memory.totalJSHeapSize / 1024 / 1024, // MB
@@ -324,7 +343,9 @@ const configureErrorTracking = (rum: AwsRum) => {
   });
 
   // Track console errors
+  // eslint-disable-next-line no-console
   const originalConsoleError = console.error;
+  // eslint-disable-next-line no-console
   console.error = (...args) => {
     rum.recordEvent('console_error', {
       message: args.join(' '),
@@ -341,7 +362,7 @@ const configureErrorTracking = (rum: AwsRum) => {
 export const recordCustomMetric = (
   metricName: string,
   value: number,
-  metadata?: Record<string, any>
+  metadata?: Record<string, unknown>
 ) => {
   if (window.AWS_RUM) {
     window.AWS_RUM.recordEvent(metricName, {
@@ -354,7 +375,7 @@ export const recordCustomMetric = (
 
 export const recordUserAction = (
   action: string,
-  metadata?: Record<string, any>
+  metadata?: Record<string, unknown>
 ) => {
   if (window.AWS_RUM) {
     window.AWS_RUM.recordEvent('user_action', {

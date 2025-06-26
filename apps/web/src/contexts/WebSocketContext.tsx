@@ -208,17 +208,22 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
         }
       }, []);
 
-      const handleWebSocketError = useCallback((error: Event) => {
-        logger.error('WebSocket error', {
-          error,
-          readyState: newWs?.readyState,
-          url: newWs?.url,
+      const handleWebSocketError = useCallback((event: Event) => {
+        const error = event as ErrorEvent;
+        logger.error('WebSocket error:', {
+          message: error.message,
+          type: error.type,
+          error: error.error,
         });
 
-        handleError('Connection error occurred');
+        setState(prev => ({
+          ...prev,
+          isConnected: false,
+          error: `WebSocket error: ${error.message}`,
+        }));
       }, []);
 
-      const handleMessage = useCallback((event: MessageEvent) => {
+      const handleMessage = useCallback((event: MessageEvent<string>) => {
         try {
           const data = JSON.parse(event.data);
           logger.info('Message received', { data });
@@ -297,7 +302,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
       };
 
       // Store cleanup function on the WebSocket instance
-      (newWs as any).cleanup = cleanup;
+      (newWs as WebSocket & { cleanup: () => void }).cleanup = cleanup;
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : 'Could not connect to chatbot';
@@ -336,8 +341,8 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
       // Close WebSocket connection and cleanup listeners
       if (ws) {
         // Call cleanup function if it exists
-        if ((ws as any).cleanup) {
-          (ws as any).cleanup();
+        if ((ws as WebSocket & { cleanup?: () => void }).cleanup) {
+          (ws as WebSocket & { cleanup: () => void }).cleanup();
         }
 
         if (ws.readyState === WebSocket.OPEN) {

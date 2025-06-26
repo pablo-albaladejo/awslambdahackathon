@@ -1,3 +1,4 @@
+import { logger } from '@awslambdahackathon/utils/frontend';
 import React, {
   useCallback,
   useEffect,
@@ -72,11 +73,7 @@ export const VirtualizedMessageList: React.FC<VirtualizedMessageListProps> = ({
   const [containerHeightState, setContainerHeight] = useState(containerHeight);
 
   // Performance monitoring
-  const { getPerformanceStats } = usePerformance({
-    componentName: 'VirtualizedMessageList',
-    logRenderTime: true,
-    threshold: 16,
-  });
+  const { getPerformanceStats } = usePerformance('VirtualizedMessageList');
 
   // Calculate virtual items
   const virtualItems = useMemo(() => {
@@ -151,7 +148,7 @@ export const VirtualizedMessageList: React.FC<VirtualizedMessageListProps> = ({
     const interval = setInterval(() => {
       const stats = getPerformanceStats();
       if (stats && stats.slowRenderPercentage > 15) {
-        console.warn('VirtualizedMessageList performance issues detected', {
+        logger.warn('VirtualizedMessageList performance issues detected', {
           totalMessages: messages.length,
           visibleItems: virtualItems.length,
           slowRenderPercentage: stats.slowRenderPercentage,

@@ -1,153 +1,257 @@
 import { logger } from '@awslambdahackathon/utils/frontend';
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
-interface PerformanceMetrics {
-  renderTime: number;
-  memoryUsage?: {
-    usedJSHeapSize: number;
-    totalJSHeapSize: number;
-    jsHeapSizeLimit: number;
-  };
+// Type definitions
+interface PerformanceMetric {
+  name: string;
+  value: number;
   timestamp: number;
+  metadata?: Record<string, unknown>;
 }
 
-interface UsePerformanceOptions {
-  componentName: string;
-  logRenderTime?: boolean;
-  logMemoryUsage?: boolean;
-  threshold?: number; // ms threshold for slow renders
+interface PerformanceStats {
+  averageRenderTime: number;
+  slowRenderPercentage: number;
+  totalRenders: number;
+  slowRenderThreshold: number;
 }
 
-export const usePerformance = (options: UsePerformanceOptions) => {
-  const {
-    componentName,
-    logRenderTime = true,
-    logMemoryUsage = false,
-    threshold = 16, // 16ms = 60fps
-  } = options;
+interface PerformanceObserverEntry {
+  name: string;
+  startTime: number;
+  duration: number;
+  entryType: string;
+}
+
+interface MemoryInfo {
+  usedJSHeapSize: number;
+  totalJSHeapSize: number;
+  jsHeapSizeLimit: number;
+}
+
+interface PerformanceWithMemory extends Performance {
+  memory: MemoryInfo;
+}
+
+// Performance tracking state
+const performanceMetrics: PerformanceMetric[] = [];
+const renderTimes: number[] = [];
+
+// Performance monitoring hook
+export const usePerformance = (componentName: string) => {
+  const [stats, setStats] = useState<PerformanceStats>({
+    averageRenderTime: 0,
+    slowRenderPercentage: 0,
+    totalRenders: 0,
+    slowRenderThreshold: 16, // 60fps threshold
+  });
 
   const renderStartTime = useRef<number>(0);
-  const renderCount = useRef<number>(0);
-  const metricsRef = useRef<PerformanceMetrics[]>([]);
+  const observerRef = useRef<PerformanceObserver | null>(null);
 
-  // Track render start
-  useEffect(() => {
-    renderStartTime.current = performance.now();
-    renderCount.current += 1;
-  });
-
-  // Track render end and performance
-  useEffect(() => {
-    const renderTime = performance.now() - renderStartTime.current;
-    const timestamp = Date.now();
-
-    const metrics: PerformanceMetrics = {
-      renderTime,
-      timestamp,
-    };
-
-    // Get memory usage if available
-    if (logMemoryUsage && 'memory' in performance) {
-      const memory = (performance as any).memory;
-      metrics.memoryUsage = {
-        usedJSHeapSize: memory.usedJSHeapSize,
-        totalJSHeapSize: memory.totalJSHeapSize,
-        jsHeapSizeLimit: memory.jsHeapSizeLimit,
+  // Record a performance metric
+  const recordMetric = useCallback(
+    (name: string, value: number, metadata?: Record<string, unknown>) => {
+      const metric: PerformanceMetric = {
+        name,
+        value,
+        timestamp: Date.now(),
+        metadata,
       };
-    }
 
-    metricsRef.current.push(metrics);
+      performanceMetrics.push(metric);
 
-    // Log performance metrics
-    if (logRenderTime) {
-      const isSlow = renderTime > threshold;
-      const logLevel = isSlow ? 'warn' : 'info';
+      // Keep only last 1000 metrics
+      if (performanceMetrics.length > 1000) {
+        performanceMetrics.shift();
+      }
 
-      logger[logLevel](`${componentName} render performance`, {
-        renderTime: `${renderTime.toFixed(2)}ms`,
-        renderCount: renderCount.current,
-        isSlow,
-        threshold: `${threshold}ms`,
-        ...(logMemoryUsage &&
-          metrics.memoryUsage && {
-            memoryUsage: {
-              used: `${(metrics.memoryUsage.usedJSHeapSize / 1024 / 1024).toFixed(2)}MB`,
-              total: `${(metrics.memoryUsage.totalJSHeapSize / 1024 / 1024).toFixed(2)}MB`,
-              limit: `${(metrics.memoryUsage.jsHeapSizeLimit / 1024 / 1024).toFixed(2)}MB`,
-            },
-          }),
+      logger.debug('Performance metric recorded:', metric);
+    },
+    []
+  );
+
+  // Record render time
+  const recordRenderTime = useCallback(
+    (renderTime: number) => {
+      renderTimes.push(renderTime);
+
+      // Keep only last 100 render times
+      if (renderTimes.length > 100) {
+        renderTimes.shift();
+      }
+
+      // Update stats
+      const averageRenderTime =
+        renderTimes.reduce((a, b) => a + b, 0) / renderTimes.length;
+      const slowRenders = renderTimes.filter(
+        time => time > stats.slowRenderThreshold
+      ).length;
+      const slowRenderPercentage = (slowRenders / renderTimes.length) * 100;
+
+      setStats({
+        averageRenderTime,
+        slowRenderPercentage,
+        totalRenders: renderTimes.length,
+        slowRenderThreshold: stats.slowRenderThreshold,
       });
-    }
 
-    // Keep only last 100 metrics to prevent memory leaks
-    if (metricsRef.current.length > 100) {
-      metricsRef.current = metricsRef.current.slice(-100);
-    }
-  });
+      // Log slow renders
+      if (renderTime > stats.slowRenderThreshold) {
+        logger.warn('Slow render detected:', {
+          component: componentName,
+          renderTime,
+          threshold: stats.slowRenderThreshold,
+        });
+      }
 
-  // Get performance statistics
-  const getPerformanceStats = useCallback(() => {
-    const metrics = metricsRef.current;
-    if (metrics.length === 0) return null;
+      recordMetric('component_render_time', renderTime, {
+        component: componentName,
+        threshold: stats.slowRenderThreshold,
+      });
+    },
+    [componentName, recordMetric, stats.slowRenderThreshold]
+  );
 
-    const renderTimes = metrics.map(m => m.renderTime);
-    const avgRenderTime =
-      renderTimes.reduce((a, b) => a + b, 0) / renderTimes.length;
-    const maxRenderTime = Math.max(...renderTimes);
-    const minRenderTime = Math.min(...renderTimes);
-    const slowRenders = renderTimes.filter(time => time > threshold).length;
-
-    return {
-      totalRenders: metrics.length,
-      averageRenderTime: avgRenderTime,
-      maxRenderTime,
-      minRenderTime,
-      slowRenders,
-      slowRenderPercentage: (slowRenders / metrics.length) * 100,
-    };
-  }, [threshold]);
-
-  // Clear metrics
-  const clearMetrics = useCallback(() => {
-    metricsRef.current = [];
-    renderCount.current = 0;
+  // Start render timing
+  const startRenderTimer = useCallback(() => {
+    renderStartTime.current = performance.now();
   }, []);
 
-  // Debounce utility for expensive operations
-  const debounce = useCallback(
-    <T extends (...args: any[]) => any>(func: T, delay: number): T => {
-      let timeoutId: ReturnType<typeof setTimeout>;
+  // End render timing
+  const endRenderTimer = useCallback(() => {
+    const renderTime = performance.now() - renderStartTime.current;
+    recordRenderTime(renderTime);
+  }, [recordRenderTime]);
 
-      return ((...args: Parameters<T>) => {
-        clearTimeout(timeoutId);
-        timeoutId = setTimeout(() => func(...args), delay);
-      }) as T;
-    },
-    []
-  );
+  // Get performance statistics
+  const getPerformanceStats = useCallback((): PerformanceStats => {
+    return stats;
+  }, [stats]);
 
-  // Throttle utility for frequent operations
-  const throttle = useCallback(
-    <T extends (...args: any[]) => any>(func: T, delay: number): T => {
-      let lastCall = 0;
+  // Monitor memory usage
+  const monitorMemory = useCallback(() => {
+    if ('memory' in performance) {
+      const memory = (performance as PerformanceWithMemory).memory;
+      const memoryUsage = {
+        used: memory.usedJSHeapSize / 1024 / 1024, // MB
+        total: memory.totalJSHeapSize / 1024 / 1024, // MB
+        limit: memory.jsHeapSizeLimit / 1024 / 1024, // MB
+      };
 
-      return ((...args: Parameters<T>) => {
-        const now = Date.now();
-        if (now - lastCall >= delay) {
-          lastCall = now;
-          func(...args);
-        }
-      }) as T;
-    },
-    []
-  );
+      recordMetric('memory_usage', memoryUsage.used, {
+        total: memoryUsage.total,
+        limit: memoryUsage.limit,
+        component: componentName,
+      });
+
+      // Warn if memory usage is high
+      if (memoryUsage.used > memoryUsage.limit * 0.8) {
+        logger.warn('High memory usage detected:', {
+          component: componentName,
+          used: memoryUsage.used,
+          limit: memoryUsage.limit,
+        });
+      }
+    }
+  }, [componentName, recordMetric]);
+
+  // Monitor long tasks
+  const monitorLongTasks = useCallback(() => {
+    if ('PerformanceObserver' in window) {
+      try {
+        observerRef.current = new PerformanceObserver(list => {
+          const entries = list.getEntries();
+
+          entries.forEach(entry => {
+            const longTaskEntry = entry as PerformanceObserverEntry;
+            if (longTaskEntry.duration > 50) {
+              // 50ms threshold
+              logger.warn('Long task detected:', {
+                component: componentName,
+                duration: longTaskEntry.duration,
+                name: longTaskEntry.name,
+              });
+
+              recordMetric('long_task', longTaskEntry.duration, {
+                name: longTaskEntry.name,
+                component: componentName,
+              });
+            }
+          });
+        });
+
+        observerRef.current.observe({ entryTypes: ['longtask'] });
+      } catch (error) {
+        logger.warn('Long task observer not supported');
+      }
+    }
+  }, [componentName, recordMetric]);
+
+  // Monitor layout shifts
+  const monitorLayoutShifts = useCallback(() => {
+    if ('PerformanceObserver' in window) {
+      try {
+        const layoutShiftObserver = new PerformanceObserver(list => {
+          let clsValue = 0;
+
+          for (const entry of list.getEntries()) {
+            const layoutShiftEntry =
+              entry as unknown as PerformanceObserverEntry & {
+                value: number;
+                hadRecentInput: boolean;
+              };
+            if (!layoutShiftEntry.hadRecentInput) {
+              clsValue += layoutShiftEntry.value;
+            }
+          }
+
+          if (clsValue > 0.1) {
+            // 0.1 threshold
+            logger.warn('Layout shift detected:', {
+              component: componentName,
+              value: clsValue,
+            });
+
+            recordMetric('layout_shift', clsValue, {
+              component: componentName,
+            });
+          }
+        });
+
+        layoutShiftObserver.observe({ entryTypes: ['layout-shift'] });
+      } catch (error) {
+        logger.warn('Layout shift observer not supported');
+      }
+    }
+  }, [componentName, recordMetric]);
+
+  // Initialize performance monitoring
+  useEffect(() => {
+    // Monitor memory usage every 30 seconds
+    const memoryInterval = setInterval(monitorMemory, 30000);
+
+    // Monitor long tasks
+    monitorLongTasks();
+
+    // Monitor layout shifts
+    monitorLayoutShifts();
+
+    return () => {
+      clearInterval(memoryInterval);
+
+      if (observerRef.current) {
+        observerRef.current.disconnect();
+      }
+    };
+  }, [monitorMemory, monitorLongTasks, monitorLayoutShifts]);
 
   return {
+    startRenderTimer,
+    endRenderTimer,
+    recordMetric,
     getPerformanceStats,
-    clearMetrics,
-    debounce,
-    throttle,
-    renderCount: renderCount.current,
+    stats,
   };
 };
 
@@ -177,7 +281,7 @@ export const useMemoryMonitor = (componentName: string, interval = 5000) => {
   useEffect(() => {
     if ('memory' in performance) {
       intervalRef.current = setInterval(() => {
-        const memory = (performance as any).memory;
+        const memory = (performance as PerformanceWithMemory).memory;
         const usedMB = memory.usedJSHeapSize / 1024 / 1024;
         const totalMB = memory.totalJSHeapSize / 1024 / 1024;
         const limitMB = memory.jsHeapSizeLimit / 1024 / 1024;

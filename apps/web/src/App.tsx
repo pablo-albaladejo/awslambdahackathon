@@ -23,23 +23,23 @@ import {
 import { configureAmplify } from './amplify-config';
 import './App.css';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { AwsRumProvider } from './contexts/RumContext';
+import { RumProvider, useRumTracking } from './contexts/RumContext';
 import { WebSocketProvider } from './contexts/WebSocketContext';
 import { useCurrentUser } from './hooks/useCurrentUser';
-import { useRumTracking } from './hooks/useRumTracking';
 import Layout from './Layout';
 import ProtectedRoute from './ProtectedRoute';
 
+// Configure Amplify
 configureAmplify();
 
 // Lazy load components with better error handling
-const ChatbotPage = lazy(() =>
+const ChatbotPageComponent = lazy(() =>
   import('./ChatbotPage').then(module => ({
     default: module.default,
   }))
 );
 
-const DashboardPage = lazy(() =>
+const DashboardPageComponent = lazy(() =>
   import('./DashboardPage').then(module => ({
     default: module.default,
   }))
@@ -59,7 +59,7 @@ LoadingSpinner.displayName = 'LoadingSpinner';
 
 function App({ signOut }: WithAuthenticatorProps) {
   const { groups, loading } = useCurrentUser();
-  const { trackPageView, trackError, trackEvent } = useRumTracking();
+  const { recordAction, recordError } = useRumTracking();
   const location = useLocation();
   const errorListenersRef = useRef<{
     error: ((event: ErrorEvent) => void) | null;
@@ -88,9 +88,9 @@ function App({ signOut }: WithAuthenticatorProps) {
     (error: Error, errorInfo: ErrorInfo) => {
       const enhancedError = new Error(error.message);
       enhancedError.stack = `${error.stack}\n\nComponent Stack:\n${errorInfo.componentStack}`;
-      trackError(enhancedError, 'React Component Error');
+      recordError(enhancedError, { context: 'React Component Error' });
     },
-    [trackError]
+    [recordError]
   );
 
   // Memoized error event handlers
@@ -98,9 +98,9 @@ function App({ signOut }: WithAuthenticatorProps) {
     (event: ErrorEvent) => {
       const error = new Error(event.message);
       error.stack = `${event.filename}:${event.lineno}:${event.colno}`;
-      trackError(error, 'Global JavaScript Error');
+      recordError(error, { context: 'Global JavaScript Error' });
     },
-    [trackError]
+    [recordError]
   );
 
   const handleUnhandledRejection = useCallback(
@@ -109,9 +109,9 @@ function App({ signOut }: WithAuthenticatorProps) {
         event.reason instanceof Error
           ? event.reason
           : new Error(String(event.reason));
-      trackError(error, 'Unhandled Promise Rejection');
+      recordError(error, { context: 'Unhandled Promise Rejection' });
     },
-    [trackError]
+    [recordError]
   );
 
   // Memoized click handler
@@ -162,16 +162,16 @@ function App({ signOut }: WithAuthenticatorProps) {
         }
 
         // Track the event
-        trackEvent(eventName, eventData);
+        recordAction(eventName, eventData);
       }
     },
-    [trackEvent, location.pathname]
+    [recordAction, location.pathname]
   );
 
   // Effect for page view tracking
   useEffect(() => {
-    trackPageView(location.pathname);
-  }, [location.pathname, trackPageView]);
+    recordAction('page_view', { page: location.pathname });
+  }, [location.pathname, recordAction]);
 
   // Effect for global error listeners with proper cleanup
   useEffect(() => {
@@ -227,7 +227,7 @@ function App({ signOut }: WithAuthenticatorProps) {
             path="/dashboard"
             element={
               <ProtectedRoute requiredGroup="Admins">
-                <DashboardPage />
+                <DashboardPageComponent />
               </ProtectedRoute>
             }
           />
@@ -243,7 +243,7 @@ function App({ signOut }: WithAuthenticatorProps) {
           path="/chatbot"
           element={
             <ProtectedRoute requiredGroup="Users">
-              <ChatbotPage />
+              <ChatbotPageComponent />
             </ProtectedRoute>
           }
         />
@@ -254,7 +254,7 @@ function App({ signOut }: WithAuthenticatorProps) {
 
   return (
     <ErrorBoundary onError={handleReactError}>
-      <AwsRumProvider>
+      <RumProvider>
         <Router>
           <WebSocketProvider>
             <Layout signOut={handleSignOut}>
@@ -264,7 +264,7 @@ function App({ signOut }: WithAuthenticatorProps) {
             </Layout>
           </WebSocketProvider>
         </Router>
-      </AwsRumProvider>
+      </RumProvider>
     </ErrorBoundary>
   );
 }

@@ -4,7 +4,7 @@ import { BrowserRouter } from 'react-router-dom';
 
 import { configureAmplify } from './amplify-config';
 import App from './App.tsx';
-import { AwsRumProvider } from './contexts/RumContext';
+import { RumProvider } from './contexts/RumContext';
 import './index.css';
 
 // Initialize Amplify configuration
@@ -22,6 +22,6 @@ const AppTree = (
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    {isLocal ? AppTree : <AwsRumProvider>{AppTree}</AwsRumProvider>}
+    {isLocal ? AppTree : <RumProvider>{AppTree}</RumProvider>}
   </React.StrictMode>
 );

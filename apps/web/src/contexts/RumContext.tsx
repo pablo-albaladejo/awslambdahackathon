@@ -1,4 +1,5 @@
 import { logger } from '@awslambdahackathon/utils/frontend';
+import { AwsRum } from 'aws-rum-web';
 import React, {
   createContext,
   ReactNode,
@@ -13,152 +14,190 @@ import {
   recordUserAction,
 } from '../config/rum-production';
 
+// Type definitions
 interface RumContextType {
-  trackEvent: (eventName: string, metadata?: Record<string, any>) => void;
-  trackPageView: (pageName: string) => void;
-  trackError: (error: Error, context?: string) => void;
-  trackPerformance: (
+  isInitialized: boolean;
+  recordMetric: (
     metricName: string,
     value: number,
-    metadata?: Record<string, any>
+    metadata?: Record<string, unknown>
   ) => void;
-  trackUserAction: (action: string, metadata?: Record<string, any>) => void;
-  isRumEnabled: boolean;
-  isProduction: boolean;
+  recordAction: (action: string, metadata?: Record<string, unknown>) => void;
+  recordError: (error: Error, context?: Record<string, unknown>) => void;
+  recordPerformance: (componentName: string, renderTime: number) => void;
 }
-
-const RumContext = createContext<RumContextType | undefined>(undefined);
 
 interface RumProviderProps {
   children: ReactNode;
+  userId?: string;
+  sessionId?: string;
 }
 
-export const AwsRumProvider: React.FC<RumProviderProps> = ({ children }) => {
-  const [isRumEnabled, setIsRumEnabled] = useState(false);
-  const [isProduction, setIsProduction] = useState(false);
+interface PerformanceData {
+  componentName: string;
+  renderTime: number;
+  timestamp: number;
+}
+
+interface ErrorData {
+  message: string;
+  stack?: string;
+  context?: Record<string, unknown>;
+  timestamp: number;
+}
+
+// Create context
+const RumContext = createContext<RumContextType | undefined>(undefined);
+
+// Performance tracking
+const performanceData: PerformanceData[] = [];
+const errorData: ErrorData[] = [];
+
+// RUM Provider component
+export const RumProvider: React.FC<RumProviderProps> = ({
+  children,
+  userId,
+  sessionId,
+}) => {
+  const [isInitialized, setIsInitialized] = useState(false);
 
   useEffect(() => {
     const initializeRUM = async () => {
       try {
-        // Check if we're in production
-        const isProd = process.env.NODE_ENV === 'production';
-        setIsProduction(isProd);
+        const rum = await initializeProductionRUM();
 
-        if (isProd) {
-          // Initialize production RUM
-          const rum = await initializeProductionRUM();
-          if (rum) {
-            setIsRumEnabled(true);
-            logger.info('Production RUM initialized successfully');
-          } else {
-            logger.warn('Failed to initialize production RUM');
+        if (rum) {
+          // Note: setUserId and setSessionId are not available in the current AwsRum API
+          // User context can be set through recordEvent with user metadata
+          if (userId || sessionId) {
+            rum.recordEvent('user_context', {
+              userId,
+              sessionId,
+              timestamp: new Date().toISOString(),
+            });
           }
+
+          setIsInitialized(true);
+          logger.info('RUM context initialized successfully');
         } else {
-          // Development mode - use console logging
-          setIsRumEnabled(false);
-          logger.info('RUM disabled in development mode');
+          logger.warn(
+            'RUM initialization failed, continuing without monitoring'
+          );
         }
       } catch (error) {
-        logger.error('Error initializing RUM:', error);
-        setIsRumEnabled(false);
+        logger.error('Error initializing RUM context:', error);
       }
     };
 
     initializeRUM();
-  }, []);
+  }, [userId, sessionId]);
 
-  const trackEvent = (eventName: string, metadata?: Record<string, any>) => {
+  // Record custom metric
+  const recordMetric = (
+    metricName: string,
+    value: number,
+    metadata?: Record<string, unknown>
+  ) => {
     try {
-      if (isRumEnabled && window.AWS_RUM) {
-        window.AWS_RUM.recordEvent(eventName, {
-          timestamp: new Date().toISOString(),
-          ...metadata,
-        });
-      } else {
-        // Development logging
-        logger.info(`[RUM Event] ${eventName}`, metadata);
-      }
+      recordCustomMetric(metricName, value, metadata);
+
+      // Store locally for debugging
+      logger.debug('Metric recorded:', { metricName, value, metadata });
     } catch (error) {
-      logger.error('Error tracking event:', error);
+      logger.error('Failed to record metric:', error);
     }
   };
 
-  const trackPageView = (pageName: string) => {
+  // Record user action
+  const recordAction = (action: string, metadata?: Record<string, unknown>) => {
     try {
-      if (isRumEnabled && window.AWS_RUM) {
-        window.AWS_RUM.recordEvent('page_view', {
-          pageName,
-          timestamp: new Date().toISOString(),
-          url: window.location.href,
-          userAgent: navigator.userAgent,
-        });
-      } else {
-        // Development logging
-        logger.info(`[RUM Page View] ${pageName}`);
-      }
+      recordUserAction(action, metadata);
+
+      // Store locally for debugging
+      logger.debug('Action recorded:', { action, metadata });
     } catch (error) {
-      logger.error('Error tracking page view:', error);
+      logger.error('Failed to record action:', error);
     }
   };
 
-  const trackError = (error: Error, context?: string) => {
+  // Record error
+  const recordError = (error: Error, context?: Record<string, unknown>) => {
     try {
-      if (isRumEnabled && window.AWS_RUM) {
+      const errorInfo: ErrorData = {
+        message: error.message,
+        stack: error.stack,
+        context,
+        timestamp: Date.now(),
+      };
+
+      // Store error locally
+      errorData.push(errorInfo);
+
+      // Keep only last 100 errors
+      if (errorData.length > 100) {
+        errorData.shift();
+      }
+
+      // Send to RUM
+      if (window.AWS_RUM) {
         window.AWS_RUM.recordEvent('application_error', {
           message: error.message,
           stack: error.stack,
           context,
           timestamp: new Date().toISOString(),
-          url: window.location.href,
-          userAgent: navigator.userAgent,
         });
-      } else {
-        // Development logging
-        logger.error(`[RUM Error] ${context || 'Application Error'}:`, error);
       }
-    } catch (trackingError) {
-      logger.error('Error tracking error:', trackingError);
+
+      logger.error('Error recorded:', errorInfo);
+    } catch (recordError) {
+      logger.error('Failed to record error:', recordError);
     }
   };
 
-  const trackPerformance = (
-    metricName: string,
-    value: number,
-    metadata?: Record<string, any>
-  ) => {
+  // Record performance data
+  const recordPerformance = (componentName: string, renderTime: number) => {
     try {
-      if (isRumEnabled) {
-        recordCustomMetric(metricName, value, metadata);
-      } else {
-        // Development logging
-        logger.info(`[RUM Performance] ${metricName}: ${value}ms`, metadata);
-      }
-    } catch (error) {
-      logger.error('Error tracking performance:', error);
-    }
-  };
+      const perfData: PerformanceData = {
+        componentName,
+        renderTime,
+        timestamp: Date.now(),
+      };
 
-  const trackUserAction = (action: string, metadata?: Record<string, any>) => {
-    try {
-      if (isRumEnabled) {
-        recordUserAction(action, metadata);
-      } else {
-        // Development logging
-        logger.info(`[RUM User Action] ${action}`, metadata);
+      // Store performance data locally
+      performanceData.push(perfData);
+
+      // Keep only last 100 performance records
+      if (performanceData.length > 100) {
+        performanceData.shift();
       }
+
+      // Send to RUM
+      recordCustomMetric('component_render_time', renderTime, {
+        component: componentName,
+      });
+
+      // Log slow renders
+      if (renderTime > 16) {
+        // 60fps threshold
+        logger.warn('Slow component render detected:', {
+          component: componentName,
+          renderTime,
+          threshold: 16,
+        });
+      }
+
+      logger.debug('Performance recorded:', perfData);
     } catch (error) {
-      logger.error('Error tracking user action:', error);
+      logger.error('Failed to record performance:', error);
     }
   };
 
   const contextValue: RumContextType = {
-    trackEvent,
-    trackPageView,
-    trackError,
-    trackPerformance,
-    trackUserAction,
-    isRumEnabled,
-    isProduction,
+    isInitialized,
+    recordMetric,
+    recordAction,
+    recordError,
+    recordPerformance,
   };
 
   return (
@@ -166,17 +205,20 @@ export const AwsRumProvider: React.FC<RumProviderProps> = ({ children }) => {
   );
 };
 
+// Custom hook to use RUM context
 export const useRumTracking = (): RumContextType => {
   const context = useContext(RumContext);
-  if (!context) {
-    throw new Error('useRumTracking must be used within an AwsRumProvider');
+
+  if (context === undefined) {
+    throw new Error('useRumTracking must be used within a RumProvider');
   }
+
   return context;
 };
 
 // Type declarations
 declare global {
   interface Window {
-    AWS_RUM?: import('aws-rum-web').AwsRum;
+    AWS_RUM?: AwsRum;
   }
 }

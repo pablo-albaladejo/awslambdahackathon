@@ -26,12 +26,6 @@ const MessageItem = React.memo<{
     sessionId?: string;
   };
 }>(({ message }) => {
-  // Performance monitoring for individual messages
-  usePerformance({
-    componentName: 'MessageItem',
-    logRenderTime: false, // Disable for individual messages to reduce noise
-  });
-
   const messageTime = useMemo(
     () => message.timestamp.toLocaleTimeString(),
     [message.timestamp]
@@ -183,18 +177,13 @@ const ChatbotPage = React.memo(() => {
     error,
     isReconnecting,
   } = useWebSocket();
-  const { trackEvent } = useRumTracking();
+  const { recordAction } = useRumTracking();
   const [inputValue, setInputValue] = useState('');
   const [isSending, setIsSending] = useState(false);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
 
-  // Performance monitoring
-  const { getPerformanceStats, debounce } = usePerformance({
-    componentName: 'ChatbotPage',
-    logRenderTime: true,
-    logMemoryUsage: true,
-    threshold: 16, // 60fps threshold
-  });
+  // Performance monitoring for the main component
+  const { getPerformanceStats } = usePerformance('ChatbotPage');
 
   // Memoized user info
   const userInfo = useMemo(
@@ -230,15 +219,6 @@ const ChatbotPage = React.memo(() => {
     [inputValue, isConnected, isSending]
   );
 
-  // Debounced input change handler for better performance
-  const debouncedInputChange = useMemo(
-    () =>
-      debounce((value: string) => {
-        setInputValue(value);
-      }, 100),
-    [debounce]
-  );
-
   // Memoized container height calculation
   const containerHeight = useMemo(() => {
     if (messagesContainerRef.current) {
@@ -249,12 +229,12 @@ const ChatbotPage = React.memo(() => {
 
   useEffect(() => {
     if (user) {
-      trackEvent('chatbot_page_viewed', {
+      recordAction('chatbot_page_viewed', {
         userId: userInfo.userId,
         username: userInfo.username,
       });
     }
-  }, [user, trackEvent, userInfo]);
+  }, [user, recordAction, userInfo]);
 
   // Log performance stats periodically
   useEffect(() => {
@@ -287,7 +267,7 @@ const ChatbotPage = React.memo(() => {
       try {
         await sendMessage(messageText);
 
-        trackEvent('message_sent', {
+        recordAction('message_sent', {
           userId: userInfo.userId,
           messageLength: messageText.length,
         });
@@ -306,7 +286,7 @@ const ChatbotPage = React.memo(() => {
           messageLength: messageText.length,
         });
 
-        trackEvent('message_send_error', {
+        recordAction('message_send_error', {
           userId: userInfo.userId,
           error: errorMessage,
         });
@@ -316,12 +296,12 @@ const ChatbotPage = React.memo(() => {
         setIsSending(false);
       }
     },
-    [inputValue, isSending, isConnected, sendMessage, trackEvent, userInfo]
+    [inputValue, isSending, isConnected, sendMessage, recordAction, userInfo]
   );
 
   const handleRetry = useCallback(async () => {
     if (error && !isReconnecting) {
-      trackEvent('connection_retry', {
+      recordAction('connection_retry', {
         userId: userInfo.userId,
         error: error,
       });
@@ -333,15 +313,14 @@ const ChatbotPage = React.memo(() => {
         error: error,
       });
     }
-  }, [error, isReconnecting, trackEvent, userInfo]);
+  }, [error, isReconnecting, recordAction, userInfo]);
 
   const handleInputChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       // Use immediate update for better UX, but debounce for performance monitoring
       setInputValue(e.target.value);
-      debouncedInputChange(e.target.value);
     },
-    [debouncedInputChange]
+    []
   );
 
   return (
