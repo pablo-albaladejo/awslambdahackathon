@@ -17,7 +17,6 @@ export class RuntimeStack extends cdk.Stack {
   public readonly mcpHostFunction: cdk.aws_lambda.IFunction;
   public readonly websocketConnectionFunction: cdk.aws_lambda.IFunction;
   public readonly websocketConversationFunction: cdk.aws_lambda.IFunction;
-  public readonly websocketAuthorizerFunction: cdk.aws_lambda.IFunction;
   public readonly websocketApi: cdk.aws_apigatewayv2.WebSocketApi;
   public readonly restApi: cdk.aws_apigateway.RestApi;
 
@@ -110,29 +109,12 @@ export class RuntimeStack extends cdk.Stack {
           __dirname,
           '../../../apps/runtime/src/entry-points/handlers/websockets/conversation.ts'
         ),
-        description: 'WebSocket message handler',
+        description: 'WebSocket message handler with Post-Connection Auth',
         memorySize: 1024,
         environmentVariables: commonEnvVars,
       }
     );
     this.websocketConversationFunction = websocketConversationLambda.function;
-
-    // WebSocket Authorizer Lambda function
-    const websocketAuthorizerLambda = new NodeLambda(
-      this,
-      'WebSocketAuthorizerFunction',
-      {
-        environment: props.environment,
-        appName: appName,
-        entry: path.join(
-          __dirname,
-          '../../../apps/runtime/src/entry-points/handlers/websockets/authorizer.ts'
-        ),
-        description: 'WebSocket authorization handler',
-        environmentVariables: commonEnvVars,
-      }
-    );
-    this.websocketAuthorizerFunction = websocketAuthorizerLambda.function;
 
     // Grant DynamoDB permissions to both WebSocket functions
     websocketConnectionsTable.table.grantReadWriteData(
@@ -156,7 +138,7 @@ export class RuntimeStack extends cdk.Stack {
     });
     this.restApi = restApi.restApi;
 
-    // WebSocket API construct
+    // WebSocket API construct without authorizer
     const websocketApi = new WebSocketApi(this, 'WebSocketApi', {
       environment: props.environment,
       appName: appName,

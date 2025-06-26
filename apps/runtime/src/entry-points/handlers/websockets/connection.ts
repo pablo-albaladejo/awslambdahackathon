@@ -12,6 +12,8 @@ import {
 } from '@awslambdahackathon/utils/lambda';
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 
+import { authenticationService } from '../../../services/authentication-service';
+
 interface Connection {
   connectionId: string;
   sessionId?: string;
@@ -71,6 +73,7 @@ export const handler = async (
       };
     }
     if (event.requestContext.eventType === 'DISCONNECT') {
+      logger.info('Processing disconnect event', { connectionId });
       logger.info('Deleting connection from DynamoDB', { connectionId });
       await ddbDocClient.send(
         new DeleteCommand({
@@ -79,6 +82,8 @@ export const handler = async (
         })
       );
       logger.info('Connection deleted successfully', { connectionId });
+      authenticationService.removeAuthenticatedConnection(connectionId);
+      logger.info('Connection cleanup completed', { connectionId });
       return createSuccessResponse({
         statusCode: 200,
         body: JSON.stringify({ message: 'Disconnected' }),

@@ -18,7 +18,7 @@ export class WebSocketApi extends Construct {
   constructor(scope: Construct, id: string, props: WebSocketApiProps) {
     super(scope, id);
 
-    // WebSocket API
+    // WebSocket API without authorizer for Post-Connection Auth
     this.websocketApi = new apigatewayv2.WebSocketApi(this, 'WebSocketApi', {
       apiName: `${props.appName}-websocket-${props.environment}`,
     });
@@ -35,7 +35,7 @@ export class WebSocketApi extends Construct {
         props.websocketConversationFunction
       );
 
-    // Add routes
+    // Add routes without authorizer
     this.websocketApi.addRoute('$connect', {
       integration: websocketConnectionIntegration,
     });

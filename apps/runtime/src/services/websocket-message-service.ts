@@ -1,0 +1,154 @@
+import {
+  ApiGatewayManagementApiClient,
+  PostToConnectionCommand,
+} from '@aws-sdk/client-apigatewaymanagementapi';
+import { logger } from '@awslambdahackathon/utils/lambda';
+import type { APIGatewayProxyEvent } from 'aws-lambda';
+
+export interface WebSocketMessage {
+  type: string;
+  [key: string]: any;
+}
+
+export class WebSocketMessageService {
+  private readonly clients: Map<string, ApiGatewayManagementApiClient>;
+
+  constructor() {
+    this.clients = new Map();
+  }
+
+  /**
+   * Get or create API Gateway Management API client for a connection
+   */
+  private getClient(
+    event: APIGatewayProxyEvent
+  ): ApiGatewayManagementApiClient {
+    const domain = event.requestContext.domainName;
+    const stage = event.requestContext.stage;
+    const endpoint = `https://${domain}/${stage}`;
+    const key = `${domain}/${stage}`;
+
+    if (!this.clients.has(key)) {
+      this.clients.set(key, new ApiGatewayManagementApiClient({ endpoint }));
+    }
+
+    return this.clients.get(key)!;
+  }
+
+  /**
+   * Send message to a specific WebSocket connection
+   */
+  async sendMessage(
+    connectionId: string,
+    event: APIGatewayProxyEvent,
+    message: WebSocketMessage
+  ): Promise<boolean> {
+    try {
+      const client = this.getClient(event);
+
+      await client.send(
+        new PostToConnectionCommand({
+          ConnectionId: connectionId,
+          Data: Buffer.from(JSON.stringify(message)),
+        })
+      );
+
+      logger.info('Message sent successfully', {
+        connectionId,
+        messageType: message.type,
+      });
+
+      return true;
+    } catch (error) {
+      logger.error('Failed to send message', {
+        connectionId,
+        messageType: message.type,
+        error: error instanceof Error ? error.message : String(error),
+      });
+
+      return false;
+    }
+  }
+
+  /**
+   * Send authentication response
+   */
+  async sendAuthResponse(
+    connectionId: string,
+    event: APIGatewayProxyEvent,
+    success: boolean,
+    data?: { userId?: string; username?: string; error?: string }
+  ): Promise<boolean> {
+    const message: WebSocketMessage = {
+      type: 'auth',
+      success,
+      ...data,
+    };
+
+    return this.sendMessage(connectionId, event, message);
+  }
+
+  /**
+   * Send chat message response
+   */
+  async sendChatResponse(
+    connectionId: string,
+    event: APIGatewayProxyEvent,
+    message: string,
+    sessionId: string,
+    isEcho: boolean = false
+  ): Promise<boolean> {
+    const response: WebSocketMessage = {
+      type: 'chat',
+      message,
+      sessionId,
+      timestamp: new Date().toISOString(),
+      isEcho,
+    };
+
+    return this.sendMessage(connectionId, event, response);
+  }
+
+  /**
+   * Send error message
+   */
+  async sendErrorMessage(
+    connectionId: string,
+    event: APIGatewayProxyEvent,
+    error: string
+  ): Promise<boolean> {
+    const message: WebSocketMessage = {
+      type: 'error',
+      error,
+    };
+
+    return this.sendMessage(connectionId, event, message);
+  }
+
+  /**
+   * Send system message
+   */
+  async sendSystemMessage(
+    connectionId: string,
+    event: APIGatewayProxyEvent,
+    text: string
+  ): Promise<boolean> {
+    const message: WebSocketMessage = {
+      type: 'system',
+      message: text,
+      timestamp: new Date().toISOString(),
+    };
+
+    return this.sendMessage(connectionId, event, message);
+  }
+
+  /**
+   * Clean up clients (for memory management)
+   */
+  cleanup(): void {
+    this.clients.clear();
+  }
+}
+
+// Singleton instance
+export const websocketMessageService = new WebSocketMessageService();

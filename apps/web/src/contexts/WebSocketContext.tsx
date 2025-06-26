@@ -3,6 +3,7 @@ import { logger } from '@awslambdahackathon/utils/frontend';
 import React, {
   createContext,
   ReactNode,
+  useCallback,
   useContext,
   useEffect,
   useState,
@@ -42,11 +43,46 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
   children,
 }) => {
   const [state, setState] = useState<WebSocketState>(initialState);
+  const [ws, setWs] = useState<WebSocket | null>(null);
   const websocketBaseUrl =
     import.meta.env.VITE_WEBSOCKET_URL || 'wss://localhost:3001';
 
+  // Create a stable sendMessage function using useCallback
+  const sendMessage = useCallback(
+    async (text: string) => {
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        throw new Error('WebSocket is not connected');
+      }
+
+      const message = {
+        action: 'sendMessage',
+        message: text,
+        sessionId: state.sessionId,
+      };
+
+      ws.send(JSON.stringify(message));
+      setState(prev => ({
+        ...prev,
+        messages: [
+          ...prev.messages,
+          {
+            id: Date.now().toString(),
+            text,
+            isUser: true,
+            timestamp: new Date(),
+            sessionId: state.sessionId,
+          },
+        ],
+        isLoading: true,
+      }));
+    },
+    [ws, state.sessionId]
+  );
+
   useEffect(() => {
-    let ws: WebSocket | null = null;
+    let reconnectTimeout: ReturnType<typeof setTimeout>;
+    let reconnectAttempts = 0;
+    const maxReconnectAttempts = 5;
 
     const connect = async () => {
       try {
@@ -63,59 +99,33 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
           tokenStart: token.substring(0, 10) + '...',
         });
 
-        const websocketUrl = `${websocketBaseUrl}?Authorization=${encodeURIComponent(token)}`;
-        ws = new WebSocket(websocketUrl);
+        // Connect without token in URL for security (Post-Connection Auth)
+        const websocketUrl = websocketBaseUrl;
+        const newWs = new WebSocket(websocketUrl);
 
-        ws.onopen = () => {
-          logger.info('WebSocket connected successfully');
-          setState(prev => ({
-            ...prev,
-            isConnected: true,
-            messages: [
-              ...prev.messages,
-              {
-                id: Date.now().toString(),
-                text: 'Connected to chatbot',
-                isUser: false,
-                timestamp: new Date(),
-              },
-            ],
-            sendMessage: async (text: string) => {
-              if (ws?.readyState !== WebSocket.OPEN) {
-                throw new Error('WebSocket is not connected');
-              }
+        newWs.onopen = () => {
+          logger.info(
+            'WebSocket connected successfully, sending authentication'
+          );
+          setWs(newWs);
 
-              const message = {
-                action: 'sendMessage',
-                message: text,
-                sessionId: state.sessionId,
-              };
+          // Send authentication token as first message
+          const authMessage = {
+            action: 'authenticate',
+            token: token,
+          };
 
-              ws.send(JSON.stringify(message));
-              setState(prev => ({
-                ...prev,
-                messages: [
-                  ...prev.messages,
-                  {
-                    id: Date.now().toString(),
-                    text,
-                    isUser: true,
-                    timestamp: new Date(),
-                    sessionId: state.sessionId,
-                  },
-                ],
-                isLoading: true,
-              }));
-            },
-          }));
+          newWs.send(JSON.stringify(authMessage));
         };
 
-        ws.onclose = event => {
+        newWs.onclose = event => {
           logger.info('WebSocket disconnected', {
             code: event.code,
             reason: event.reason,
             wasClean: event.wasClean,
           });
+
+          setWs(null);
           setState(prev => ({
             ...prev,
             isConnected: false,
@@ -129,22 +139,100 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
               },
             ],
           }));
-          setTimeout(connect, 1000);
+
+          // Implement exponential backoff for reconnection
+          if (reconnectAttempts < maxReconnectAttempts) {
+            const delay = Math.min(
+              1000 * Math.pow(2, reconnectAttempts),
+              30000
+            );
+            reconnectTimeout = setTimeout(() => {
+              reconnectAttempts++;
+              connect();
+            }, delay);
+          } else {
+            setState(prev => ({
+              ...prev,
+              messages: [
+                ...prev.messages,
+                {
+                  id: Date.now().toString(),
+                  text: 'Failed to reconnect after multiple attempts. Please refresh the page.',
+                  isUser: false,
+                  timestamp: new Date(),
+                },
+              ],
+            }));
+          }
         };
 
-        ws.onerror = error => {
+        newWs.onerror = error => {
           logger.error('WebSocket error', {
             error,
-            readyState: ws?.readyState,
-            url: ws?.url,
+            readyState: newWs?.readyState,
+            url: newWs?.url,
           });
         };
 
-        ws.onmessage = event => {
+        newWs.onmessage = event => {
           try {
             const data = JSON.parse(event.data);
             logger.info('Message received', { data });
 
+            // Handle authentication response
+            if (data.type === 'auth') {
+              if (data.success) {
+                setState(prev => ({
+                  ...prev,
+                  isConnected: true,
+                  messages: [
+                    ...prev.messages,
+                    {
+                      id: Date.now().toString(),
+                      text: 'Connected to chatbot',
+                      isUser: false,
+                      timestamp: new Date(),
+                    },
+                  ],
+                }));
+                logger.info('WebSocket authentication successful');
+              } else {
+                logger.error('WebSocket authentication failed', { data });
+                setState(prev => ({
+                  ...prev,
+                  messages: [
+                    ...prev.messages,
+                    {
+                      id: Date.now().toString(),
+                      text: 'Authentication failed. Please log in again.',
+                      isUser: false,
+                      timestamp: new Date(),
+                    },
+                  ],
+                }));
+                newWs.close();
+              }
+              return;
+            }
+
+            // Handle error messages
+            if (data.type === 'error') {
+              setState(prev => ({
+                ...prev,
+                messages: [
+                  ...prev.messages,
+                  {
+                    id: Date.now().toString(),
+                    text: `Error: ${data.error}`,
+                    isUser: false,
+                    timestamp: new Date(),
+                  },
+                ],
+              }));
+              return;
+            }
+
+            // Handle regular chat messages
             setState(prev => ({
               ...prev,
               isLoading: false,
@@ -188,11 +276,22 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
     connect();
 
     return () => {
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
+      }
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.close();
       }
     };
-  }, []);
+  }, [websocketBaseUrl]);
+
+  // Update state with the stable sendMessage function
+  useEffect(() => {
+    setState(prev => ({
+      ...prev,
+      sendMessage,
+    }));
+  }, [sendMessage]);
 
   return (
     <WebSocketContext.Provider value={state}>
