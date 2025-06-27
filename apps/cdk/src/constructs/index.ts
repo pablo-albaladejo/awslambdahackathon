@@ -13,3 +13,6 @@ export * from './rum-monitor';
 
 // Static Website constructs
 export * from './static-website';
+
+// CloudWatch alarms construct
+export * from './cloudwatch-alarms';

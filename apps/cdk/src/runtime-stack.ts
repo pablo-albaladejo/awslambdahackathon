@@ -5,6 +5,7 @@ import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import { Construct } from 'constructs';
 
 import { DatabaseTable, NodeLambda, RestApi, WebSocketApi } from './constructs';
+import { CloudWatchAlarms } from './constructs/cloudwatch-alarms';
 
 interface RuntimeStackProps extends cdk.StackProps {
   environment: string;
@@ -19,6 +20,7 @@ export class RuntimeStack extends cdk.Stack {
   public readonly websocketConversationFunction: cdk.aws_lambda.IFunction;
   public readonly websocketApi: cdk.aws_apigatewayv2.WebSocketApi;
   public readonly restApi: cdk.aws_apigateway.RestApi;
+  public readonly cloudWatchAlarms: CloudWatchAlarms;
 
   constructor(scope: Construct, id: string, props: RuntimeStackProps) {
     super(scope, id, props);
@@ -133,6 +135,17 @@ export class RuntimeStack extends cdk.Stack {
     // Grant DynamoDB permissions to MCP Host function for authentication
     websocketConnectionsTable.table.grantReadWriteData(this.mcpHostFunction);
 
+    // Grant CloudWatch permissions to all Lambda functions for custom metrics
+    const cloudWatchPolicy = new cdk.aws_iam.PolicyStatement({
+      effect: cdk.aws_iam.Effect.ALLOW,
+      actions: ['cloudwatch:PutMetricData'],
+      resources: ['*'],
+    });
+
+    this.mcpHostFunction.addToRolePolicy(cloudWatchPolicy);
+    this.websocketConnectionFunction.addToRolePolicy(cloudWatchPolicy);
+    this.websocketConversationFunction.addToRolePolicy(cloudWatchPolicy);
+
     // REST API construct
     const restApi = new RestApi(this, 'RestApi', {
       environment: props.environment,
@@ -162,6 +175,18 @@ export class RuntimeStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'WebSocketApiId', {
       value: websocketApi.websocketApi.apiId,
       description: 'WebSocket API ID',
+    });
+
+    // CloudWatch Alarms and Monitoring
+    this.cloudWatchAlarms = new CloudWatchAlarms(this, 'CloudWatchAlarms', {
+      environment: props.environment,
+      appName: appName,
+      namespace: appName,
+      lambdaFunctions: [
+        this.mcpHostFunction,
+        this.websocketConnectionFunction,
+        this.websocketConversationFunction,
+      ],
     });
   }
 }

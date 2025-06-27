@@ -80,8 +80,8 @@
     "vite": "^5.0.8",
     "vitest": "^1.0.0"
   },
-  "packageManager": "npm@10.2.0",
   "engines": {
     "node": ">=18.0.0"
-  }
+  },
+  "packageManager": "npm@10.8.2"
 }

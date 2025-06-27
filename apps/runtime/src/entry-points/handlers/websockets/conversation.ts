@@ -16,6 +16,7 @@ import {
   ErrorType,
   handleError,
 } from '../../../services/error-handling-service';
+import { metricsService } from '../../../services/metrics-service';
 import { websocketMessageService } from '../../../services/websocket-message-service';
 
 interface ChatMessage {
@@ -40,6 +41,9 @@ const ddbDocClient = DynamoDBDocumentClient.from(ddbClient);
 export const handler = async (
   event: APIGatewayProxyEvent
 ): Promise<APIGatewayProxyResult> => {
+  const startTime = Date.now();
+  const correlationId = `conv-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
   metrics.addMetric('WebSocketRequest', 'Count', 1);
   metrics.addDimension('Environment', process.env.ENVIRONMENT || 'dev');
 
@@ -48,6 +52,7 @@ export const handler = async (
     path: event.path,
     requestId: event.requestContext.requestId,
     eventType: event.requestContext.eventType,
+    correlationId,
   });
 
   const subsegment = tracer
@@ -60,6 +65,7 @@ export const handler = async (
       connectionId,
       eventType: event.requestContext.eventType,
       routeKey: event.requestContext.routeKey,
+      correlationId,
     });
 
     if (!event.body) {
@@ -70,7 +76,18 @@ export const handler = async (
         { connectionId }
       );
 
-      logger.error('Missing request body in WebSocket event', { connectionId });
+      logger.error('Missing request body in WebSocket event', {
+        connectionId,
+        correlationId,
+      });
+
+      await metricsService.recordErrorMetrics(
+        'MISSING_BODY',
+        'websocket_conversation',
+        {
+          connectionId,
+        }
+      );
 
       return createErrorResponse(error, event);
     }
@@ -89,7 +106,18 @@ export const handler = async (
           { parsedBody }
         );
 
-        logger.error('Invalid message format', { parsedBody });
+        logger.error('Invalid message format', {
+          parsedBody,
+          correlationId,
+        });
+
+        await metricsService.recordErrorMetrics(
+          'INVALID_MESSAGE_FORMAT',
+          'websocket_conversation',
+          {
+            connectionId,
+          }
+        );
 
         return createErrorResponse(error, event);
       }
@@ -103,7 +131,19 @@ export const handler = async (
           { messageType: parsedBody.type }
         );
 
-        logger.error('Invalid message type', { messageType: parsedBody.type });
+        logger.error('Invalid message type', {
+          messageType: parsedBody.type,
+          correlationId,
+        });
+
+        await metricsService.recordErrorMetrics(
+          'INVALID_MESSAGE_TYPE',
+          'websocket_conversation',
+          {
+            connectionId,
+            messageType: parsedBody.type,
+          }
+        );
 
         return createErrorResponse(error, event);
       }
@@ -116,6 +156,7 @@ export const handler = async (
         action: websocketMessage.data.action,
         hasToken: !!websocketMessage.data.token,
         messageLength: websocketMessage.data.message?.length,
+        correlationId,
       });
     } catch (parseError) {
       const error = createError(
@@ -134,7 +175,16 @@ export const handler = async (
       logger.error('Failed to parse event.body as JSON', {
         body: event.body,
         parseError,
+        correlationId,
       });
+
+      await metricsService.recordErrorMetrics(
+        'INVALID_JSON',
+        'websocket_conversation',
+        {
+          connectionId,
+        }
+      );
 
       return createErrorResponse(error, event);
     }
@@ -144,7 +194,12 @@ export const handler = async (
 
     // Handle authentication
     if (type === 'auth' && action === 'authenticate') {
-      return await handleAuthentication(connectionId, event, token);
+      return await handleAuthentication(
+        connectionId,
+        event,
+        token,
+        correlationId
+      );
     }
 
     // Check if connection is authenticated for other actions
@@ -161,7 +216,17 @@ export const handler = async (
       logger.error('Unauthenticated connection attempting to send message', {
         connectionId,
         action,
+        correlationId,
       });
+
+      await metricsService.recordErrorMetrics(
+        'UNAUTHENTICATED_CONNECTION',
+        'websocket_conversation',
+        {
+          connectionId,
+          action,
+        }
+      );
 
       await errorHandlingService.handleWebSocketError(
         error,
@@ -187,7 +252,16 @@ export const handler = async (
 
         logger.error('Missing message in sendMessage action', {
           websocketMessage,
+          correlationId,
         });
+
+        await metricsService.recordErrorMetrics(
+          'MISSING_MESSAGE',
+          'websocket_conversation',
+          {
+            connectionId,
+          }
+        );
 
         return createErrorResponse(error, event);
       }
@@ -201,16 +275,35 @@ export const handler = async (
           { messageLength: message.length, maxLength: 1000 }
         );
 
-        logger.error('Message too long', { messageLength: message.length });
+        logger.error('Message too long', {
+          messageLength: message.length,
+          correlationId,
+        });
+
+        await metricsService.recordErrorMetrics(
+          'MESSAGE_TOO_LONG',
+          'websocket_conversation',
+          {
+            connectionId,
+            messageLength: message.length.toString(),
+          }
+        );
 
         return createErrorResponse(error, event);
       }
 
-      return await handleChatMessage(connectionId, event, message, sessionId);
+      return await handleChatMessage(
+        connectionId,
+        event,
+        message,
+        sessionId,
+        correlationId
+      );
     }
 
     // Handle ping messages
     if (type === 'ping') {
+      await metricsService.recordWebSocketMetrics('ping', true, 0);
       return createSuccessResponse({
         statusCode: 200,
         body: '',
@@ -228,7 +321,19 @@ export const handler = async (
       }
     );
 
-    logger.error('Invalid action in WebSocket message', { action });
+    logger.error('Invalid action in WebSocket message', {
+      action,
+      correlationId,
+    });
+
+    await metricsService.recordErrorMetrics(
+      'INVALID_ACTION',
+      'websocket_conversation',
+      {
+        connectionId,
+        action,
+      }
+    );
 
     return createErrorResponse(error, event);
   } catch (error) {
@@ -239,8 +344,23 @@ export const handler = async (
       event,
     });
 
+    await metricsService.recordErrorMetrics(
+      'UNEXPECTED_ERROR',
+      'websocket_conversation',
+      {
+        connectionId,
+        errorType: appError.type,
+      }
+    );
+
     return createErrorResponse(appError, event);
   } finally {
+    const duration = Date.now() - startTime;
+    await metricsService.recordWebSocketMetrics(
+      'message_received',
+      true,
+      duration
+    );
     subsegment?.close();
   }
 };
@@ -251,9 +371,18 @@ export const handler = async (
 async function handleAuthentication(
   connectionId: string,
   event: APIGatewayProxyEvent,
-  token?: string
+  token?: string,
+  correlationId?: string
 ): Promise<APIGatewayProxyResult> {
+  const startTime = Date.now();
+
   try {
+    logger.info('Processing authentication request', {
+      connectionId,
+      hasToken: !!token,
+      correlationId,
+    });
+
     const authResult = await authenticationService.authenticateUser(
       token || ''
     );
@@ -277,6 +406,12 @@ async function handleAuthentication(
       logger.info('WebSocket authentication successful', {
         connectionId,
         userId: authResult.user.userId,
+        correlationId,
+      });
+
+      await metricsService.recordBusinessMetrics('authentication_success', 1, {
+        connectionId,
+        userId: authResult.user.userId,
       });
     } else {
       await websocketMessageService.sendAuthResponse(
@@ -289,6 +424,12 @@ async function handleAuthentication(
       logger.error('WebSocket authentication failed', {
         connectionId,
         error: authResult.error,
+        correlationId,
+      });
+
+      await metricsService.recordBusinessMetrics('authentication_failure', 1, {
+        connectionId,
+        errorType: authResult.error || 'UNKNOWN_ERROR',
       });
     }
 
@@ -303,6 +444,15 @@ async function handleAuthentication(
       event,
     });
 
+    await metricsService.recordErrorMetrics(
+      'AUTHENTICATION_ERROR',
+      'authentication',
+      {
+        connectionId,
+        errorType: appError.type,
+      }
+    );
+
     await errorHandlingService.handleWebSocketError(
       appError,
       connectionId,
@@ -313,6 +463,9 @@ async function handleAuthentication(
       statusCode: 200,
       body: '',
     });
+  } finally {
+    const duration = Date.now() - startTime;
+    await metricsService.recordWebSocketMetrics('connect', true, duration);
   }
 }
 
@@ -323,8 +476,11 @@ async function handleChatMessage(
   connectionId: string,
   event: APIGatewayProxyEvent,
   message: string,
-  sessionId?: string
+  sessionId?: string,
+  correlationId?: string
 ): Promise<APIGatewayProxyResult> {
+  const startTime = Date.now();
+
   try {
     const user =
       await authenticationService.getUserFromConnection(connectionId);
@@ -338,7 +494,16 @@ async function handleChatMessage(
 
       logger.error('User not found for authenticated connection', {
         connectionId,
+        correlationId,
       });
+
+      await metricsService.recordErrorMetrics(
+        'USER_NOT_FOUND',
+        'chat_message',
+        {
+          connectionId,
+        }
+      );
 
       return createErrorResponse(error, event);
     }
@@ -357,7 +522,10 @@ async function handleChatMessage(
       timestamp,
     };
 
-    logger.info('Storing user message in DynamoDB', { userMessage });
+    logger.info('Storing user message in DynamoDB', {
+      userMessage,
+      correlationId,
+    });
 
     try {
       await ddbDocClient.send(
@@ -372,6 +540,13 @@ async function handleChatMessage(
           },
         })
       );
+
+      await metricsService.recordDatabaseMetrics(
+        'store_user_message',
+        process.env.WEBSOCKET_MESSAGES_TABLE!,
+        true,
+        Date.now() - startTime
+      );
     } catch (dbError) {
       const error = errorHandlingService.handleDatabaseError(
         dbError,
@@ -379,10 +554,21 @@ async function handleChatMessage(
         { connectionId, userId: user.userId, sessionId: currentSessionId }
       );
 
+      await metricsService.recordDatabaseMetrics(
+        'store_user_message',
+        process.env.WEBSOCKET_MESSAGES_TABLE!,
+        false,
+        Date.now() - startTime,
+        'DATABASE_ERROR'
+      );
+
       throw error;
     }
 
-    logger.info('User message stored successfully', { userMessage });
+    logger.info('User message stored successfully', {
+      userMessage,
+      correlationId,
+    });
 
     // Echo the message back (initial behavior)
     const echoMessage = message;
@@ -394,7 +580,10 @@ async function handleChatMessage(
       timestamp: new Date().toISOString(),
     };
 
-    logger.info('Storing bot message in DynamoDB', { botMessage });
+    logger.info('Storing bot message in DynamoDB', {
+      botMessage,
+      correlationId,
+    });
 
     try {
       await ddbDocClient.send(
@@ -409,6 +598,13 @@ async function handleChatMessage(
           },
         })
       );
+
+      await metricsService.recordDatabaseMetrics(
+        'store_bot_message',
+        process.env.WEBSOCKET_MESSAGES_TABLE!,
+        true,
+        Date.now() - startTime
+      );
     } catch (dbError) {
       const error = errorHandlingService.handleDatabaseError(
         dbError,
@@ -416,10 +612,21 @@ async function handleChatMessage(
         { connectionId, userId: user.userId, sessionId: currentSessionId }
       );
 
+      await metricsService.recordDatabaseMetrics(
+        'store_bot_message',
+        process.env.WEBSOCKET_MESSAGES_TABLE!,
+        false,
+        Date.now() - startTime,
+        'DATABASE_ERROR'
+      );
+
       throw error;
     }
 
-    logger.info('Bot message stored successfully', { botMessage });
+    logger.info('Bot message stored successfully', {
+      botMessage,
+      correlationId,
+    });
 
     // Send the response back to the user via WebSocket
     try {
@@ -442,6 +649,14 @@ async function handleChatMessage(
         }
       );
 
+      await metricsService.recordErrorMetrics(
+        'WEBSOCKET_SEND_FAILED',
+        'chat_message',
+        {
+          connectionId,
+        }
+      );
+
       throw error;
     }
 
@@ -450,6 +665,13 @@ async function handleChatMessage(
       sessionId: currentSessionId,
       messageLength: message.length,
       userId: user.userId,
+      correlationId,
+    });
+
+    await metricsService.recordBusinessMetrics('message_processed', 1, {
+      connectionId,
+      userId: user.userId,
+      sessionId: currentSessionId,
     });
 
     return createSuccessResponse({
@@ -466,6 +688,15 @@ async function handleChatMessage(
       event,
     });
 
+    await metricsService.recordErrorMetrics(
+      'CHAT_MESSAGE_ERROR',
+      'chat_message',
+      {
+        connectionId,
+        errorType: appError.type,
+      }
+    );
+
     // Try to send error to WebSocket client
     try {
       await errorHandlingService.handleWebSocketError(
@@ -478,9 +709,17 @@ async function handleChatMessage(
         connectionId,
         originalError: appError,
         sendError,
+        correlationId,
       });
     }
 
     return createErrorResponse(appError, event);
+  } finally {
+    const duration = Date.now() - startTime;
+    await metricsService.recordWebSocketMetrics(
+      'message_processed',
+      true,
+      duration
+    );
   }
 }

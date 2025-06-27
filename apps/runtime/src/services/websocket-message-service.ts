@@ -7,6 +7,8 @@ import {
 import { logger } from '@awslambdahackathon/utils/lambda';
 import type { APIGatewayProxyEvent } from 'aws-lambda';
 
+import { metricsService } from './metrics-service';
+
 export interface WebSocketMessage {
   type: string;
   message?: string;
@@ -62,7 +64,17 @@ export class WebSocketMessageService {
     event: APIGatewayProxyEvent,
     message: WebSocketMessage
   ): Promise<boolean> {
+    const startTime = Date.now();
+    let success = false;
+    let errorType: string | undefined;
+
     try {
+      logger.debug('Sending WebSocket message', {
+        connectionId,
+        messageType: message.type,
+        correlationId: this.generateCorrelationId(),
+      });
+
       const client = this.getClient(event);
 
       await client.send(
@@ -72,20 +84,32 @@ export class WebSocketMessageService {
         })
       );
 
+      success = true;
       logger.info('Message sent successfully', {
         connectionId,
         messageType: message.type,
+        correlationId: this.generateCorrelationId(),
       });
 
       return true;
     } catch (error) {
+      errorType = 'WEBSOCKET_SEND_ERROR';
       logger.error('Failed to send message', {
         connectionId,
         messageType: message.type,
         error: error instanceof Error ? error.message : String(error),
+        correlationId: this.generateCorrelationId(),
       });
 
       return false;
+    } finally {
+      const duration = Date.now() - startTime;
+      await metricsService.recordWebSocketMetrics(
+        'message_sent',
+        success,
+        duration,
+        errorType
+      );
     }
   }
 
@@ -105,6 +129,13 @@ export class WebSocketMessageService {
         ...data,
       },
     };
+
+    logger.info('Sending authentication response', {
+      connectionId,
+      success,
+      userId: data.userId,
+      correlationId: this.generateCorrelationId(),
+    });
 
     return this.sendMessage(connectionId, event, message);
   }
@@ -130,6 +161,14 @@ export class WebSocketMessageService {
       },
     };
 
+    logger.info('Sending chat response', {
+      connectionId,
+      sessionId,
+      messageLength: message.length,
+      isEcho,
+      correlationId: this.generateCorrelationId(),
+    });
+
     return this.sendMessage(connectionId, event, response);
   }
 
@@ -150,6 +189,12 @@ export class WebSocketMessageService {
       },
     };
 
+    logger.warn('Sending error message to client', {
+      connectionId,
+      errorMessage,
+      correlationId: this.generateCorrelationId(),
+    });
+
     return this.sendMessage(connectionId, event, message);
   }
 
@@ -167,6 +212,12 @@ export class WebSocketMessageService {
       timestamp: new Date().toISOString(),
     };
 
+    logger.info('Sending system message', {
+      connectionId,
+      text,
+      correlationId: this.generateCorrelationId(),
+    });
+
     return this.sendMessage(connectionId, event, message);
   }
 
@@ -174,7 +225,20 @@ export class WebSocketMessageService {
    * Clean up clients (for memory management)
    */
   cleanup(): void {
+    const clientCount = this.clients.size;
     this.clients.clear();
+
+    logger.info('Cleaned up WebSocket clients', {
+      clientCount,
+      correlationId: this.generateCorrelationId(),
+    });
+  }
+
+  /**
+   * Generate a correlation ID for request tracking
+   */
+  private generateCorrelationId(): string {
+    return `ws-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   }
 }
 

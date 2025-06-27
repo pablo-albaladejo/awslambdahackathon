@@ -9,6 +9,8 @@ import {
 import { logger } from '@awslambdahackathon/utils/lambda';
 import { CognitoJwtVerifier } from 'aws-jwt-verify';
 
+import { metricsService } from './metrics-service';
+
 export interface AuthenticatedUser {
   userId: string;
   username: string;
@@ -67,14 +69,22 @@ export class AuthenticationService {
    * Authenticate a user with JWT token
    */
   async authenticateUser(token: string): Promise<AuthenticationResult> {
+    const startTime = Date.now();
+    let success = false;
+    let errorType: string | undefined;
+
     try {
       logger.info('Starting authentication process', {
         tokenLength: token?.length,
         hasToken: !!token,
+        correlationId: this.generateCorrelationId(),
       });
 
       if (!token) {
-        logger.warn('Authentication failed: Missing token');
+        errorType = 'MISSING_TOKEN';
+        logger.warn('Authentication failed: Missing token', {
+          correlationId: this.generateCorrelationId(),
+        });
         return {
           success: false,
           error: 'Missing authentication token',
@@ -84,6 +94,7 @@ export class AuthenticationService {
       logger.info('Verifying JWT token', {
         userPoolId: process.env.COGNITO_USER_POOL_ID,
         clientId: process.env.COGNITO_CLIENT_ID,
+        correlationId: this.generateCorrelationId(),
       });
 
       const payload = await this.verifier.verify(token);
@@ -93,14 +104,17 @@ export class AuthenticationService {
         username: payload.username,
         email: payload.email,
         exp: payload.exp,
+        correlationId: this.generateCorrelationId(),
       });
 
       // Verify token expiration
       const now = Math.floor(Date.now() / 1000);
       if (payload.exp && payload.exp < now) {
+        errorType = 'TOKEN_EXPIRED';
         logger.warn('Authentication failed: Token expired', {
           exp: payload.exp,
           now,
+          correlationId: this.generateCorrelationId(),
         });
         return {
           success: false,
@@ -115,11 +129,13 @@ export class AuthenticationService {
         groups: (payload['cognito:groups'] as string[]) || [],
       };
 
+      success = true;
       logger.info('User authenticated successfully', {
         userId: user.userId,
         username: user.username,
         email: user.email,
         groups: user.groups,
+        correlationId: this.generateCorrelationId(),
       });
 
       return {
@@ -127,15 +143,24 @@ export class AuthenticationService {
         user,
       };
     } catch (error) {
+      errorType = 'INVALID_TOKEN';
       logger.error('Authentication failed', {
         error: error instanceof Error ? error.message : String(error),
         errorStack: error instanceof Error ? error.stack : undefined,
+        correlationId: this.generateCorrelationId(),
       });
 
       return {
         success: false,
         error: 'Invalid authentication token',
       };
+    } finally {
+      const duration = Date.now() - startTime;
+      await metricsService.recordAuthenticationMetrics(
+        success,
+        duration,
+        errorType
+      );
     }
   }
 
@@ -146,10 +171,21 @@ export class AuthenticationService {
     connectionId: string,
     user: AuthenticatedUser
   ): Promise<void> {
-    const now = Date.now();
-    const ttl = Math.floor(now / 1000) + 24 * 60 * 60; // 24 hours TTL
+    const startTime = Date.now();
+    let success = false;
+    let errorType: string | undefined;
 
     try {
+      const now = Date.now();
+      const ttl = Math.floor(now / 1000) + 24 * 60 * 60; // 24 hours TTL
+
+      logger.info('Storing authenticated connection in DynamoDB', {
+        connectionId,
+        userId: user.userId,
+        ttl,
+        correlationId: this.generateCorrelationId(),
+      });
+
       await this.ddbClient.send(
         new PutCommand({
           TableName: this.tableName,
@@ -166,18 +202,31 @@ export class AuthenticationService {
         })
       );
 
+      success = true;
       logger.info('Authenticated connection stored in DynamoDB', {
         connectionId,
         userId: user.userId,
         ttl,
+        correlationId: this.generateCorrelationId(),
       });
     } catch (error) {
+      errorType = 'DATABASE_ERROR';
       logger.error('Failed to store authenticated connection', {
         connectionId,
         userId: user.userId,
         error: error instanceof Error ? error.message : String(error),
+        correlationId: this.generateCorrelationId(),
       });
       throw error;
+    } finally {
+      const duration = Date.now() - startTime;
+      await metricsService.recordDatabaseMetrics(
+        'store_connection',
+        this.tableName,
+        success,
+        duration,
+        errorType
+      );
     }
   }
 
@@ -187,7 +236,16 @@ export class AuthenticationService {
   async getAuthenticatedConnection(
     connectionId: string
   ): Promise<AuthenticatedConnection | undefined> {
+    const startTime = Date.now();
+    let success = false;
+    let errorType: string | undefined;
+
     try {
+      logger.debug('Getting authenticated connection from DynamoDB', {
+        connectionId,
+        correlationId: this.generateCorrelationId(),
+      });
+
       const result = await this.ddbClient.send(
         new GetCommand({
           TableName: this.tableName,
@@ -196,6 +254,10 @@ export class AuthenticationService {
       );
 
       if (!result.Item) {
+        logger.debug('Connection not found in DynamoDB', {
+          connectionId,
+          correlationId: this.generateCorrelationId(),
+        });
         return undefined;
       }
 
@@ -220,18 +282,37 @@ export class AuthenticationService {
           connectionId,
           ttl: connection.ttl,
           now,
+          correlationId: this.generateCorrelationId(),
         });
         await this.removeAuthenticatedConnection(connectionId);
         return undefined;
       }
 
+      success = true;
+      logger.debug('Authenticated connection retrieved successfully', {
+        connectionId,
+        userId: connection.user.userId,
+        correlationId: this.generateCorrelationId(),
+      });
+
       return connection;
     } catch (error) {
+      errorType = 'DATABASE_ERROR';
       logger.error('Failed to get authenticated connection', {
         connectionId,
         error: error instanceof Error ? error.message : String(error),
+        correlationId: this.generateCorrelationId(),
       });
       return undefined;
+    } finally {
+      const duration = Date.now() - startTime;
+      await metricsService.recordDatabaseMetrics(
+        'get_connection',
+        this.tableName,
+        success,
+        duration,
+        errorType
+      );
     }
   }
 
@@ -240,14 +321,31 @@ export class AuthenticationService {
    */
   async isConnectionAuthenticated(connectionId: string): Promise<boolean> {
     const connection = await this.getAuthenticatedConnection(connectionId);
-    return connection?.isAuthenticated || false;
+    const isAuthenticated = connection?.isAuthenticated || false;
+
+    logger.debug('Checking connection authentication status', {
+      connectionId,
+      isAuthenticated,
+      correlationId: this.generateCorrelationId(),
+    });
+
+    return isAuthenticated;
   }
 
   /**
    * Remove authenticated connection from DynamoDB
    */
   async removeAuthenticatedConnection(connectionId: string): Promise<void> {
+    const startTime = Date.now();
+    let success = false;
+    let errorType: string | undefined;
+
     try {
+      logger.info('Removing authenticated connection from DynamoDB', {
+        connectionId,
+        correlationId: this.generateCorrelationId(),
+      });
+
       await this.ddbClient.send(
         new DeleteCommand({
           TableName: this.tableName,
@@ -255,15 +353,28 @@ export class AuthenticationService {
         })
       );
 
+      success = true;
       logger.info('Authenticated connection removed from DynamoDB', {
         connectionId,
+        correlationId: this.generateCorrelationId(),
       });
     } catch (error) {
+      errorType = 'DATABASE_ERROR';
       logger.error('Failed to remove authenticated connection', {
         connectionId,
         error: error instanceof Error ? error.message : String(error),
+        correlationId: this.generateCorrelationId(),
       });
       throw error;
+    } finally {
+      const duration = Date.now() - startTime;
+      await metricsService.recordDatabaseMetrics(
+        'remove_connection',
+        this.tableName,
+        success,
+        duration,
+        errorType
+      );
     }
   }
 
@@ -285,7 +396,17 @@ export class AuthenticationService {
     requiredGroup: string
   ): Promise<boolean> {
     const user = await this.getUserFromConnection(connectionId);
-    return user?.groups?.includes(requiredGroup) || false;
+    const hasGroup = user?.groups?.includes(requiredGroup) || false;
+
+    logger.debug('Checking user group membership', {
+      connectionId,
+      userId: user?.userId,
+      requiredGroup,
+      hasGroup,
+      correlationId: this.generateCorrelationId(),
+    });
+
+    return hasGroup;
   }
 
   /**
@@ -294,8 +415,16 @@ export class AuthenticationService {
    * This method is for manual cleanup if needed
    */
   async cleanupExpiredConnections(): Promise<void> {
+    const startTime = Date.now();
+    let success = false;
+    let errorType: string | undefined;
+
     try {
       const now = Math.floor(Date.now() / 1000);
+
+      logger.info('Starting expired connections cleanup', {
+        correlationId: this.generateCorrelationId(),
+      });
 
       // Query for expired connections
       const result = await this.ddbClient.send(
@@ -311,6 +440,7 @@ export class AuthenticationService {
       if (result.Items && result.Items.length > 0) {
         logger.info('Found expired connections for cleanup', {
           count: result.Items.length,
+          correlationId: this.generateCorrelationId(),
         });
 
         // Delete expired connections
@@ -325,16 +455,41 @@ export class AuthenticationService {
 
         await Promise.all(deletePromises);
 
+        success = true;
         logger.info('Cleaned up expired connections', {
           count: result.Items.length,
+          correlationId: this.generateCorrelationId(),
+        });
+      } else {
+        success = true;
+        logger.debug('No expired connections found for cleanup', {
+          correlationId: this.generateCorrelationId(),
         });
       }
     } catch (error) {
+      errorType = 'DATABASE_ERROR';
       logger.error('Failed to cleanup expired connections', {
         error: error instanceof Error ? error.message : String(error),
+        correlationId: this.generateCorrelationId(),
       });
       throw error;
+    } finally {
+      const duration = Date.now() - startTime;
+      await metricsService.recordDatabaseMetrics(
+        'cleanup_expired',
+        this.tableName,
+        success,
+        duration,
+        errorType
+      );
     }
+  }
+
+  /**
+   * Generate a correlation ID for request tracking
+   */
+  private generateCorrelationId(): string {
+    return `auth-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   }
 }
 
