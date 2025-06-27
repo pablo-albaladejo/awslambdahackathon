@@ -100,6 +100,76 @@ export const requestResponseLogger = () => {
   };
 };
 
+// Custom middleware for WebSocket-specific logging
+export const websocketLogger = () => {
+  return {
+    before: async (
+      request: middy.Request<APIGatewayProxyEvent, APIGatewayProxyResult, Error>
+    ): Promise<void> => {
+      const event = request.event;
+      logger.info('WebSocket event received', {
+        eventType: event.requestContext?.eventType,
+        connectionId: event.requestContext?.connectionId,
+        routeKey: event.requestContext?.routeKey,
+        messageId: event.requestContext?.messageId,
+        requestId: event.requestContext?.requestId,
+        body: event.body,
+      });
+    },
+    after: async (
+      request: middy.Request<APIGatewayProxyEvent, APIGatewayProxyResult, Error>
+    ): Promise<void> => {
+      const event = request.event;
+      logger.info('WebSocket response sent', {
+        statusCode: (request.response as APIGatewayProxyResult).statusCode,
+        connectionId: event.requestContext?.connectionId,
+        requestId: event.requestContext?.requestId,
+      });
+    },
+    onError: async (
+      request: middy.Request<APIGatewayProxyEvent, APIGatewayProxyResult, Error>
+    ): Promise<void> => {
+      const event = request.event;
+      logger.error('WebSocket event failed', {
+        error: (request.error as Error)?.message,
+        stack: (request.error as Error)?.stack,
+        connectionId: event.requestContext?.connectionId,
+        requestId: event.requestContext?.requestId,
+        eventType: event.requestContext?.eventType,
+      });
+    },
+  };
+};
+
+// Custom middleware for WebSocket message validation
+export const websocketMessageValidator = () => {
+  return {
+    before: async (
+      request: middy.Request<APIGatewayProxyEvent, APIGatewayProxyResult, Error>
+    ): Promise<void> => {
+      const event = request.event;
+
+      // Only validate message events
+      if (event.requestContext?.eventType === 'MESSAGE' && event.body) {
+        try {
+          const parsedBody = JSON.parse(event.body);
+          commonSchemas.websocketMessageBody.parse(parsedBody);
+
+          // Add parsed body to request for use in handler
+          (request as any).parsedBody = parsedBody;
+        } catch (error) {
+          logger.error('WebSocket message validation failed', {
+            error: error instanceof Error ? error.message : String(error),
+            connectionId: event.requestContext?.connectionId,
+            body: event.body,
+          });
+          throw error;
+        }
+      }
+    },
+  };
+};
+
 // Enhanced middleware factory function
 export const createHandler = <
   TEvent = APIGatewayProxyEvent,
@@ -112,6 +182,32 @@ export const createHandler = <
     httpJsonBodyParser(),
     cors(),
     requestResponseLogger(), // Add automatic logging
+    httpErrorHandler(),
+  ];
+
+  // Add validator middleware if schema is provided
+  if (schema) {
+    middlewares.push(
+      validator({
+        eventSchema: (event: TEvent) => schema.parse(event),
+      })
+    );
+  }
+
+  return middy(handler).use(middlewares);
+};
+
+// WebSocket-specific middleware factory function
+export const createWebSocketHandler = <
+  TEvent = APIGatewayProxyEvent,
+  TResult = APIGatewayProxyResult,
+>(
+  handler: (event: TEvent, context?: any) => Promise<TResult>,
+  schema?: ZodSchema
+) => {
+  const middlewares = [
+    websocketLogger(), // Add WebSocket-specific logging
+    websocketMessageValidator(), // Add WebSocket message validation
     httpErrorHandler(),
   ];
 
@@ -161,5 +257,53 @@ export const commonSchemas = {
       .nullable(),
     multiValueHeaders: z.record(z.array(z.string())).optional(),
     isBase64Encoded: z.boolean().optional(),
+  }),
+
+  // WebSocket connection event schema
+  websocketConnection: z.object({
+    httpMethod: z.string(),
+    path: z.string(),
+    headers: z.record(z.string()).optional(),
+    requestContext: z.object({
+      requestId: z.string(),
+      connectionId: z.string(),
+      eventType: z.enum(['CONNECT', 'DISCONNECT']),
+      routeKey: z.string().optional(),
+      messageId: z.string().optional(),
+      apiId: z.string(),
+      stage: z.string(),
+    }),
+    multiValueHeaders: z.record(z.array(z.string())).optional(),
+    isBase64Encoded: z.boolean().optional(),
+  }),
+
+  // WebSocket message event schema
+  websocketMessage: z.object({
+    httpMethod: z.string(),
+    path: z.string(),
+    headers: z.record(z.string()).optional(),
+    body: z.string().optional(),
+    requestContext: z.object({
+      requestId: z.string(),
+      connectionId: z.string(),
+      eventType: z.enum(['MESSAGE']),
+      routeKey: z.string(),
+      messageId: z.string(),
+      apiId: z.string(),
+      stage: z.string(),
+    }),
+    multiValueHeaders: z.record(z.array(z.string())).optional(),
+    isBase64Encoded: z.boolean().optional(),
+  }),
+
+  // WebSocket message body schema
+  websocketMessageBody: z.object({
+    type: z.enum(['auth', 'message', 'ping']),
+    data: z.object({
+      action: z.string(),
+      message: z.string().optional(),
+      sessionId: z.string().optional(),
+      token: z.string().optional(),
+    }),
   }),
 };
