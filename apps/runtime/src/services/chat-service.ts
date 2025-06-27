@@ -27,6 +27,8 @@ export class ChatService {
         messageLength: message?.length,
         hasSessionId: !!sessionId,
         sessionId,
+        operation: 'chat_message_processing',
+        service: 'chat',
       });
 
     try {

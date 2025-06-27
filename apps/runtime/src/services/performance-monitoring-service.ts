@@ -354,7 +354,16 @@ export class PerformanceMonitoringService {
   /**
    * Add metrics to buffer
    */
-  private addToBuffer(namespace: string, metricData: Array<any>): void {
+  private addToBuffer(
+    namespace: string,
+    metricData: Array<{
+      MetricName: string;
+      Value: number;
+      Unit: StandardUnit;
+      Dimensions: Array<{ Name: string; Value: string }>;
+      Timestamp: Date;
+    }>
+  ): void {
     const existingBuffer = this.metricsBuffer.find(
       item => item.namespace === namespace
     );

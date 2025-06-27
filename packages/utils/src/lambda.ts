@@ -218,7 +218,13 @@ export const websocketMessageValidator = () => {
           commonSchemas.websocketMessageBody.parse(parsedBody);
 
           // Add parsed body to request for use in handler
-          (request as any).parsedBody = parsedBody;
+          (
+            request as middy.Request<
+              APIGatewayProxyEvent,
+              APIGatewayProxyResult,
+              Error
+            > & { parsedBody: unknown }
+          ).parsedBody = parsedBody;
         } catch (error) {
           logger.error('WebSocket message validation failed', {
             error: error instanceof Error ? error.message : String(error),
@@ -264,7 +270,7 @@ export const createWebSocketHandler = <
   TEvent = APIGatewayProxyEvent,
   TResult = APIGatewayProxyResult,
 >(
-  handler: (event: TEvent, context?: any) => Promise<TResult>,
+  handler: (event: TEvent, context?: unknown) => Promise<TResult>,
   schema?: ZodSchema
 ) => {
   const middlewares = [
@@ -327,8 +333,8 @@ export const commonSchemas = {
 
   // WebSocket connection event schema
   websocketConnection: z.object({
-    httpMethod: z.string().min(1).max(10),
-    path: z.string().min(1).max(2000),
+    httpMethod: z.string().min(1).max(10).optional(),
+    path: z.string().min(1).max(2000).optional(),
     headers: z.record(z.string().max(10000)).optional(),
     requestContext: z.object({
       requestId: z.string().min(1).max(100),
@@ -336,7 +342,10 @@ export const commonSchemas = {
         .string()
         .min(1)
         .max(100)
-        .regex(/^[a-zA-Z0-9\-_]+$/),
+        .regex(
+          /^[a-zA-Z0-9\-_=]+$/,
+          'Connection ID contains invalid characters'
+        ),
       eventType: z.enum(['CONNECT', 'DISCONNECT']),
       routeKey: z.string().max(100).optional(),
       messageId: z.string().max(100).optional(),
@@ -351,8 +360,8 @@ export const commonSchemas = {
 
   // WebSocket message event schema
   websocketMessage: z.object({
-    httpMethod: z.string().min(1).max(10),
-    path: z.string().min(1).max(2000),
+    httpMethod: z.string().min(1).max(10).optional(),
+    path: z.string().min(1).max(2000).optional(),
     headers: z.record(z.string().max(10000)).optional(),
     body: z.string().max(100000).optional(), // 100KB max body size
     requestContext: z.object({
@@ -361,7 +370,10 @@ export const commonSchemas = {
         .string()
         .min(1)
         .max(100)
-        .regex(/^[a-zA-Z0-9\-_]+$/),
+        .regex(
+          /^[a-zA-Z0-9\-_=]+$/,
+          'Connection ID contains invalid characters'
+        ),
       eventType: z.enum(['MESSAGE']),
       routeKey: z.string().min(1).max(100),
       messageId: z.string().min(1).max(100),
@@ -403,7 +415,7 @@ export const commonSchemas = {
             .min(1, 'Session ID cannot be empty')
             .max(100, 'Session ID too long')
             .regex(
-              /^[a-zA-Z0-9\-_]+$/,
+              /^[a-zA-Z0-9\-_=]+$/,
               'Session ID contains invalid characters'
             )
             .optional(),
@@ -468,7 +480,7 @@ export const commonSchemas = {
       sessionId: z
         .string()
         .max(100, 'Session ID too long')
-        .regex(/^[a-zA-Z0-9\-_]+$/, 'Session ID contains invalid characters')
+        .regex(/^[a-zA-Z0-9\-_=]+$/, 'Session ID contains invalid characters')
         .optional(),
     }),
   }),
@@ -486,7 +498,7 @@ export const commonSchemas = {
       sessionId: z
         .string()
         .max(100, 'Session ID too long')
-        .regex(/^[a-zA-Z0-9\-_]+$/, 'Session ID contains invalid characters')
+        .regex(/^[a-zA-Z0-9\-_=]+$/, 'Session ID contains invalid characters')
         .optional(),
     }),
   }),
@@ -499,7 +511,7 @@ export const commonSchemas = {
       sessionId: z
         .string()
         .max(100, 'Session ID too long')
-        .regex(/^[a-zA-Z0-9\-_]+$/, 'Session ID contains invalid characters')
+        .regex(/^[a-zA-Z0-9\-_=]+$/, 'Session ID contains invalid characters')
         .optional(),
     }),
   }),

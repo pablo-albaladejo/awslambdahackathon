@@ -29,18 +29,22 @@ function sendRumEvent(level: string, message: string, data?: unknown) {
 export const logger = {
   info: (message: string, data?: unknown) => {
     if (isProd && sendRumEvent('info', message, data)) return;
+    // eslint-disable-next-line no-console
     console.log(`[INFO] ${message}`, data);
   },
   error: (message: string, data?: unknown) => {
     if (isProd && sendRumEvent('error', message, data)) return;
+    // eslint-disable-next-line no-console
     console.error(`[ERROR] ${message}`, data);
   },
   warn: (message: string, data?: unknown) => {
     if (isProd && sendRumEvent('warn', message, data)) return;
+    // eslint-disable-next-line no-console
     console.warn(`[WARN] ${message}`, data);
   },
   debug: (message: string, data?: unknown) => {
     if (isProd && sendRumEvent('debug', message, data)) return;
+    // eslint-disable-next-line no-console
     console.debug(`[DEBUG] ${message}`, data);
   },
 };

@@ -1,3 +1,5 @@
+import type { APIGatewayProxyEvent } from 'aws-lambda';
+
 import { authenticationService } from '../services/authentication-service';
 import { chatService } from '../services/chat-service';
 import { circuitBreakerService } from '../services/circuit-breaker-service';
@@ -7,15 +9,90 @@ import { metricsService } from '../services/metrics-service';
 import { performanceMonitoringService } from '../services/performance-monitoring-service';
 import { websocketMessageService } from '../services/websocket-message-service';
 
+// Define proper types for the services
+export interface User {
+  userId: string;
+  username: string;
+  email: string;
+  groups: string[];
+}
+
+export interface Connection {
+  connectionId: string;
+  timestamp: string;
+  ttl: number;
+}
+
+export interface ErrorContext {
+  connectionId: string;
+  event: APIGatewayProxyEvent;
+  error: Error;
+}
+
+export interface MetricsMetadata {
+  connectionId?: string;
+  userId?: string;
+  errorType?: string;
+  [key: string]: unknown;
+}
+
+export interface AuthResponseData {
+  userId?: string;
+  username?: string;
+  error?: string;
+}
+
+export interface ChatResponseData {
+  message: string;
+  sessionId: string;
+  isEcho: boolean;
+}
+
+export interface PerformanceContext {
+  operation: string;
+  service: string;
+  connectionId?: string;
+  userId?: string;
+  correlationId?: string;
+  stage?: string;
+  environment?: string;
+  eventType?: string;
+  tokenLength?: number;
+  messageLength?: number;
+  [key: string]: unknown;
+}
+
+export interface PerformanceMetrics {
+  duration: number;
+  memoryUsage: number;
+  success: boolean;
+  errorCount: number;
+  [key: string]: unknown;
+}
+
+export interface CircuitBreakerConfig {
+  timeout?: number;
+  errorThresholdPercentage?: number;
+  resetTimeout?: number;
+}
+
+export interface CircuitBreakerStats {
+  state: string;
+  failureCount: number;
+  successCount: number;
+  lastFailureTime?: Date;
+  nextAttemptTime?: Date;
+}
+
 // Service interfaces for dependency injection
 export interface IConnectionService {
   storeConnection(connectionId: string): Promise<void>;
   removeConnection(connectionId: string): Promise<void>;
-  getConnection(connectionId: string): Promise<any>;
+  getConnection(connectionId: string): Promise<Connection | null>;
 }
 
 export interface IAuthenticationService {
-  storeAuthenticatedConnection(connectionId: string, user: any): Promise<void>;
+  storeAuthenticatedConnection(connectionId: string, user: User): Promise<void>;
   removeAuthenticatedConnection(connectionId: string): Promise<void>;
   isConnectionAuthenticated(connectionId: string): Promise<boolean>;
 }
@@ -30,9 +107,9 @@ export interface IChatService {
 
 export interface IErrorHandlingService {
   handleWebSocketError(
-    error: any,
+    error: Error,
     connectionId: string,
-    event: any
+    event: APIGatewayProxyEvent
   ): Promise<void>;
 }
 
@@ -40,12 +117,12 @@ export interface IMetricsService {
   recordErrorMetrics(
     code: string,
     context: string,
-    metadata: any
+    metadata: MetricsMetadata
   ): Promise<void>;
   recordBusinessMetrics(
     name: string,
     value: number,
-    metadata: any
+    metadata: MetricsMetadata
   ): Promise<void>;
   recordWebSocketMetrics(
     name: string,
@@ -57,39 +134,66 @@ export interface IMetricsService {
 export interface IWebSocketMessageService {
   sendAuthResponse(
     connectionId: string,
-    event: any,
+    event: APIGatewayProxyEvent,
     success: boolean,
-    data: any
+    data: AuthResponseData
   ): Promise<boolean>;
   sendChatResponse(
     connectionId: string,
-    event: any,
+    event: APIGatewayProxyEvent,
     message: string,
     sessionId: string,
     isEcho: boolean
   ): Promise<boolean>;
   sendErrorMessage(
     connectionId: string,
-    event: any,
+    event: APIGatewayProxyEvent,
     message: string
   ): Promise<boolean>;
 }
 
 export interface IPerformanceMonitoringService {
-  startMonitoring(operation: string, context: any): any;
-  recordMetrics(metrics: any, context: any): void;
+  startMonitoring(
+    operation: string,
+    context: PerformanceContext
+  ): PerformanceMonitor;
+  recordMetrics(metrics: PerformanceMetrics, context: PerformanceContext): void;
   recordBusinessMetric(
     metricName: string,
     value: number,
     unit: string,
-    context: any,
+    context: PerformanceContext,
     additionalDimensions?: Array<{ Name: string; Value: string }>
   ): void;
-  recordErrorMetric(errorType: string, errorCode: string, context: any): void;
-  checkPerformanceThresholds(metrics: any, context: any, thresholds: any): void;
-  getPerformanceStats(): any;
+  recordErrorMetric(
+    errorType: string,
+    errorCode: string,
+    context: PerformanceContext
+  ): void;
+  checkPerformanceThresholds(
+    metrics: PerformanceMetrics,
+    context: PerformanceContext,
+    thresholds: PerformanceThresholds
+  ): void;
+  getPerformanceStats(): PerformanceStats;
   flushMetrics(): Promise<void>;
   shutdown(): Promise<void>;
+}
+
+export interface PerformanceMonitor {
+  complete(success: boolean, context?: Record<string, unknown>): void;
+}
+
+export interface PerformanceThresholds {
+  warning: number;
+  critical: number;
+  timeout: number;
+}
+
+export interface PerformanceStats {
+  totalMetrics: number;
+  bufferSize: number;
+  lastFlush: Date | null;
 }
 
 export interface ICircuitBreakerService {
@@ -98,19 +202,31 @@ export interface ICircuitBreakerService {
     operation: string,
     operationFn: () => Promise<T>,
     fallback?: () => Promise<T> | T,
-    config?: any
+    config?: CircuitBreakerConfig
   ): Promise<T>;
-  getCircuitBreaker(serviceName: string, operation: string, config?: any): any;
-  getAllStats(): Record<string, any>;
+  getCircuitBreaker(
+    serviceName: string,
+    operation: string,
+    config?: CircuitBreakerConfig
+  ): CircuitBreaker;
+  getAllStats(): Record<string, CircuitBreakerStats>;
   resetAll(): void;
-  getCircuitBreakerStats(serviceName: string, operation: string): any;
-  setDefaultConfig(config: any): void;
+  getCircuitBreakerStats(
+    serviceName: string,
+    operation: string
+  ): CircuitBreakerStats;
+  setDefaultConfig(config: CircuitBreakerConfig): void;
+}
+
+export interface CircuitBreaker {
+  execute<T>(fn: () => Promise<T>): Promise<T>;
+  getStats(): CircuitBreakerStats;
 }
 
 // Dependency injection container
 export class Container {
   private static instance: Container;
-  private services: Map<string, any> = new Map();
+  private services: Map<string, unknown> = new Map();
 
   private constructor() {
     this.initializeServices();
@@ -146,7 +262,7 @@ export class Container {
     return service as T;
   }
 
-  public set(serviceName: string, service: any): void {
+  public set(serviceName: string, service: unknown): void {
     this.services.set(serviceName, service);
   }
 

@@ -83,6 +83,8 @@ export class AuthenticationService {
         tokenLength: token?.length,
         hasToken: !!token,
         correlationId: this.generateCorrelationId(),
+        operation: 'authentication_jwt_verification',
+        service: 'authentication',
       });
 
     try {

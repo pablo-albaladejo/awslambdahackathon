@@ -37,6 +37,8 @@ const connectionHandler = async (
       connectionId: event.requestContext.connectionId,
       eventType: event.requestContext.eventType,
       requestId: event.requestContext.requestId,
+      operation: 'websocket_connection',
+      service: 'websocket',
     });
 
   metrics.addMetric(

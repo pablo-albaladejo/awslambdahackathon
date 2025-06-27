@@ -55,7 +55,7 @@ const validateConnectionId = (event: APIGatewayProxyEvent): string => {
 // Helper function to parse WebSocket message
 const parseWebSocketMessage = (
   event: APIGatewayProxyEvent,
-  context?: any
+  context?: { parsedBody?: WebSocketMessage }
 ): WebSocketMessage => {
   if (!event.body) {
     throw new Error(ERROR_CONSTANTS.MESSAGES.MISSING_BODY);
@@ -118,6 +118,7 @@ const handleAuthMessage = async (
       .storeAuthenticatedConnection(connectionId, {
         ...authResult.user,
         userId: safeUserId,
+        groups: authResult.user.groups || [],
       });
 
     await container
@@ -226,7 +227,7 @@ const handlePingMessageHandler = async (
 // Main conversation handler
 const conversationHandler = async (
   event: APIGatewayProxyEvent,
-  context?: any
+  context?: unknown
 ): Promise<APIGatewayProxyResult> => {
   const startTime = Date.now();
   const correlationId = generateCorrelationId(
@@ -238,8 +239,8 @@ const conversationHandler = async (
     .getPerformanceMonitoringService()
     .startMonitoring('websocket_conversation', {
       connectionId: event.requestContext.connectionId,
-      eventType: event.requestContext.eventType,
-      routeKey: event.requestContext.routeKey,
+      operation: 'websocket_conversation',
+      service: 'websocket',
       correlationId,
     });
 
@@ -278,8 +279,8 @@ const conversationHandler = async (
       service: 'cognito',
       operation: 'verifyJWT',
       state: circuitBreakerStats.state,
-      failureRate: circuitBreakerStats.failureRate,
-      totalRequests: circuitBreakerStats.totalRequests,
+      failureCount: circuitBreakerStats.failureCount,
+      successCount: circuitBreakerStats.successCount,
     });
   }
 
@@ -292,7 +293,10 @@ const conversationHandler = async (
     });
 
     // Parse and validate the WebSocket message
-    const websocketMessage = parseWebSocketMessage(event, context);
+    const websocketMessage = parseWebSocketMessage(
+      event,
+      context as { parsedBody?: WebSocketMessage }
+    );
 
     logger.info('Parsed WebSocket message', {
       connectionId,
@@ -359,7 +363,7 @@ const conversationHandler = async (
 
       await container
         .getErrorHandlingService()
-        .handleWebSocketError(error, connectionId, event);
+        .handleWebSocketError(new Error(error.message), connectionId, event);
 
       performanceMonitor.complete(false, {
         messageType: type,
