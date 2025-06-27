@@ -53,6 +53,8 @@ export const handler = async (
     requestId: event.requestContext.requestId,
     eventType: event.requestContext.eventType,
     correlationId,
+    connectionId: event.requestContext.connectionId,
+    body: event.body,
   });
 
   const subsegment = tracer
@@ -194,6 +196,11 @@ export const handler = async (
 
     // Handle authentication
     if (type === 'auth' && action === 'authenticate') {
+      logger.info('Received authentication message', {
+        connectionId,
+        tokenLength: token?.length,
+        correlationId,
+      });
       return await handleAuthentication(
         connectionId,
         event,
@@ -205,6 +212,13 @@ export const handler = async (
     // Check if connection is authenticated for other actions
     const isAuthenticated =
       await authenticationService.isConnectionAuthenticated(connectionId);
+    logger.info('Authentication status for connection', {
+      connectionId,
+      isAuthenticated,
+      action,
+      type,
+      correlationId,
+    });
     if (!isAuthenticated) {
       const error = createError(
         ErrorType.AUTHENTICATION_ERROR,
@@ -217,6 +231,7 @@ export const handler = async (
         connectionId,
         action,
         correlationId,
+        body: event.body,
       });
 
       await metricsService.recordErrorMetrics(
@@ -242,6 +257,12 @@ export const handler = async (
 
     // Handle regular messages
     if (type === 'message' && action === 'sendMessage') {
+      logger.info('Received chat message', {
+        connectionId,
+        sessionId,
+        messageLength: message?.length,
+        correlationId,
+      });
       if (!message) {
         const error = createError(
           ErrorType.VALIDATION_ERROR,
@@ -303,6 +324,10 @@ export const handler = async (
 
     // Handle ping messages
     if (type === 'ping') {
+      logger.info('Received ping message', {
+        connectionId,
+        correlationId,
+      });
       await metricsService.recordWebSocketMetrics('ping', true, 0);
       return createSuccessResponse({
         statusCode: 200,

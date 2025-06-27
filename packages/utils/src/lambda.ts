@@ -42,20 +42,15 @@ export const createErrorResponse = (
   } as ApiResponse),
 });
 
-// Create centralized logger, tracer, and metrics instances
-export const logger = new Logger({
-  serviceName: process.env.POWERTOOLS_SERVICE_NAME || 'api',
-  logLevel: (process.env.LOG_LEVEL as LogLevel) || 'INFO',
-});
+// --- AWS Lambda Powertools: Logging, Metrics, Tracing ---
+// Configura las variables de entorno en tu Lambda:
+// LOG_LEVEL=info
+// POWERTOOLS_SERVICE_NAME=websocket-api
+// POWERTOOLS_METRICS_NAMESPACE=AWSLambdaHackathon
 
-export const tracer = new Tracer({
-  serviceName: process.env.POWERTOOLS_SERVICE_NAME || 'api',
-});
-
-export const metrics = new Metrics({
-  namespace: process.env.POWERTOOLS_METRICS_NAMESPACE || 'MyAwesomeApp',
-  serviceName: process.env.POWERTOOLS_SERVICE_NAME || 'api',
-});
+export const logger = new Logger();
+export const tracer = new Tracer();
+export const metrics = new Metrics();
 
 // Lambda Powertools utilities
 export { Logger } from '@aws-lambda-powertools/logger';

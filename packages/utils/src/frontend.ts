@@ -1,70 +1,46 @@
-export const logger = console;
-
-/* eslint-disable no-console */
-/*import { Orchestration } from 'aws-rum-web/dist/cjs/orchestration/Orchestration';
-
 declare global {
+  interface ImportMeta {
+    env: Record<string, string>;
+  }
   interface Window {
-    awsRum: Orchestration;
+    awsRum?: {
+      recordEvent: (level: string, data: any) => void;
+    };
   }
 }
 
-// Frontend logger with CloudWatch RUM support
+const isProd =
+  typeof import.meta !== 'undefined' &&
+  import.meta.env &&
+  import.meta.env.MODE === 'production';
+
+function sendRumEvent(level: string, message: string, data?: unknown) {
+  if (typeof window !== 'undefined' && window.awsRum) {
+    window.awsRum.recordEvent(level, {
+      message,
+      data,
+      timestamp: new Date().toISOString(),
+    });
+    return true;
+  }
+  return false;
+}
+
 export const logger = {
   info: (message: string, data?: unknown) => {
-    if (typeof window !== 'undefined') {
-      // Try to use CloudWatch RUM if available
-      if (window.awsRum) {
-        window.awsRum.recordEvent('info', {
-          message,
-          data,
-          timestamp: new Date().toISOString(),
-        });
-      } else {
-        console.log(`[INFO] ${message}`, data);
-      }
-    }
+    if (isProd && sendRumEvent('info', message, data)) return;
+    console.log(`[INFO] ${message}`, data);
   },
   error: (message: string, data?: unknown) => {
-    if (typeof window !== 'undefined') {
-      // Try to use CloudWatch RUM if available
-      if (window.awsRum) {
-        window.awsRum.recordEvent('error', {
-          message,
-          data,
-          timestamp: new Date().toISOString(),
-        });
-      } else {
-        console.error(`[ERROR] ${message}`, data);
-      }
-    }
+    if (isProd && sendRumEvent('error', message, data)) return;
+    console.error(`[ERROR] ${message}`, data);
   },
   warn: (message: string, data?: unknown) => {
-    if (typeof window !== 'undefined') {
-      // Try to use CloudWatch RUM if available
-      if (window.awsRum) {
-        window.awsRum.recordEvent('warn', {
-          message,
-          data,
-          timestamp: new Date().toISOString(),
-        });
-      } else {
-        console.warn(`[WARN] ${message}`, data);
-      }
-    }
+    if (isProd && sendRumEvent('warn', message, data)) return;
+    console.warn(`[WARN] ${message}`, data);
   },
   debug: (message: string, data?: unknown) => {
-    if (typeof window !== 'undefined') {
-      // Try to use CloudWatch RUM if available
-      if (window.awsRum) {
-        window.awsRum.recordEvent('debug', {
-          message,
-          data,
-          timestamp: new Date().toISOString(),
-        });
-      } else {
-        console.debug(`[DEBUG] ${message}`, data);
-      }
-    }
+    if (isProd && sendRumEvent('debug', message, data)) return;
+    console.debug(`[DEBUG] ${message}`, data);
   },
-};*/
+};
