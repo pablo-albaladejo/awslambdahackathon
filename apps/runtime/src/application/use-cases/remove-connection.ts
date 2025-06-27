@@ -1,17 +1,11 @@
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DeleteCommand, DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 import { logger } from '@awslambdahackathon/utils/lambda';
 
-const ddbClient = new DynamoDBClient({});
-const ddbDocClient = DynamoDBDocumentClient.from(ddbClient);
+import { ConnectionService } from '../../services/connection-service.js';
 
-export async function removeConnection(connectionId: string): Promise<void> {
-  logger.info('Removing connection from DynamoDB', { connectionId });
-  await ddbDocClient.send(
-    new DeleteCommand({
-      TableName: process.env.WEBSOCKET_CONNECTIONS_TABLE,
-      Key: { connectionId },
-    })
-  );
-  logger.info('Connection removed from DynamoDB', { connectionId });
+export async function removeConnection(
+  connectionService: ConnectionService,
+  connectionId: string
+): Promise<void> {
+  logger.info('Removing connection', { connectionId });
+  await connectionService.removeConnection(connectionId);
 }

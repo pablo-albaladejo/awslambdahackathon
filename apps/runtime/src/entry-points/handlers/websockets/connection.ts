@@ -9,12 +9,15 @@ import type { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { removeAuthenticatedConnection } from '../../../application/use-cases/remove-authenticated-connection';
 import { removeConnection } from '../../../application/use-cases/remove-connection';
 import { storeConnection } from '../../../application/use-cases/store-connection';
+import { ConnectionService } from '../../../services/connection-service';
 import {
   createError,
   createErrorResponse,
   ErrorType,
   handleError,
 } from '../../../services/error-handling-service';
+
+const connectionService = new ConnectionService();
 
 export const handler = async (
   event: APIGatewayProxyEvent
@@ -51,7 +54,7 @@ export const handler = async (
 
     if (event.requestContext.eventType === 'CONNECT') {
       try {
-        await storeConnection(connectionId);
+        await storeConnection(connectionService, connectionId);
         return {
           statusCode: 200,
           headers: { 'Content-Type': 'application/json' },
@@ -69,7 +72,7 @@ export const handler = async (
 
     if (event.requestContext.eventType === 'DISCONNECT') {
       try {
-        await removeConnection(connectionId);
+        await removeConnection(connectionService, connectionId);
         await removeAuthenticatedConnection(connectionId);
         return createSuccessResponse({
           statusCode: 200,

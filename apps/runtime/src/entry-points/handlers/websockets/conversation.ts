@@ -11,6 +11,7 @@ import { isConnectionAuthenticated } from '../../../application/use-cases/check-
 import { handlePingMessage } from '../../../application/use-cases/handle-ping-message';
 import { sendChatMessage } from '../../../application/use-cases/send-chat-message';
 import { authenticationService } from '../../../services/authentication-service';
+import { chatService } from '../../../services/chat-service';
 import {
   createError,
   createErrorResponse,
@@ -314,7 +315,7 @@ export const handler = async (
         correlationId,
       });
       const { message: echoMessage, sessionId: currentSessionId } =
-        await sendChatMessage({
+        await sendChatMessage(chatService, {
           connectionId,
           message: message ?? '',
           sessionId,
