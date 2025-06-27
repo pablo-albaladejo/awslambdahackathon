@@ -43,7 +43,7 @@ export const createErrorResponse = (
 });
 
 // --- AWS Lambda Powertools: Logging, Metrics, Tracing ---
-// Configura las variables de entorno en tu Lambda:
+// Set these environment variables in your Lambda for Powertools:
 // LOG_LEVEL=info
 // POWERTOOLS_SERVICE_NAME=websocket-api
 // POWERTOOLS_METRICS_NAMESPACE=AWSLambdaHackathon

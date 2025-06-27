@@ -359,7 +359,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
     connect();
 
     return () => {
-      // Limpiamos timeout de reconexión
+      // Clear reconnection timeout
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
         reconnectTimeoutRef.current = null;
