@@ -5,6 +5,8 @@ import {
   PutCommand,
 } from '@aws-sdk/lib-dynamodb';
 
+import { circuitBreakerService } from './circuit-breaker-service';
+
 const ddbClient = new DynamoDBClient({});
 const ddbDocClient = DynamoDBDocumentClient.from(ddbClient);
 
@@ -18,20 +20,57 @@ export class ConnectionService {
       timestamp: now.toISOString(),
       ttl: Math.floor(now.getTime() / 1000) + 2 * 60 * 60, // 2 hours TTL
     };
-    await ddbDocClient.send(
-      new PutCommand({
-        TableName: this.tableName,
-        Item: connection,
-      })
+
+    // Use circuit breaker for DynamoDB connection storage
+    await circuitBreakerService.execute(
+      'dynamodb',
+      'storeConnection',
+      async () => {
+        return await ddbDocClient.send(
+          new PutCommand({
+            TableName: this.tableName,
+            Item: connection,
+          })
+        );
+      },
+      async () => {
+        // Fallback behavior when DynamoDB is unavailable
+        throw new Error('Database temporarily unavailable');
+      },
+      {
+        failureThreshold: 3,
+        recoveryTimeout: 20000, // 20 seconds
+        expectedResponseTime: 500, // 500ms
+        monitoringWindow: 60000, // 1 minute
+        minimumRequestCount: 5,
+      }
     );
   }
 
   async removeConnection(connectionId: string): Promise<void> {
-    await ddbDocClient.send(
-      new DeleteCommand({
-        TableName: this.tableName,
-        Key: { connectionId },
-      })
+    // Use circuit breaker for DynamoDB connection removal
+    await circuitBreakerService.execute(
+      'dynamodb',
+      'removeConnection',
+      async () => {
+        return await ddbDocClient.send(
+          new DeleteCommand({
+            TableName: this.tableName,
+            Key: { connectionId },
+          })
+        );
+      },
+      async () => {
+        // Fallback behavior when DynamoDB is unavailable
+        throw new Error('Database temporarily unavailable');
+      },
+      {
+        failureThreshold: 3,
+        recoveryTimeout: 20000, // 20 seconds
+        expectedResponseTime: 500, // 500ms
+        monitoringWindow: 60000, // 1 minute
+        minimumRequestCount: 5,
+      }
     );
   }
 }

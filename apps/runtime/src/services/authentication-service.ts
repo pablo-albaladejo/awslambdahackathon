@@ -9,6 +9,9 @@ import {
 import { logger } from '@awslambdahackathon/utils/lambda';
 import { CognitoJwtVerifier } from 'aws-jwt-verify';
 
+import { container } from '../config/container';
+
+import { circuitBreakerService } from './circuit-breaker-service';
 import { metricsService } from './metrics-service';
 
 export interface AuthenticatedUser {
@@ -73,6 +76,15 @@ export class AuthenticationService {
     let success = false;
     let errorType: string | undefined;
 
+    // Start performance monitoring for authentication
+    const performanceMonitor = container
+      .getPerformanceMonitoringService()
+      .startMonitoring('authentication_jwt_verification', {
+        tokenLength: token?.length,
+        hasToken: !!token,
+        correlationId: this.generateCorrelationId(),
+      });
+
     try {
       logger.info('Starting authentication process', {
         tokenLength: token?.length,
@@ -85,6 +97,12 @@ export class AuthenticationService {
         logger.warn('Authentication failed: Missing token', {
           correlationId: this.generateCorrelationId(),
         });
+
+        performanceMonitor.complete(false, {
+          error: 'MISSING_TOKEN',
+          errorType,
+        });
+
         return {
           success: false,
           error: 'Missing authentication token',
@@ -97,7 +115,31 @@ export class AuthenticationService {
         correlationId: this.generateCorrelationId(),
       });
 
-      const payload = await this.verifier.verify(token);
+      // Use circuit breaker for Cognito JWT verification
+      const payload = await circuitBreakerService.execute(
+        'cognito',
+        'verifyJWT',
+        async () => {
+          return await this.verifier.verify(token);
+        },
+        async () => {
+          // Fallback behavior when Cognito is unavailable
+          logger.warn(
+            'Cognito service unavailable, using fallback authentication',
+            {
+              correlationId: this.generateCorrelationId(),
+            }
+          );
+          throw new Error('Authentication service temporarily unavailable');
+        },
+        {
+          failureThreshold: 3, // 3 fallos antes de abrir el circuito
+          recoveryTimeout: 30000, // 30 segundos de espera
+          expectedResponseTime: 2000, // 2 segundos de tiempo de respuesta esperado
+          monitoringWindow: 60000, // Ventana de monitoreo de 1 minuto
+          minimumRequestCount: 5, // Mínimo 5 requests antes de abrir el circuito
+        }
+      );
 
       logger.info('JWT token verified successfully', {
         sub: payload.sub,
@@ -116,6 +158,14 @@ export class AuthenticationService {
           now,
           correlationId: this.generateCorrelationId(),
         });
+
+        performanceMonitor.complete(false, {
+          error: 'TOKEN_EXPIRED',
+          errorType,
+          exp: payload.exp,
+          now,
+        });
+
         return {
           success: false,
           error: 'Token expired',
@@ -138,6 +188,13 @@ export class AuthenticationService {
         correlationId: this.generateCorrelationId(),
       });
 
+      performanceMonitor.complete(true, {
+        userId: user.userId,
+        username: user.username,
+        email: user.email,
+        groups: user.groups,
+      });
+
       return {
         success: true,
         user,
@@ -148,6 +205,12 @@ export class AuthenticationService {
         error: error instanceof Error ? error.message : String(error),
         errorStack: error instanceof Error ? error.stack : undefined,
         correlationId: this.generateCorrelationId(),
+      });
+
+      performanceMonitor.complete(false, {
+        error: 'INVALID_TOKEN',
+        errorType,
+        errorMessage: error instanceof Error ? error.message : String(error),
       });
 
       return {

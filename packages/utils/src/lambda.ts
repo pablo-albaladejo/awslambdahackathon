@@ -289,83 +289,218 @@ export const createWebSocketHandler = <
 export const commonSchemas = {
   // Health check schema - validates the entire API Gateway event
   health: z.object({
-    httpMethod: z.string(),
-    path: z.string(),
-    queryStringParameters: z.record(z.string()).optional().nullable(),
-    pathParameters: z.record(z.string()).optional().nullable(),
-    headers: z.record(z.string()).optional(),
+    httpMethod: z.string().min(1).max(10),
+    path: z.string().min(1).max(2000),
+    queryStringParameters: z.record(z.string().max(1000)).optional().nullable(),
+    pathParameters: z.record(z.string().max(1000)).optional().nullable(),
+    headers: z.record(z.string().max(10000)).optional(),
     body: z.any().optional(),
     requestContext: z.any().optional(),
     multiValueQueryStringParameters: z
-      .record(z.array(z.string()))
+      .record(z.array(z.string().max(1000)).max(100))
       .optional()
       .nullable(),
-    multiValueHeaders: z.record(z.array(z.string())).optional(),
+    multiValueHeaders: z
+      .record(z.array(z.string().max(10000)).max(100))
+      .optional(),
     isBase64Encoded: z.boolean().optional(),
   }),
 
   // Generic API Gateway event schema
   apiGatewayEvent: z.object({
-    httpMethod: z.string(),
-    path: z.string(),
-    queryStringParameters: z.record(z.string()).optional().nullable(),
-    pathParameters: z.record(z.string()).optional().nullable(),
-    headers: z.record(z.string()).optional(),
+    httpMethod: z.string().min(1).max(10),
+    path: z.string().min(1).max(2000),
+    queryStringParameters: z.record(z.string().max(1000)).optional().nullable(),
+    pathParameters: z.record(z.string().max(1000)).optional().nullable(),
+    headers: z.record(z.string().max(10000)).optional(),
     body: z.any().optional(),
     requestContext: z.any().optional(),
     multiValueQueryStringParameters: z
-      .record(z.array(z.string()))
+      .record(z.array(z.string().max(1000)).max(100))
       .optional()
       .nullable(),
-    multiValueHeaders: z.record(z.array(z.string())).optional(),
+    multiValueHeaders: z
+      .record(z.array(z.string().max(10000)).max(100))
+      .optional(),
     isBase64Encoded: z.boolean().optional(),
   }),
 
   // WebSocket connection event schema
   websocketConnection: z.object({
-    httpMethod: z.string(),
-    path: z.string(),
-    headers: z.record(z.string()).optional(),
+    httpMethod: z.string().min(1).max(10),
+    path: z.string().min(1).max(2000),
+    headers: z.record(z.string().max(10000)).optional(),
     requestContext: z.object({
-      requestId: z.string(),
-      connectionId: z.string(),
+      requestId: z.string().min(1).max(100),
+      connectionId: z
+        .string()
+        .min(1)
+        .max(100)
+        .regex(/^[a-zA-Z0-9\-_]+$/),
       eventType: z.enum(['CONNECT', 'DISCONNECT']),
-      routeKey: z.string().optional(),
-      messageId: z.string().optional(),
-      apiId: z.string(),
-      stage: z.string(),
+      routeKey: z.string().max(100).optional(),
+      messageId: z.string().max(100).optional(),
+      apiId: z.string().min(1).max(100),
+      stage: z.string().min(1).max(50),
     }),
-    multiValueHeaders: z.record(z.array(z.string())).optional(),
+    multiValueHeaders: z
+      .record(z.array(z.string().max(10000)).max(100))
+      .optional(),
     isBase64Encoded: z.boolean().optional(),
   }),
 
   // WebSocket message event schema
   websocketMessage: z.object({
-    httpMethod: z.string(),
-    path: z.string(),
-    headers: z.record(z.string()).optional(),
-    body: z.string().optional(),
+    httpMethod: z.string().min(1).max(10),
+    path: z.string().min(1).max(2000),
+    headers: z.record(z.string().max(10000)).optional(),
+    body: z.string().max(100000).optional(), // 100KB max body size
     requestContext: z.object({
-      requestId: z.string(),
-      connectionId: z.string(),
+      requestId: z.string().min(1).max(100),
+      connectionId: z
+        .string()
+        .min(1)
+        .max(100)
+        .regex(/^[a-zA-Z0-9\-_]+$/),
       eventType: z.enum(['MESSAGE']),
-      routeKey: z.string(),
-      messageId: z.string(),
-      apiId: z.string(),
-      stage: z.string(),
+      routeKey: z.string().min(1).max(100),
+      messageId: z.string().min(1).max(100),
+      apiId: z.string().min(1).max(100),
+      stage: z.string().min(1).max(50),
     }),
-    multiValueHeaders: z.record(z.array(z.string())).optional(),
+    multiValueHeaders: z
+      .record(z.array(z.string().max(10000)).max(100))
+      .optional(),
     isBase64Encoded: z.boolean().optional(),
   }),
 
-  // WebSocket message body schema
-  websocketMessageBody: z.object({
-    type: z.enum(['auth', 'message', 'ping']),
+  // Enhanced WebSocket message body schema with comprehensive validation
+  websocketMessageBody: z
+    .object({
+      type: z.enum(['auth', 'message', 'ping'], {
+        errorMap: () => ({
+          message: 'Message type must be one of: auth, message, ping',
+        }),
+      }),
+      data: z
+        .object({
+          action: z
+            .string()
+            .min(1)
+            .max(50)
+            .regex(/^[a-zA-Z0-9_]+$/, {
+              message:
+                'Action must contain only alphanumeric characters and underscores',
+            }),
+          message: z
+            .string()
+            .min(1, 'Message cannot be empty')
+            .max(10000, 'Message too long (max 10KB)')
+            .regex(/^[\s\S]*$/, 'Message contains invalid characters')
+            .optional(),
+          sessionId: z
+            .string()
+            .min(1, 'Session ID cannot be empty')
+            .max(100, 'Session ID too long')
+            .regex(
+              /^[a-zA-Z0-9\-_]+$/,
+              'Session ID contains invalid characters'
+            )
+            .optional(),
+          token: z
+            .string()
+            .min(1, 'Token cannot be empty')
+            .max(10000, 'Token too long')
+            .regex(/^[a-zA-Z0-9\-_.]+$/, 'Token contains invalid characters')
+            .optional(),
+        })
+        .refine(
+          data => {
+            // Validate that auth messages have token
+            if (data.action === 'authenticate' && !data.token) {
+              return false;
+            }
+            // Validate that message actions have message content
+            if (data.action === 'sendMessage' && !data.message) {
+              return false;
+            }
+            return true;
+          },
+          {
+            message: 'Invalid data for action type',
+            path: ['data'],
+          }
+        ),
+    })
+    .refine(
+      message => {
+        // Validate message type and action combinations
+        if (message.type === 'auth' && message.data.action !== 'authenticate') {
+          return false;
+        }
+        if (
+          message.type === 'message' &&
+          message.data.action !== 'sendMessage'
+        ) {
+          return false;
+        }
+        if (message.type === 'ping' && message.data.action) {
+          return false;
+        }
+        return true;
+      },
+      {
+        message: 'Invalid message type and action combination',
+        path: ['type'],
+      }
+    ),
+
+  // Enhanced authentication message schema
+  authMessage: z.object({
+    type: z.literal('auth'),
     data: z.object({
-      action: z.string(),
-      message: z.string().optional(),
-      sessionId: z.string().optional(),
-      token: z.string().optional(),
+      action: z.literal('authenticate'),
+      token: z
+        .string()
+        .min(1, 'Authentication token is required')
+        .max(10000, 'Token too long')
+        .regex(/^[a-zA-Z0-9\-_.]+$/, 'Token contains invalid characters'),
+      sessionId: z
+        .string()
+        .max(100, 'Session ID too long')
+        .regex(/^[a-zA-Z0-9\-_]+$/, 'Session ID contains invalid characters')
+        .optional(),
+    }),
+  }),
+
+  // Enhanced chat message schema
+  chatMessage: z.object({
+    type: z.literal('message'),
+    data: z.object({
+      action: z.literal('sendMessage'),
+      message: z
+        .string()
+        .min(1, 'Message content is required')
+        .max(10000, 'Message too long (max 10KB)')
+        .regex(/^[\s\S]*$/, 'Message contains invalid characters'),
+      sessionId: z
+        .string()
+        .max(100, 'Session ID too long')
+        .regex(/^[a-zA-Z0-9\-_]+$/, 'Session ID contains invalid characters')
+        .optional(),
+    }),
+  }),
+
+  // Enhanced ping message schema
+  pingMessage: z.object({
+    type: z.literal('ping'),
+    data: z.object({
+      action: z.string().optional(), // Ping doesn't require action
+      sessionId: z
+        .string()
+        .max(100, 'Session ID too long')
+        .regex(/^[a-zA-Z0-9\-_]+$/, 'Session ID contains invalid characters')
+        .optional(),
     }),
   }),
 };

@@ -233,6 +233,16 @@ const conversationHandler = async (
     CORRELATION_CONSTANTS.PREFIXES.CONVERSATION
   );
 
+  // Start performance monitoring
+  const performanceMonitor = container
+    .getPerformanceMonitoringService()
+    .startMonitoring('websocket_conversation', {
+      connectionId: event.requestContext.connectionId,
+      eventType: event.requestContext.eventType,
+      routeKey: event.requestContext.routeKey,
+      correlationId,
+    });
+
   metrics.addMetric(
     METRIC_CONSTANTS.NAMES.WEBSOCKET_REQUEST,
     METRIC_CONSTANTS.UNITS.COUNT,
@@ -259,6 +269,20 @@ const conversationHandler = async (
     ?.addNewSubsegment('websocket_conversation');
   const connectionId = validateConnectionId(event);
 
+  // Example: Get circuit breaker statistics for monitoring
+  const circuitBreakerStats = container
+    .getCircuitBreakerService()
+    .getCircuitBreakerStats('cognito', 'verifyJWT');
+  if (circuitBreakerStats) {
+    logger.info('Circuit breaker status', {
+      service: 'cognito',
+      operation: 'verifyJWT',
+      state: circuitBreakerStats.state,
+      failureRate: circuitBreakerStats.failureRate,
+      totalRequests: circuitBreakerStats.totalRequests,
+    });
+  }
+
   try {
     logger.info('WebSocket conversation event received', {
       connectionId,
@@ -284,12 +308,18 @@ const conversationHandler = async (
 
     // Handle authentication
     if (type === WEBSOCKET_CONSTANTS.MESSAGE_TYPES.AUTH) {
-      return await handleAuthMessage(
+      const result = await handleAuthMessage(
         websocketMessage,
         connectionId,
         event,
         correlationId
       );
+      performanceMonitor.complete(true, {
+        messageType: 'auth',
+        action: data.action,
+        hasToken: !!data.token,
+      });
+      return result;
     }
 
     // Check if connection is authenticated for other actions
@@ -331,6 +361,12 @@ const conversationHandler = async (
         .getErrorHandlingService()
         .handleWebSocketError(error, connectionId, event);
 
+      performanceMonitor.complete(false, {
+        messageType: type,
+        action,
+        error: 'UNAUTHENTICATED_CONNECTION',
+      });
+
       return createSuccessResponse({
         statusCode: WEBSOCKET_CONSTANTS.STATUS_CODES.SUCCESS,
         body: '',
@@ -339,17 +375,29 @@ const conversationHandler = async (
 
     // Handle regular messages
     if (type === WEBSOCKET_CONSTANTS.MESSAGE_TYPES.MESSAGE) {
-      return await handleChatMessage(
+      const result = await handleChatMessage(
         websocketMessage,
         connectionId,
         event,
         correlationId
       );
+      performanceMonitor.complete(true, {
+        messageType: 'message',
+        action: data.action,
+        messageLength: data.message?.length,
+        sessionId: data.sessionId,
+      });
+      return result;
     }
 
     // Handle ping messages
     if (type === WEBSOCKET_CONSTANTS.MESSAGE_TYPES.PING) {
-      return await handlePingMessageHandler(connectionId);
+      const result = await handlePingMessageHandler(connectionId);
+      performanceMonitor.complete(true, {
+        messageType: 'ping',
+        action: data.action,
+      });
+      return result;
     }
 
     // Invalid action
@@ -379,6 +427,12 @@ const conversationHandler = async (
         }
       );
 
+    performanceMonitor.complete(false, {
+      messageType: type,
+      action,
+      error: 'INVALID_ACTION',
+    });
+
     return createErrorResponse(error, event);
   } catch (error) {
     const appError = handleError(error as Error, {
@@ -398,6 +452,13 @@ const conversationHandler = async (
           errorType: appError.type,
         }
       );
+
+    performanceMonitor.complete(false, {
+      messageType: 'unknown',
+      action: 'unknown',
+      error: appError.type,
+      errorMessage: appError.message,
+    });
 
     return createErrorResponse(appError, event);
   } finally {

@@ -16,6 +16,7 @@ import {
   METRIC_CONSTANTS,
   WEBSOCKET_CONSTANTS,
 } from '../../../config/constants';
+import { container } from '../../../config/container';
 import { ConnectionService } from '../../../services/connection-service';
 import {
   createError,
@@ -29,6 +30,15 @@ const connectionService = new ConnectionService();
 const connectionHandler = async (
   event: APIGatewayProxyEvent
 ): Promise<APIGatewayProxyResult> => {
+  // Start performance monitoring
+  const performanceMonitor = container
+    .getPerformanceMonitoringService()
+    .startMonitoring('websocket_connection', {
+      connectionId: event.requestContext.connectionId,
+      eventType: event.requestContext.eventType,
+      requestId: event.requestContext.requestId,
+    });
+
   metrics.addMetric(
     METRIC_CONSTANTS.NAMES.WEBSOCKET_REQUEST,
     METRIC_CONSTANTS.UNITS.COUNT,
@@ -63,6 +73,11 @@ const connectionHandler = async (
         requestContext: event.requestContext,
       });
 
+      performanceMonitor.complete(false, {
+        error: 'MISSING_CONNECTION_ID',
+        eventType: event.requestContext.eventType,
+      });
+
       return createErrorResponse(error, event);
     }
 
@@ -71,6 +86,12 @@ const connectionHandler = async (
     ) {
       try {
         await storeConnection(connectionService, connectionId);
+
+        performanceMonitor.complete(true, {
+          eventType: 'connect',
+          connectionId,
+        });
+
         return {
           statusCode: WEBSOCKET_CONSTANTS.STATUS_CODES.SUCCESS,
           headers: { 'Content-Type': 'application/json' },
@@ -82,6 +103,14 @@ const connectionHandler = async (
           action: 'connect',
           event,
         });
+
+        performanceMonitor.complete(false, {
+          eventType: 'connect',
+          connectionId,
+          error: appError.type,
+          errorMessage: appError.message,
+        });
+
         return createErrorResponse(appError, event);
       }
     }
@@ -93,6 +122,12 @@ const connectionHandler = async (
       try {
         await removeConnection(connectionService, connectionId);
         await removeAuthenticatedConnection(connectionId);
+
+        performanceMonitor.complete(true, {
+          eventType: 'disconnect',
+          connectionId,
+        });
+
         return createSuccessResponse({
           statusCode: WEBSOCKET_CONSTANTS.STATUS_CODES.SUCCESS,
           body: JSON.stringify({ message: 'Disconnected' }),
@@ -108,6 +143,14 @@ const connectionHandler = async (
           connectionId,
           error: appError.message,
         });
+
+        performanceMonitor.complete(true, {
+          eventType: 'disconnect',
+          connectionId,
+          warning: 'cleanup_failed',
+          error: appError.type,
+        });
+
         return createSuccessResponse({
           statusCode: WEBSOCKET_CONSTANTS.STATUS_CODES.SUCCESS,
           body: JSON.stringify({ message: 'Disconnected' }),
@@ -132,6 +175,15 @@ const connectionHandler = async (
       eventType: event.requestContext.eventType,
     });
 
+    performanceMonitor.complete(false, {
+      eventType: event.requestContext.eventType,
+      error: 'INVALID_EVENT_TYPE',
+      expectedTypes: [
+        WEBSOCKET_CONSTANTS.EVENT_TYPES.CONNECT,
+        WEBSOCKET_CONSTANTS.EVENT_TYPES.DISCONNECT,
+      ],
+    });
+
     return createErrorResponse(error, event);
   } catch (error) {
     const appError = handleError(error as Error, {
@@ -139,6 +191,12 @@ const connectionHandler = async (
       connectionId: event.requestContext.connectionId,
       action: 'websocket_connection',
       event,
+    });
+
+    performanceMonitor.complete(false, {
+      eventType: event.requestContext.eventType,
+      error: appError.type,
+      errorMessage: appError.message,
     });
 
     return createErrorResponse(appError, event);

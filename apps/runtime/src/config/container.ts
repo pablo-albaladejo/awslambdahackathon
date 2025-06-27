@@ -1,8 +1,10 @@
 import { authenticationService } from '../services/authentication-service';
 import { chatService } from '../services/chat-service';
+import { circuitBreakerService } from '../services/circuit-breaker-service';
 import { ConnectionService } from '../services/connection-service';
 import { errorHandlingService } from '../services/error-handling-service';
 import { metricsService } from '../services/metrics-service';
+import { performanceMonitoringService } from '../services/performance-monitoring-service';
 import { websocketMessageService } from '../services/websocket-message-service';
 
 // Service interfaces for dependency injection
@@ -73,6 +75,38 @@ export interface IWebSocketMessageService {
   ): Promise<boolean>;
 }
 
+export interface IPerformanceMonitoringService {
+  startMonitoring(operation: string, context: any): any;
+  recordMetrics(metrics: any, context: any): void;
+  recordBusinessMetric(
+    metricName: string,
+    value: number,
+    unit: string,
+    context: any,
+    additionalDimensions?: Array<{ Name: string; Value: string }>
+  ): void;
+  recordErrorMetric(errorType: string, errorCode: string, context: any): void;
+  checkPerformanceThresholds(metrics: any, context: any, thresholds: any): void;
+  getPerformanceStats(): any;
+  flushMetrics(): Promise<void>;
+  shutdown(): Promise<void>;
+}
+
+export interface ICircuitBreakerService {
+  execute<T>(
+    serviceName: string,
+    operation: string,
+    operationFn: () => Promise<T>,
+    fallback?: () => Promise<T> | T,
+    config?: any
+  ): Promise<T>;
+  getCircuitBreaker(serviceName: string, operation: string, config?: any): any;
+  getAllStats(): Record<string, any>;
+  resetAll(): void;
+  getCircuitBreakerStats(serviceName: string, operation: string): any;
+  setDefaultConfig(config: any): void;
+}
+
 // Dependency injection container
 export class Container {
   private static instance: Container;
@@ -97,6 +131,11 @@ export class Container {
     this.services.set('errorHandlingService', errorHandlingService);
     this.services.set('metricsService', metricsService);
     this.services.set('websocketMessageService', websocketMessageService);
+    this.services.set(
+      'performanceMonitoringService',
+      performanceMonitoringService
+    );
+    this.services.set('circuitBreakerService', circuitBreakerService);
   }
 
   public get<T>(serviceName: string): T {
@@ -134,6 +173,16 @@ export class Container {
 
   public getWebSocketMessageService(): IWebSocketMessageService {
     return this.get<IWebSocketMessageService>('websocketMessageService');
+  }
+
+  public getPerformanceMonitoringService(): IPerformanceMonitoringService {
+    return this.get<IPerformanceMonitoringService>(
+      'performanceMonitoringService'
+    );
+  }
+
+  public getCircuitBreakerService(): ICircuitBreakerService {
+    return this.get<ICircuitBreakerService>('circuitBreakerService');
   }
 }
 

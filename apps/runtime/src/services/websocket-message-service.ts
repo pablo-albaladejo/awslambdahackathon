@@ -7,6 +7,7 @@ import {
 import { logger } from '@awslambdahackathon/utils/lambda';
 import type { APIGatewayProxyEvent } from 'aws-lambda';
 
+import { circuitBreakerService } from './circuit-breaker-service';
 import { metricsService } from './metrics-service';
 
 export interface WebSocketMessage {
@@ -77,11 +78,37 @@ export class WebSocketMessageService {
 
       const client = this.getClient(event);
 
-      await client.send(
-        new PostToConnectionCommand({
-          ConnectionId: connectionId,
-          Data: Buffer.from(JSON.stringify(message)),
-        })
+      // Use circuit breaker for API Gateway Management API calls
+      await circuitBreakerService.execute(
+        'apigateway-management',
+        'postToConnection',
+        async () => {
+          return await client.send(
+            new PostToConnectionCommand({
+              ConnectionId: connectionId,
+              Data: Buffer.from(JSON.stringify(message)),
+            })
+          );
+        },
+        async () => {
+          // Fallback behavior when API Gateway is unavailable
+          logger.warn(
+            'API Gateway Management API unavailable, message not sent',
+            {
+              connectionId,
+              messageType: message.type,
+              correlationId: this.generateCorrelationId(),
+            }
+          );
+          throw new Error('WebSocket service temporarily unavailable');
+        },
+        {
+          failureThreshold: 5,
+          recoveryTimeout: 15000, // 15 seconds
+          expectedResponseTime: 1000, // 1 second
+          monitoringWindow: 30000, // 30 seconds
+          minimumRequestCount: 3,
+        }
       );
 
       success = true;
