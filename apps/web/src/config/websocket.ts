@@ -17,12 +17,25 @@ export interface WebSocketResponse {
 class WebSocketClient {
   private ws: WebSocket | null = null;
   private reconnectAttempts = 0;
-  private maxReconnectAttempts = 5;
-  private reconnectDelay = 1000;
+  private maxReconnectAttempts: number;
+  private reconnectDelay = 1000; // base delay in ms
+  private maxReconnectDelay = 30000; // max delay in ms
   private url: string;
 
   constructor() {
     this.url = import.meta.env.VITE_WEBSOCKET_URL || 'wss://localhost:3001';
+    // Read max reconnect attempts from env/config, fallback to 5
+    this.maxReconnectAttempts =
+      Number(import.meta.env.VITE_WS_RECONNECT_ATTEMPTS) || 5;
+    // Optionally, allow maxReconnectDelay to be configured
+    if (import.meta.env.VITE_WS_MAX_RECONNECT_DELAY) {
+      this.maxReconnectDelay = Number(
+        import.meta.env.VITE_WS_MAX_RECONNECT_DELAY
+      );
+    }
+    if (import.meta.env.VITE_WS_RECONNECT_DELAY) {
+      this.reconnectDelay = Number(import.meta.env.VITE_WS_RECONNECT_DELAY);
+    }
   }
 
   async connect(): Promise<void> {
@@ -86,7 +99,11 @@ class WebSocketClient {
       logger.info('Attempting to reconnect WebSocket', {
         attempt: this.reconnectAttempts,
       });
-
+      // Exponential backoff: delay = baseDelay * 2^(attempts-1), capped at maxReconnectDelay
+      const delay = Math.min(
+        this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1),
+        this.maxReconnectDelay
+      );
       setTimeout(() => {
         this.connect().catch(error => {
           logger.error('Reconnection failed', {
@@ -94,7 +111,7 @@ class WebSocketClient {
             attempt: this.reconnectAttempts,
           });
         });
-      }, this.reconnectDelay * this.reconnectAttempts);
+      }, delay);
     } else {
       logger.error('Max reconnection attempts reached');
     }
@@ -154,5 +171,5 @@ export const websocketClient = new WebSocketClient();
 export const websocketConfig = {
   url: import.meta.env.VITE_WEBSOCKET_URL || 'wss://localhost:3001',
   reconnectInterval: 3000,
-  maxReconnectAttempts: 5,
+  maxReconnectAttempts: Number(import.meta.env.VITE_WS_RECONNECT_ATTEMPTS) || 5,
 };

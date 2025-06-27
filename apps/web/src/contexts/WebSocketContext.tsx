@@ -378,6 +378,10 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
   const retryConnect = useCallback(() => {
     setReconnectFailed(false);
     reconnectAttemptsRef.current = 0;
+    isConnectingRef.current = false;
+    logger.info(
+      'Manual retry triggered: resetting reconnect state and calling connect()'
+    );
     connect();
   }, [connect]);
 
