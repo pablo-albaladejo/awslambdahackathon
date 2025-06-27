@@ -313,11 +313,19 @@ export const handler = async (
         messageLength: message?.length,
         correlationId,
       });
-      await sendChatMessage({
+      const { message: echoMessage, sessionId: currentSessionId } =
+        await sendChatMessage({
+          connectionId,
+          message: message ?? '',
+          sessionId,
+        });
+      await websocketMessageService.sendChatResponse(
         connectionId,
-        message: message ?? '',
-        sessionId,
-      });
+        event,
+        echoMessage,
+        currentSessionId,
+        true // isEcho
+      );
       return createSuccessResponse({
         statusCode: 200,
         body: '',

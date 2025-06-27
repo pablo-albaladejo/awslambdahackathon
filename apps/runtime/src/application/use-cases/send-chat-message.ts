@@ -14,7 +14,7 @@ export async function sendChatMessage({
   connectionId: string;
   message: string;
   sessionId?: string;
-}): Promise<void> {
+}): Promise<{ message: string; sessionId: string }> {
   if (typeof message !== 'string') throw new Error('Message must be a string');
   const user = await authenticationService.getUserFromConnection(connectionId);
   if (!user) throw new Error('User not found for authenticated connection');
@@ -57,4 +57,5 @@ export async function sendChatMessage({
       },
     })
   );
+  return { message, sessionId: currentSessionId };
 }
