@@ -1,9 +1,3 @@
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import {
-  DeleteCommand,
-  DynamoDBDocumentClient,
-  PutCommand,
-} from '@aws-sdk/lib-dynamodb';
 import {
   createSuccessResponse,
   logger,
@@ -12,24 +6,15 @@ import {
 } from '@awslambdahackathon/utils/lambda';
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 
-import { authenticationService } from '../../../services/authentication-service';
+import { removeAuthenticatedConnection } from '../../../application/use-cases/remove-authenticated-connection';
+import { removeConnection } from '../../../application/use-cases/remove-connection';
+import { storeConnection } from '../../../application/use-cases/store-connection';
 import {
   createError,
   createErrorResponse,
-  errorHandlingService,
   ErrorType,
   handleError,
 } from '../../../services/error-handling-service';
-
-interface Connection {
-  connectionId: string;
-  sessionId?: string;
-  ttl: number;
-  timestamp: string;
-}
-
-const ddbClient = new DynamoDBClient({});
-const ddbDocClient = DynamoDBDocumentClient.from(ddbClient);
 
 export const handler = async (
   event: APIGatewayProxyEvent
@@ -65,11 +50,47 @@ export const handler = async (
     }
 
     if (event.requestContext.eventType === 'CONNECT') {
-      return await handleConnect(connectionId, event);
+      try {
+        await storeConnection(connectionId);
+        return {
+          statusCode: 200,
+          headers: { 'Content-Type': 'application/json' },
+          body: '',
+        };
+      } catch (error) {
+        const appError = handleError(error as Error, {
+          connectionId,
+          action: 'connect',
+          event,
+        });
+        return createErrorResponse(appError, event);
+      }
     }
 
     if (event.requestContext.eventType === 'DISCONNECT') {
-      return await handleDisconnect(connectionId, event);
+      try {
+        await removeConnection(connectionId);
+        await removeAuthenticatedConnection(connectionId);
+        return createSuccessResponse({
+          statusCode: 200,
+          body: JSON.stringify({ message: 'Disconnected' }),
+        });
+      } catch (error) {
+        const appError = handleError(error as Error, {
+          connectionId,
+          action: 'disconnect',
+          event,
+        });
+        // For disconnect, we still want to return success even if cleanup fails
+        logger.warn('Error during disconnect cleanup', {
+          connectionId,
+          error: appError.message,
+        });
+        return createSuccessResponse({
+          statusCode: 200,
+          body: JSON.stringify({ message: 'Disconnected' }),
+        });
+      }
     }
 
     const error = createError(
@@ -100,125 +121,3 @@ export const handler = async (
     subsegment?.close();
   }
 };
-
-/**
- * Handle WebSocket connection
- */
-async function handleConnect(
-  connectionId: string,
-  event: APIGatewayProxyEvent
-): Promise<APIGatewayProxyResult> {
-  try {
-    const now = new Date();
-    const connection: Connection = {
-      connectionId,
-      timestamp: now.toISOString(),
-      ttl: Math.floor(now.getTime() / 1000) + 2 * 60 * 60, // 2 hours TTL
-    };
-
-    logger.info('Storing connection in DynamoDB', { connection });
-
-    try {
-      await ddbDocClient.send(
-        new PutCommand({
-          TableName: process.env.WEBSOCKET_CONNECTIONS_TABLE,
-          Item: connection,
-        })
-      );
-    } catch (dbError) {
-      const error = errorHandlingService.handleDatabaseError(
-        dbError,
-        'store_connection',
-        { connectionId }
-      );
-
-      throw error;
-    }
-
-    logger.info('Connection stored successfully', { connectionId });
-
-    return {
-      statusCode: 200,
-      headers: { 'Content-Type': 'application/json' },
-      body: '',
-    };
-  } catch (error) {
-    const appError = handleError(error as Error, {
-      connectionId,
-      action: 'connect',
-      event,
-    });
-
-    return createErrorResponse(appError, event);
-  }
-}
-
-/**
- * Handle WebSocket disconnection
- */
-async function handleDisconnect(
-  connectionId: string,
-  event: APIGatewayProxyEvent
-): Promise<APIGatewayProxyResult> {
-  try {
-    logger.info('Processing disconnect event', { connectionId });
-
-    // Delete connection from DynamoDB
-    try {
-      await ddbDocClient.send(
-        new DeleteCommand({
-          TableName: process.env.WEBSOCKET_CONNECTIONS_TABLE,
-          Key: { connectionId },
-        })
-      );
-    } catch (dbError) {
-      const error = errorHandlingService.handleDatabaseError(
-        dbError,
-        'delete_connection',
-        { connectionId }
-      );
-
-      // Log the error but don't fail the disconnect operation
-      logger.warn('Failed to delete connection from DynamoDB', {
-        connectionId,
-        error: error.message,
-      });
-    }
-
-    // Clean up authenticated connection from DynamoDB
-    try {
-      await authenticationService.removeAuthenticatedConnection(connectionId);
-    } catch (authError) {
-      // Log the error but don't fail the disconnect operation
-      logger.warn('Failed to remove authenticated connection', {
-        connectionId,
-        error:
-          authError instanceof Error ? authError.message : String(authError),
-      });
-    }
-
-    logger.info('Connection cleanup completed', { connectionId });
-
-    return createSuccessResponse({
-      statusCode: 200,
-      body: JSON.stringify({ message: 'Disconnected' }),
-    });
-  } catch (error) {
-    const appError = handleError(error as Error, {
-      connectionId,
-      action: 'disconnect',
-      event,
-    });
-
-    // For disconnect, we still want to return success even if cleanup fails
-    logger.warn('Error during disconnect cleanup', {
-      connectionId,
-      error: appError.message,
-    });
-
-    return createSuccessResponse({
-      statusCode: 200,
-      body: JSON.stringify({ message: 'Disconnected' }),
-    });
-  }
-}

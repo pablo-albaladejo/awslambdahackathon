@@ -4,7 +4,7 @@ declare global {
   }
   interface Window {
     awsRum?: {
-      recordEvent: (level: string, data: any) => void;
+      recordEvent: (level: string, data: Record<string, unknown>) => void;
     };
   }
 }
@@ -29,18 +29,18 @@ function sendRumEvent(level: string, message: string, data?: unknown) {
 export const logger = {
   info: (message: string, data?: unknown) => {
     if (isProd && sendRumEvent('info', message, data)) return;
-    console.log(`[INFO] ${message}`, data);
+    // console.log(`[INFO] ${message}`, data);
   },
   error: (message: string, data?: unknown) => {
     if (isProd && sendRumEvent('error', message, data)) return;
-    console.error(`[ERROR] ${message}`, data);
+    // console.error(`[ERROR] ${message}`, data);
   },
   warn: (message: string, data?: unknown) => {
     if (isProd && sendRumEvent('warn', message, data)) return;
-    console.warn(`[WARN] ${message}`, data);
+    // console.warn(`[WARN] ${message}`, data);
   },
   debug: (message: string, data?: unknown) => {
     if (isProd && sendRumEvent('debug', message, data)) return;
-    console.debug(`[DEBUG] ${message}`, data);
+    // console.debug(`[DEBUG] ${message}`, data);
   },
 };
