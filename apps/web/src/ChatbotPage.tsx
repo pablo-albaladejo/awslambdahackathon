@@ -162,6 +162,7 @@ const ChatbotPage = React.memo(() => {
     sendMessage,
     error,
     isReconnecting,
+    sessionId,
   } = useWebSocket();
   const { recordAction } = useRumTracking();
   const [inputValue, setInputValue] = useState('');
@@ -231,6 +232,13 @@ const ChatbotPage = React.memo(() => {
 
     return () => clearInterval(interval);
   }, [getPerformanceStats]);
+
+  useEffect(() => {
+    // Initialize chat when component mounts
+    if (isConnected && !sessionId) {
+      // Chat is ready to receive messages
+    }
+  }, [isConnected, sessionId]);
 
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {

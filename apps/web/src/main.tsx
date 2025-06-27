@@ -5,6 +5,7 @@ import { BrowserRouter } from 'react-router-dom';
 import { configureAmplify } from './amplify-config';
 import App from './App.tsx';
 import { RumProvider } from './contexts/RumContext';
+import { UserProvider } from './contexts/UserContext';
 import './index.css';
 
 // Initialize Amplify configuration
@@ -18,6 +19,8 @@ const AppTree = (
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <RumProvider>{AppTree}</RumProvider>
+    <RumProvider>
+      <UserProvider>{AppTree}</UserProvider>
+    </RumProvider>
   </React.StrictMode>
 );

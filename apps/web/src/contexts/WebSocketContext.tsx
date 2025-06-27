@@ -204,7 +204,12 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
         'Failed to reconnect after multiple attempts. Please refresh the page or click retry.'
       );
     },
-    [websocketConfig, handleError]
+    [
+      websocketConfig.reconnectAttempts,
+      websocketConfig.reconnectDelay,
+      websocketConfig.maxReconnectDelay,
+      handleError,
+    ]
   );
 
   const handleWebSocketError = useCallback((event: Event) => {
@@ -292,7 +297,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
         handleError('Failed to parse server message');
       }
     },
-    [handleError, websocketConfig]
+    [handleError, websocketConfig.reconnectAttempts]
   );
 
   const connect = useCallback(async () => {
@@ -346,7 +351,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
       isConnectingRef.current = false;
     }
   }, [
-    websocketConfig,
+    websocketConfig.url,
     handleError,
     clearError,
     handleOpen,
@@ -356,24 +361,19 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
   ]);
 
   useEffect(() => {
-    connect();
-
+    const fetchToken = async () => {
+      connect();
+    };
+    fetchToken();
     return () => {
-      // Clear reconnection timeout
+      if (wsRef.current) {
+        wsRef.current.close();
+      }
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
-        reconnectTimeoutRef.current = null;
-      }
-      // Cerramos socket si sigue vivo
-      const ws = wsRef.current;
-      if (ws) {
-        ws.cleanup?.();
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.close();
-        }
       }
     };
-  }, [websocketConfig.url, connect]);
+  }, []);
 
   const retryConnect = useCallback(() => {
     setReconnectFailed(false);
