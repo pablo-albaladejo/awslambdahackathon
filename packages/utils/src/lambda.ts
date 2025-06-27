@@ -30,17 +30,53 @@ export const createSuccessResponse = <T>(
   } as ApiResponse<T>),
 });
 
+// AppError interface for consistent error handling
+export interface AppError {
+  type: string;
+  message: string;
+  code: string;
+  statusCode: number;
+  details?: Record<string, unknown>;
+  retryable: boolean;
+}
+
+// Updated createErrorResponse to accept AppError objects
 export const createErrorResponse = (
-  error: string,
-  statusCode: number = 500
-): LambdaResponse => ({
-  statusCode,
-  headers: defaultHeaders,
-  body: JSON.stringify({
-    success: false,
-    error,
-  } as ApiResponse),
-});
+  error: AppError | string,
+  statusCode?: number
+): LambdaResponse => {
+  if (typeof error === 'string') {
+    // Backward compatibility for string errors
+    return {
+      statusCode: statusCode || 500,
+      headers: defaultHeaders,
+      body: JSON.stringify({
+        success: false,
+        error,
+      } as ApiResponse),
+    };
+  }
+
+  // Handle AppError objects
+  return {
+    statusCode: error.statusCode,
+    headers: {
+      ...defaultHeaders,
+      'X-Request-ID': 'unknown', // Will be overridden by handlers
+    },
+    body: JSON.stringify({
+      success: false,
+      error: error.message, // Use message as string for ApiResponse compatibility
+      errorDetails: {
+        type: error.type,
+        code: error.code,
+        ...(process.env.NODE_ENV === 'development' && {
+          details: error.details,
+        }),
+      },
+    }),
+  };
+};
 
 // --- AWS Lambda Powertools: Logging, Metrics, Tracing ---
 // Set these environment variables in your Lambda for Powertools:
@@ -107,13 +143,27 @@ export const websocketLogger = () => {
       request: middy.Request<APIGatewayProxyEvent, APIGatewayProxyResult, Error>
     ): Promise<void> => {
       const event = request.event;
+
+      // Sanitize body to avoid logging sensitive data
+      const sanitizedBody = event.body
+        ? {
+            length: event.body.length,
+            hasContent: true,
+            // Only log first 100 chars for debugging, but mask potential tokens
+            preview:
+              event.body.length > 100
+                ? event.body.substring(0, 100) + '...'
+                : event.body.replace(/"token"\s*:\s*"[^"]*"/g, '"token":"***"'),
+          }
+        : null;
+
       logger.info('WebSocket event received', {
         eventType: event.requestContext?.eventType,
         connectionId: event.requestContext?.connectionId,
         routeKey: event.requestContext?.routeKey,
         messageId: event.requestContext?.messageId,
         requestId: event.requestContext?.requestId,
-        body: event.body,
+        body: sanitizedBody,
       });
     },
     after: async (
@@ -219,6 +269,7 @@ export const createWebSocketHandler = <
       })
     );
   }
+
 
   return middy(handler).use(middlewares);
 };

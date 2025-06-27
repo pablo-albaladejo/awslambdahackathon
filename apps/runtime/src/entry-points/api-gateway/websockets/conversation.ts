@@ -10,7 +10,7 @@ import type { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 
 import { authenticateUser } from '../../../application/use-cases/authenticate-user';
 import { isConnectionAuthenticated } from '../../../application/use-cases/check-authenticated-connection';
-import { handlePingMessage } from '../../../application/use-cases/handle-ping-message';
+import { handlePingMessage as handlePingMessageUseCase } from '../../../application/use-cases/handle-ping-message';
 import { sendChatMessage } from '../../../application/use-cases/send-chat-message';
 import { authenticationService } from '../../../services/authentication-service';
 import { chatService } from '../../../services/chat-service';
@@ -34,12 +34,199 @@ interface WebSocketMessage {
   };
 }
 
+// Constants for message types and actions
+const VALID_MESSAGE_TYPES = ['auth', 'message', 'ping'] as const;
+const VALID_ACTIONS = ['authenticate', 'sendMessage'] as const;
+
+// Helper function to generate correlation ID
+const generateCorrelationId = (): string => {
+  return `conv-${Date.now()}-${crypto.randomUUID().substring(0, 8)}`;
+};
+
+// Helper function to validate connection ID
+const validateConnectionId = (event: APIGatewayProxyEvent): string => {
+  const connectionId = event.requestContext.connectionId;
+  if (!connectionId) {
+    throw new Error('Missing connection ID in request context');
+  }
+  return connectionId;
+};
+
+// Helper function to parse WebSocket message
+const parseWebSocketMessage = (
+  event: APIGatewayProxyEvent,
+  context?: any
+): WebSocketMessage => {
+  if (!event.body) {
+    throw new Error('Request body is required');
+  }
+
+  // Use parsed body from middleware if available
+  if (context?.parsedBody) {
+    return context.parsedBody as WebSocketMessage;
+  }
+
+  // Manual parsing as fallback
+  try {
+    const parsedBody = JSON.parse(event.body);
+
+    // Validate message format
+    if (!parsedBody.type || !parsedBody.data) {
+      throw new Error(
+        'Invalid message format. Expected {type, data} structure'
+      );
+    }
+
+    // Validate message type
+    if (!VALID_MESSAGE_TYPES.includes(parsedBody.type)) {
+      throw new Error(
+        `Invalid message type. Expected: ${VALID_MESSAGE_TYPES.join(', ')}`
+      );
+    }
+
+    return parsedBody as WebSocketMessage;
+  } catch (parseError) {
+    if (parseError instanceof Error) {
+      throw parseError;
+    }
+    throw new Error('Invalid JSON in request body');
+  }
+};
+
+// Handler for authentication messages
+const handleAuthMessage = async (
+  message: WebSocketMessage,
+  connectionId: string,
+  event: APIGatewayProxyEvent,
+  correlationId: string
+): Promise<APIGatewayProxyResult> => {
+  const { data } = message;
+  const { action, token } = data;
+
+  if (action !== 'authenticate') {
+    throw new Error(`Invalid action for auth message: ${action}`);
+  }
+
+  logger.info('Received authentication message', {
+    connectionId,
+    hasToken: !!token,
+    correlationId,
+  });
+
+  const authResult = await authenticateUser(
+    typeof token === 'string' ? token : ''
+  );
+
+  if (authResult.success && authResult.user) {
+    const safeUserId = authResult.user.userId
+      ? String(authResult.user.userId)
+      : '';
+
+    await authenticationService.storeAuthenticatedConnection(connectionId, {
+      ...authResult.user,
+      userId: safeUserId,
+    });
+
+    await websocketMessageService.sendAuthResponse(connectionId, event, true, {
+      userId: safeUserId,
+      username: authResult.user.username,
+    });
+
+    logger.info('WebSocket authentication successful', {
+      connectionId,
+      userId: authResult.user.userId,
+      correlationId,
+    });
+
+    await metricsService.recordBusinessMetrics('authentication_success', 1, {
+      connectionId,
+      userId: authResult.user.userId,
+    });
+  } else {
+    await websocketMessageService.sendAuthResponse(connectionId, event, false, {
+      error: authResult.error,
+    });
+
+    logger.error('WebSocket authentication failed', {
+      connectionId,
+      error: authResult.error,
+      correlationId,
+    });
+
+    await metricsService.recordBusinessMetrics('authentication_failure', 1, {
+      connectionId,
+      errorType: authResult.error || 'UNKNOWN_ERROR',
+    });
+  }
+
+  return createSuccessResponse({
+    statusCode: 200,
+    body: '',
+  });
+};
+
+// Handler for chat messages
+const handleChatMessage = async (
+  message: WebSocketMessage,
+  connectionId: string,
+  event: APIGatewayProxyEvent,
+  correlationId: string
+): Promise<APIGatewayProxyResult> => {
+  const { data } = message;
+  const { action, message: chatMessage, sessionId } = data;
+
+  if (action !== 'sendMessage') {
+    throw new Error(`Invalid action for message: ${action}`);
+  }
+
+  logger.info('Received chat message', {
+    connectionId,
+    sessionId,
+    messageLength: chatMessage?.length,
+    correlationId,
+  });
+
+  const { message: echoMessage, sessionId: currentSessionId } =
+    await sendChatMessage(chatService, {
+      connectionId,
+      message: chatMessage ?? '',
+      sessionId,
+    });
+
+  await websocketMessageService.sendChatResponse(
+    connectionId,
+    event,
+    echoMessage,
+    currentSessionId,
+    true // isEcho
+  );
+
+  return createSuccessResponse({
+    statusCode: 200,
+    body: '',
+  });
+};
+
+// Handler for ping messages
+const handlePingMessageHandler = async (
+  connectionId: string
+): Promise<APIGatewayProxyResult> => {
+  await handlePingMessageUseCase(connectionId);
+  await metricsService.recordWebSocketMetrics('ping', true, 0);
+
+  return createSuccessResponse({
+    statusCode: 200,
+    body: '',
+  });
+};
+
+// Main conversation handler
 const conversationHandler = async (
   event: APIGatewayProxyEvent,
-  context: any
+  context?: any
 ): Promise<APIGatewayProxyResult> => {
   const startTime = Date.now();
-  const correlationId = `conv-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  const correlationId = generateCorrelationId();
 
   metrics.addMetric('WebSocketRequest', 'Count', 1);
   metrics.addDimension('Environment', process.env.ENVIRONMENT || 'dev');
@@ -51,13 +238,14 @@ const conversationHandler = async (
     eventType: event.requestContext.eventType,
     correlationId,
     connectionId: event.requestContext.connectionId,
-    body: event.body,
+    bodyLength: event.body?.length,
+    hasBody: !!event.body,
   });
 
   const subsegment = tracer
     .getSegment()
     ?.addNewSubsegment('websocket_conversation');
-  const connectionId = event.requestContext.connectionId!;
+  const connectionId = validateConnectionId(event);
 
   try {
     logger.info('WebSocket conversation event received', {
@@ -67,212 +255,29 @@ const conversationHandler = async (
       correlationId,
     });
 
-    if (!event.body) {
-      const error = createError(
-        ErrorType.VALIDATION_ERROR,
-        'Request body is required',
-        'MISSING_BODY',
-        { connectionId }
-      );
+    // Parse and validate the WebSocket message
+    const websocketMessage = parseWebSocketMessage(event, context);
 
-      logger.error('Missing request body in WebSocket event', {
-        connectionId,
-        correlationId,
-      });
-
-      await metricsService.recordErrorMetrics(
-        'MISSING_BODY',
-        'websocket_conversation',
-        {
-          connectionId,
-        }
-      );
-
-      return createErrorResponse(error, event);
-    }
-
-    // Use parsed body from middleware if available, otherwise parse manually
-    let websocketMessage: WebSocketMessage;
-
-    if (context?.parsedBody) {
-      websocketMessage = context.parsedBody as WebSocketMessage;
-      logger.info('Using parsed body from middleware', {
-        connectionId,
-        type: websocketMessage.type,
-        action: websocketMessage.data.action,
-        correlationId,
-      });
-    } else {
-      try {
-        const parsedBody = JSON.parse(event.body);
-
-        // Validate message format
-        if (!parsedBody.type || !parsedBody.data) {
-          const error = createError(
-            ErrorType.VALIDATION_ERROR,
-            'Invalid message format. Expected {type, data} structure',
-            'INVALID_MESSAGE_FORMAT',
-            { parsedBody }
-          );
-
-          logger.error('Invalid message format', {
-            parsedBody,
-            correlationId,
-          });
-
-          await metricsService.recordErrorMetrics(
-            'INVALID_MESSAGE_FORMAT',
-            'websocket_conversation',
-            {
-              connectionId,
-            }
-          );
-
-          return createErrorResponse(error, event);
-        }
-
-        // Validate message type
-        if (!['auth', 'message', 'ping'].includes(parsedBody.type)) {
-          const error = createError(
-            ErrorType.VALIDATION_ERROR,
-            'Invalid message type. Expected: auth, message, or ping',
-            'INVALID_MESSAGE_TYPE',
-            { messageType: parsedBody.type }
-          );
-
-          logger.error('Invalid message type', {
-            messageType: parsedBody.type,
-            correlationId,
-          });
-
-          await metricsService.recordErrorMetrics(
-            'INVALID_MESSAGE_TYPE',
-            'websocket_conversation',
-            {
-              connectionId,
-              messageType: parsedBody.type,
-            }
-          );
-
-          return createErrorResponse(error, event);
-        }
-
-        websocketMessage = parsedBody as WebSocketMessage;
-
-        logger.info('Parsed WebSocket message', {
-          connectionId,
-          type: websocketMessage.type,
-          action: websocketMessage.data.action,
-          hasToken: !!websocketMessage.data.token,
-          messageLength: websocketMessage.data.message?.length,
-          correlationId,
-        });
-      } catch (parseError) {
-        const error = createError(
-          ErrorType.VALIDATION_ERROR,
-          'Invalid JSON in request body',
-          'INVALID_JSON',
-          {
-            body: event.body,
-            parseError:
-              parseError instanceof Error
-                ? parseError.message
-                : String(parseError),
-          }
-        );
-
-        logger.error('Failed to parse event.body as JSON', {
-          body: event.body,
-          parseError,
-          correlationId,
-        });
-
-        await metricsService.recordErrorMetrics(
-          'INVALID_JSON',
-          'websocket_conversation',
-          {
-            connectionId,
-          }
-        );
-
-        return createErrorResponse(error, event);
-      }
-    }
+    logger.info('Parsed WebSocket message', {
+      connectionId,
+      type: websocketMessage.type,
+      action: websocketMessage.data.action,
+      hasToken: !!websocketMessage.data.token,
+      messageLength: websocketMessage.data.message?.length,
+      correlationId,
+    });
 
     const { type, data } = websocketMessage;
-    const { action, message, sessionId, token } = data;
+    const { action } = data;
 
     // Handle authentication
-    if (type === 'auth' && action === 'authenticate') {
-      logger.info('Received authentication message', {
+    if (type === 'auth') {
+      return await handleAuthMessage(
+        websocketMessage,
         connectionId,
-        tokenLength: token?.length,
-        correlationId,
-      });
-      const authResult = await authenticateUser(
-        typeof token === 'string' ? token : ''
+        event,
+        correlationId
       );
-      if (authResult.success && authResult.user) {
-        const safeUserId = authResult.user.userId
-          ? String(authResult.user.userId)
-          : '';
-        await authenticationService.storeAuthenticatedConnection(connectionId, {
-          ...authResult.user,
-          userId: safeUserId,
-        });
-
-        await websocketMessageService.sendAuthResponse(
-          connectionId,
-          event,
-          true,
-          {
-            userId: safeUserId,
-            username: authResult.user.username,
-          }
-        );
-
-        logger.info('WebSocket authentication successful', {
-          connectionId,
-          userId: authResult.user.userId,
-          correlationId,
-        });
-
-        await metricsService.recordBusinessMetrics(
-          'authentication_success',
-          1,
-          {
-            connectionId,
-            userId: authResult.user.userId,
-          }
-        );
-      } else {
-        await websocketMessageService.sendAuthResponse(
-          connectionId,
-          event,
-          false,
-          { error: authResult.error }
-        );
-
-        logger.error('WebSocket authentication failed', {
-          connectionId,
-          error: authResult.error,
-          correlationId,
-        });
-
-        await metricsService.recordBusinessMetrics(
-          'authentication_failure',
-          1,
-          {
-            connectionId,
-            errorType: authResult.error || 'UNKNOWN_ERROR',
-          }
-        );
-      }
-
-      return createSuccessResponse({
-        statusCode: 200,
-        body: '',
-      });
     }
 
     // Check if connection is authenticated for other actions
@@ -284,6 +289,7 @@ const conversationHandler = async (
       type,
       correlationId,
     });
+
     if (!isAuthenticated) {
       const error = createError(
         ErrorType.AUTHENTICATION_ERROR,
@@ -296,7 +302,6 @@ const conversationHandler = async (
         connectionId,
         action,
         correlationId,
-        body: event.body,
       });
 
       await metricsService.recordErrorMetrics(
@@ -321,40 +326,18 @@ const conversationHandler = async (
     }
 
     // Handle regular messages
-    if (type === 'message' && action === 'sendMessage') {
-      logger.info('Received chat message', {
-        connectionId,
-        sessionId,
-        messageLength: message?.length,
-        correlationId,
-      });
-      const { message: echoMessage, sessionId: currentSessionId } =
-        await sendChatMessage(chatService, {
-          connectionId,
-          message: message ?? '',
-          sessionId,
-        });
-      await websocketMessageService.sendChatResponse(
+    if (type === 'message') {
+      return await handleChatMessage(
+        websocketMessage,
         connectionId,
         event,
-        echoMessage,
-        currentSessionId,
-        true // isEcho
+        correlationId
       );
-      return createSuccessResponse({
-        statusCode: 200,
-        body: '',
-      });
     }
 
     // Handle ping messages
     if (type === 'ping') {
-      await handlePingMessage(connectionId);
-      await metricsService.recordWebSocketMetrics('ping', true, 0);
-      return createSuccessResponse({
-        statusCode: 200,
-        body: '',
-      });
+      return await handlePingMessageHandler(connectionId);
     }
 
     // Invalid action
@@ -363,7 +346,7 @@ const conversationHandler = async (
       'Invalid action',
       'INVALID_ACTION',
       {
-        expectedActions: ['authenticate', 'sendMessage'],
+        expectedActions: VALID_ACTIONS,
         actualAction: action,
       }
     );
