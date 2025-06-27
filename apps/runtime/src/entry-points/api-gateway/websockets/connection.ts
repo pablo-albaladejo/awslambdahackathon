@@ -1,5 +1,7 @@
 import {
+  commonSchemas,
   createSuccessResponse,
+  createWebSocketHandler,
   logger,
   metrics,
   tracer,
@@ -19,7 +21,7 @@ import {
 
 const connectionService = new ConnectionService();
 
-export const handler = async (
+const connectionHandler = async (
   event: APIGatewayProxyEvent
 ): Promise<APIGatewayProxyResult> => {
   metrics.addMetric('WebSocketRequest', 'Count', 1);
@@ -124,3 +126,9 @@ export const handler = async (
     subsegment?.close();
   }
 };
+
+// Export the handler wrapped with Middy middleware
+export const handler = createWebSocketHandler(
+  connectionHandler,
+  commonSchemas.websocketConnection
+);

@@ -1,5 +1,7 @@
 import {
+  commonSchemas,
   createSuccessResponse,
+  createWebSocketHandler,
   logger,
   metrics,
   tracer,
@@ -32,8 +34,9 @@ interface WebSocketMessage {
   };
 }
 
-export const handler = async (
-  event: APIGatewayProxyEvent
+const conversationHandler = async (
+  event: APIGatewayProxyEvent,
+  context: any
 ): Promise<APIGatewayProxyResult> => {
   const startTime = Date.now();
   const correlationId = `conv-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -88,101 +91,112 @@ export const handler = async (
       return createErrorResponse(error, event);
     }
 
+    // Use parsed body from middleware if available, otherwise parse manually
     let websocketMessage: WebSocketMessage;
 
-    try {
-      const parsedBody = JSON.parse(event.body);
-
-      // Validate message format
-      if (!parsedBody.type || !parsedBody.data) {
-        const error = createError(
-          ErrorType.VALIDATION_ERROR,
-          'Invalid message format. Expected {type, data} structure',
-          'INVALID_MESSAGE_FORMAT',
-          { parsedBody }
-        );
-
-        logger.error('Invalid message format', {
-          parsedBody,
-          correlationId,
-        });
-
-        await metricsService.recordErrorMetrics(
-          'INVALID_MESSAGE_FORMAT',
-          'websocket_conversation',
-          {
-            connectionId,
-          }
-        );
-
-        return createErrorResponse(error, event);
-      }
-
-      // Validate message type
-      if (!['auth', 'message', 'ping'].includes(parsedBody.type)) {
-        const error = createError(
-          ErrorType.VALIDATION_ERROR,
-          'Invalid message type. Expected: auth, message, or ping',
-          'INVALID_MESSAGE_TYPE',
-          { messageType: parsedBody.type }
-        );
-
-        logger.error('Invalid message type', {
-          messageType: parsedBody.type,
-          correlationId,
-        });
-
-        await metricsService.recordErrorMetrics(
-          'INVALID_MESSAGE_TYPE',
-          'websocket_conversation',
-          {
-            connectionId,
-            messageType: parsedBody.type,
-          }
-        );
-
-        return createErrorResponse(error, event);
-      }
-
-      websocketMessage = parsedBody as WebSocketMessage;
-
-      logger.info('Parsed WebSocket message', {
+    if (context?.parsedBody) {
+      websocketMessage = context.parsedBody as WebSocketMessage;
+      logger.info('Using parsed body from middleware', {
         connectionId,
         type: websocketMessage.type,
         action: websocketMessage.data.action,
-        hasToken: !!websocketMessage.data.token,
-        messageLength: websocketMessage.data.message?.length,
         correlationId,
       });
-    } catch (parseError) {
-      const error = createError(
-        ErrorType.VALIDATION_ERROR,
-        'Invalid JSON in request body',
-        'INVALID_JSON',
-        {
-          body: event.body,
-          parseError:
-            parseError instanceof Error
-              ? parseError.message
-              : String(parseError),
+    } else {
+      try {
+        const parsedBody = JSON.parse(event.body);
+
+        // Validate message format
+        if (!parsedBody.type || !parsedBody.data) {
+          const error = createError(
+            ErrorType.VALIDATION_ERROR,
+            'Invalid message format. Expected {type, data} structure',
+            'INVALID_MESSAGE_FORMAT',
+            { parsedBody }
+          );
+
+          logger.error('Invalid message format', {
+            parsedBody,
+            correlationId,
+          });
+
+          await metricsService.recordErrorMetrics(
+            'INVALID_MESSAGE_FORMAT',
+            'websocket_conversation',
+            {
+              connectionId,
+            }
+          );
+
+          return createErrorResponse(error, event);
         }
-      );
 
-      logger.error('Failed to parse event.body as JSON', {
-        body: event.body,
-        parseError,
-        correlationId,
-      });
+        // Validate message type
+        if (!['auth', 'message', 'ping'].includes(parsedBody.type)) {
+          const error = createError(
+            ErrorType.VALIDATION_ERROR,
+            'Invalid message type. Expected: auth, message, or ping',
+            'INVALID_MESSAGE_TYPE',
+            { messageType: parsedBody.type }
+          );
 
-      await metricsService.recordErrorMetrics(
-        'INVALID_JSON',
-        'websocket_conversation',
-        {
+          logger.error('Invalid message type', {
+            messageType: parsedBody.type,
+            correlationId,
+          });
+
+          await metricsService.recordErrorMetrics(
+            'INVALID_MESSAGE_TYPE',
+            'websocket_conversation',
+            {
+              connectionId,
+              messageType: parsedBody.type,
+            }
+          );
+
+          return createErrorResponse(error, event);
+        }
+
+        websocketMessage = parsedBody as WebSocketMessage;
+
+        logger.info('Parsed WebSocket message', {
           connectionId,
-        }
-      );
+          type: websocketMessage.type,
+          action: websocketMessage.data.action,
+          hasToken: !!websocketMessage.data.token,
+          messageLength: websocketMessage.data.message?.length,
+          correlationId,
+        });
+      } catch (parseError) {
+        const error = createError(
+          ErrorType.VALIDATION_ERROR,
+          'Invalid JSON in request body',
+          'INVALID_JSON',
+          {
+            body: event.body,
+            parseError:
+              parseError instanceof Error
+                ? parseError.message
+                : String(parseError),
+          }
+        );
 
-      return createErrorResponse(error, event);
+        logger.error('Failed to parse event.body as JSON', {
+          body: event.body,
+          parseError,
+          correlationId,
+        });
+
+        await metricsService.recordErrorMetrics(
+          'INVALID_JSON',
+          'websocket_conversation',
+          {
+            connectionId,
+          }
+        );
+
+        return createErrorResponse(error, event);
+      }
     }
 
     const { type, data } = websocketMessage;
@@ -397,3 +411,9 @@ export const handler = async (
     subsegment?.close();
   }
 };
+
+// Export the handler wrapped with Middy middleware
+export const handler = createWebSocketHandler(
+  conversationHandler,
+  commonSchemas.websocketMessage
+);
