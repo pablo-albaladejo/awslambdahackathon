@@ -91,7 +91,7 @@ export class RuntimeStack extends cdk.Stack {
         appName: appName,
         entry: path.join(
           __dirname,
-          '../../../apps/runtime/src/entry-points/handlers/websockets/connection.ts'
+          '../../../apps/runtime/src/entry-points/api-gateway/websockets/connection.ts'
         ),
         description: 'WebSocket connection/disconnection handler',
         memorySize: 1024,
@@ -109,7 +109,7 @@ export class RuntimeStack extends cdk.Stack {
         appName: appName,
         entry: path.join(
           __dirname,
-          '../../../apps/runtime/src/entry-points/handlers/websockets/conversation.ts'
+          '../../../apps/runtime/src/entry-points/api-gateway/websockets/conversation.ts'
         ),
         description: 'WebSocket message handler with Post-Connection Auth',
         memorySize: 1024,
