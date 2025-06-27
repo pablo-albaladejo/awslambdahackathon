@@ -2,6 +2,7 @@ import {
   commonSchemas,
   createSuccessResponse,
   createWebSocketHandler,
+  generateCorrelationId,
   logger,
   metrics,
   tracer,
@@ -12,17 +13,19 @@ import { authenticateUser } from '../../../application/use-cases/authenticate-us
 import { isConnectionAuthenticated } from '../../../application/use-cases/check-authenticated-connection';
 import { handlePingMessage as handlePingMessageUseCase } from '../../../application/use-cases/handle-ping-message';
 import { sendChatMessage } from '../../../application/use-cases/send-chat-message';
-import { authenticationService } from '../../../services/authentication-service';
-import { chatService } from '../../../services/chat-service';
+import {
+  CORRELATION_CONSTANTS,
+  ERROR_CONSTANTS,
+  METRIC_CONSTANTS,
+  WEBSOCKET_CONSTANTS,
+} from '../../../config/constants';
+import { container } from '../../../config/container';
 import {
   createError,
   createErrorResponse,
-  errorHandlingService,
   ErrorType,
   handleError,
 } from '../../../services/error-handling-service';
-import { metricsService } from '../../../services/metrics-service';
-import { websocketMessageService } from '../../../services/websocket-message-service';
 
 interface WebSocketMessage {
   type: 'auth' | 'message' | 'ping';
@@ -34,20 +37,17 @@ interface WebSocketMessage {
   };
 }
 
-// Constants for message types and actions
-const VALID_MESSAGE_TYPES = ['auth', 'message', 'ping'] as const;
-const VALID_ACTIONS = ['authenticate', 'sendMessage'] as const;
-
-// Helper function to generate correlation ID
-const generateCorrelationId = (): string => {
-  return `conv-${Date.now()}-${crypto.randomUUID().substring(0, 8)}`;
-};
+// Constants for actions
+const VALID_ACTIONS = [
+  WEBSOCKET_CONSTANTS.ACTIONS.AUTHENTICATE,
+  WEBSOCKET_CONSTANTS.ACTIONS.SEND_MESSAGE,
+] as const;
 
 // Helper function to validate connection ID
 const validateConnectionId = (event: APIGatewayProxyEvent): string => {
   const connectionId = event.requestContext.connectionId;
   if (!connectionId) {
-    throw new Error('Missing connection ID in request context');
+    throw new Error(ERROR_CONSTANTS.MESSAGES.MISSING_CONNECTION_ID);
   }
   return connectionId;
 };
@@ -58,30 +58,21 @@ const parseWebSocketMessage = (
   context?: any
 ): WebSocketMessage => {
   if (!event.body) {
-    throw new Error('Request body is required');
+    throw new Error(ERROR_CONSTANTS.MESSAGES.MISSING_BODY);
   }
 
-  // Use parsed body from middleware if available
+  // Use parsed body from middleware if available (preferred)
   if (context?.parsedBody) {
     return context.parsedBody as WebSocketMessage;
   }
 
-  // Manual parsing as fallback
+  // Manual parsing as fallback (should rarely happen with Middy validation)
   try {
     const parsedBody = JSON.parse(event.body);
 
-    // Validate message format
+    // Basic structure validation only (detailed validation handled by Middy)
     if (!parsedBody.type || !parsedBody.data) {
-      throw new Error(
-        'Invalid message format. Expected {type, data} structure'
-      );
-    }
-
-    // Validate message type
-    if (!VALID_MESSAGE_TYPES.includes(parsedBody.type)) {
-      throw new Error(
-        `Invalid message type. Expected: ${VALID_MESSAGE_TYPES.join(', ')}`
-      );
+      throw new Error(ERROR_CONSTANTS.MESSAGES.INVALID_MESSAGE_FORMAT);
     }
 
     return parsedBody as WebSocketMessage;
@@ -89,7 +80,7 @@ const parseWebSocketMessage = (
     if (parseError instanceof Error) {
       throw parseError;
     }
-    throw new Error('Invalid JSON in request body');
+    throw new Error(ERROR_CONSTANTS.MESSAGES.INVALID_JSON);
   }
 };
 
@@ -103,7 +94,7 @@ const handleAuthMessage = async (
   const { data } = message;
   const { action, token } = data;
 
-  if (action !== 'authenticate') {
+  if (action !== WEBSOCKET_CONSTANTS.ACTIONS.AUTHENTICATE) {
     throw new Error(`Invalid action for auth message: ${action}`);
   }
 
@@ -122,15 +113,19 @@ const handleAuthMessage = async (
       ? String(authResult.user.userId)
       : '';
 
-    await authenticationService.storeAuthenticatedConnection(connectionId, {
-      ...authResult.user,
-      userId: safeUserId,
-    });
+    await container
+      .getAuthenticationService()
+      .storeAuthenticatedConnection(connectionId, {
+        ...authResult.user,
+        userId: safeUserId,
+      });
 
-    await websocketMessageService.sendAuthResponse(connectionId, event, true, {
-      userId: safeUserId,
-      username: authResult.user.username,
-    });
+    await container
+      .getWebSocketMessageService()
+      .sendAuthResponse(connectionId, event, true, {
+        userId: safeUserId,
+        username: authResult.user.username,
+      });
 
     logger.info('WebSocket authentication successful', {
       connectionId,
@@ -138,14 +133,18 @@ const handleAuthMessage = async (
       correlationId,
     });
 
-    await metricsService.recordBusinessMetrics('authentication_success', 1, {
-      connectionId,
-      userId: authResult.user.userId,
-    });
+    await container
+      .getMetricsService()
+      .recordBusinessMetrics(METRIC_CONSTANTS.NAMES.AUTHENTICATION_SUCCESS, 1, {
+        connectionId,
+        userId: authResult.user.userId,
+      });
   } else {
-    await websocketMessageService.sendAuthResponse(connectionId, event, false, {
-      error: authResult.error,
-    });
+    await container
+      .getWebSocketMessageService()
+      .sendAuthResponse(connectionId, event, false, {
+        error: authResult.error,
+      });
 
     logger.error('WebSocket authentication failed', {
       connectionId,
@@ -153,14 +152,16 @@ const handleAuthMessage = async (
       correlationId,
     });
 
-    await metricsService.recordBusinessMetrics('authentication_failure', 1, {
-      connectionId,
-      errorType: authResult.error || 'UNKNOWN_ERROR',
-    });
+    await container
+      .getMetricsService()
+      .recordBusinessMetrics(METRIC_CONSTANTS.NAMES.AUTHENTICATION_FAILURE, 1, {
+        connectionId,
+        errorType: authResult.error || 'UNKNOWN_ERROR',
+      });
   }
 
   return createSuccessResponse({
-    statusCode: 200,
+    statusCode: WEBSOCKET_CONSTANTS.STATUS_CODES.SUCCESS,
     body: '',
   });
 };
@@ -175,7 +176,7 @@ const handleChatMessage = async (
   const { data } = message;
   const { action, message: chatMessage, sessionId } = data;
 
-  if (action !== 'sendMessage') {
+  if (action !== WEBSOCKET_CONSTANTS.ACTIONS.SEND_MESSAGE) {
     throw new Error(`Invalid action for message: ${action}`);
   }
 
@@ -187,13 +188,13 @@ const handleChatMessage = async (
   });
 
   const { message: echoMessage, sessionId: currentSessionId } =
-    await sendChatMessage(chatService, {
+    await sendChatMessage(container.getChatService(), {
       connectionId,
       message: chatMessage ?? '',
       sessionId,
     });
 
-  await websocketMessageService.sendChatResponse(
+  await container.getWebSocketMessageService().sendChatResponse(
     connectionId,
     event,
     echoMessage,
@@ -202,7 +203,7 @@ const handleChatMessage = async (
   );
 
   return createSuccessResponse({
-    statusCode: 200,
+    statusCode: WEBSOCKET_CONSTANTS.STATUS_CODES.SUCCESS,
     body: '',
   });
 };
@@ -212,10 +213,12 @@ const handlePingMessageHandler = async (
   connectionId: string
 ): Promise<APIGatewayProxyResult> => {
   await handlePingMessageUseCase(connectionId);
-  await metricsService.recordWebSocketMetrics('ping', true, 0);
+  await container
+    .getMetricsService()
+    .recordWebSocketMetrics(METRIC_CONSTANTS.NAMES.PING, true, 0);
 
   return createSuccessResponse({
-    statusCode: 200,
+    statusCode: WEBSOCKET_CONSTANTS.STATUS_CODES.SUCCESS,
     body: '',
   });
 };
@@ -226,10 +229,19 @@ const conversationHandler = async (
   context?: any
 ): Promise<APIGatewayProxyResult> => {
   const startTime = Date.now();
-  const correlationId = generateCorrelationId();
+  const correlationId = generateCorrelationId(
+    CORRELATION_CONSTANTS.PREFIXES.CONVERSATION
+  );
 
-  metrics.addMetric('WebSocketRequest', 'Count', 1);
-  metrics.addDimension('Environment', process.env.ENVIRONMENT || 'dev');
+  metrics.addMetric(
+    METRIC_CONSTANTS.NAMES.WEBSOCKET_REQUEST,
+    METRIC_CONSTANTS.UNITS.COUNT,
+    1
+  );
+  metrics.addDimension(
+    METRIC_CONSTANTS.DIMENSIONS.ENVIRONMENT,
+    process.env.ENVIRONMENT || 'dev'
+  );
 
   logger.info('WebSocket message event received', {
     httpMethod: event.httpMethod,
@@ -271,7 +283,7 @@ const conversationHandler = async (
     const { action } = data;
 
     // Handle authentication
-    if (type === 'auth') {
+    if (type === WEBSOCKET_CONSTANTS.MESSAGE_TYPES.AUTH) {
       return await handleAuthMessage(
         websocketMessage,
         connectionId,
@@ -293,8 +305,8 @@ const conversationHandler = async (
     if (!isAuthenticated) {
       const error = createError(
         ErrorType.AUTHENTICATION_ERROR,
-        'Authentication required',
-        'UNAUTHENTICATED_CONNECTION',
+        ERROR_CONSTANTS.MESSAGES.AUTHENTICATION_REQUIRED,
+        ERROR_CONSTANTS.CODES.UNAUTHENTICATED_CONNECTION,
         { connectionId, action }
       );
 
@@ -304,29 +316,29 @@ const conversationHandler = async (
         correlationId,
       });
 
-      await metricsService.recordErrorMetrics(
-        'UNAUTHENTICATED_CONNECTION',
-        'websocket_conversation',
-        {
-          connectionId,
-          action,
-        }
-      );
+      await container
+        .getMetricsService()
+        .recordErrorMetrics(
+          ERROR_CONSTANTS.CODES.UNAUTHENTICATED_CONNECTION,
+          'websocket_conversation',
+          {
+            connectionId,
+            action,
+          }
+        );
 
-      await errorHandlingService.handleWebSocketError(
-        error,
-        connectionId,
-        event
-      );
+      await container
+        .getErrorHandlingService()
+        .handleWebSocketError(error, connectionId, event);
 
       return createSuccessResponse({
-        statusCode: 200,
+        statusCode: WEBSOCKET_CONSTANTS.STATUS_CODES.SUCCESS,
         body: '',
       });
     }
 
     // Handle regular messages
-    if (type === 'message') {
+    if (type === WEBSOCKET_CONSTANTS.MESSAGE_TYPES.MESSAGE) {
       return await handleChatMessage(
         websocketMessage,
         connectionId,
@@ -336,15 +348,15 @@ const conversationHandler = async (
     }
 
     // Handle ping messages
-    if (type === 'ping') {
+    if (type === WEBSOCKET_CONSTANTS.MESSAGE_TYPES.PING) {
       return await handlePingMessageHandler(connectionId);
     }
 
     // Invalid action
     const error = createError(
       ErrorType.VALIDATION_ERROR,
-      'Invalid action',
-      'INVALID_ACTION',
+      ERROR_CONSTANTS.MESSAGES.INVALID_ACTION,
+      ERROR_CONSTANTS.CODES.INVALID_ACTION,
       {
         expectedActions: VALID_ACTIONS,
         actualAction: action,
@@ -356,14 +368,16 @@ const conversationHandler = async (
       correlationId,
     });
 
-    await metricsService.recordErrorMetrics(
-      'INVALID_ACTION',
-      'websocket_conversation',
-      {
-        connectionId,
-        action,
-      }
-    );
+    await container
+      .getMetricsService()
+      .recordErrorMetrics(
+        ERROR_CONSTANTS.CODES.INVALID_ACTION,
+        'websocket_conversation',
+        {
+          connectionId,
+          action,
+        }
+      );
 
     return createErrorResponse(error, event);
   } catch (error) {
@@ -374,23 +388,27 @@ const conversationHandler = async (
       event,
     });
 
-    await metricsService.recordErrorMetrics(
-      'UNEXPECTED_ERROR',
-      'websocket_conversation',
-      {
-        connectionId,
-        errorType: appError.type,
-      }
-    );
+    await container
+      .getMetricsService()
+      .recordErrorMetrics(
+        ERROR_CONSTANTS.CODES.UNEXPECTED_ERROR,
+        'websocket_conversation',
+        {
+          connectionId,
+          errorType: appError.type,
+        }
+      );
 
     return createErrorResponse(appError, event);
   } finally {
     const duration = Date.now() - startTime;
-    await metricsService.recordWebSocketMetrics(
-      'message_received',
-      true,
-      duration
-    );
+    await container
+      .getMetricsService()
+      .recordWebSocketMetrics(
+        METRIC_CONSTANTS.NAMES.WEBSOCKET_MESSAGE,
+        true,
+        duration
+      );
     subsegment?.close();
   }
 };

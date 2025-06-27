@@ -11,6 +11,11 @@ import type { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { removeAuthenticatedConnection } from '../../../application/use-cases/remove-authenticated-connection';
 import { removeConnection } from '../../../application/use-cases/remove-connection';
 import { storeConnection } from '../../../application/use-cases/store-connection';
+import {
+  ERROR_CONSTANTS,
+  METRIC_CONSTANTS,
+  WEBSOCKET_CONSTANTS,
+} from '../../../config/constants';
 import { ConnectionService } from '../../../services/connection-service';
 import {
   createError,
@@ -24,8 +29,15 @@ const connectionService = new ConnectionService();
 const connectionHandler = async (
   event: APIGatewayProxyEvent
 ): Promise<APIGatewayProxyResult> => {
-  metrics.addMetric('WebSocketRequest', 'Count', 1);
-  metrics.addDimension('Environment', process.env.ENVIRONMENT || 'dev');
+  metrics.addMetric(
+    METRIC_CONSTANTS.NAMES.WEBSOCKET_REQUEST,
+    METRIC_CONSTANTS.UNITS.COUNT,
+    1
+  );
+  metrics.addDimension(
+    METRIC_CONSTANTS.DIMENSIONS.ENVIRONMENT,
+    process.env.ENVIRONMENT || 'dev'
+  );
 
   logger.info('WebSocket connection event received', {
     httpMethod: event.httpMethod,
@@ -42,8 +54,8 @@ const connectionHandler = async (
     if (!connectionId) {
       const error = createError(
         ErrorType.VALIDATION_ERROR,
-        'Missing connection ID',
-        'MISSING_CONNECTION_ID',
+        ERROR_CONSTANTS.MESSAGES.MISSING_CONNECTION_ID,
+        ERROR_CONSTANTS.CODES.MISSING_CONNECTION_ID,
         { requestContext: event.requestContext }
       );
 
@@ -54,11 +66,13 @@ const connectionHandler = async (
       return createErrorResponse(error, event);
     }
 
-    if (event.requestContext.eventType === 'CONNECT') {
+    if (
+      event.requestContext.eventType === WEBSOCKET_CONSTANTS.EVENT_TYPES.CONNECT
+    ) {
       try {
         await storeConnection(connectionService, connectionId);
         return {
-          statusCode: 200,
+          statusCode: WEBSOCKET_CONSTANTS.STATUS_CODES.SUCCESS,
           headers: { 'Content-Type': 'application/json' },
           body: '',
         };
@@ -72,12 +86,15 @@ const connectionHandler = async (
       }
     }
 
-    if (event.requestContext.eventType === 'DISCONNECT') {
+    if (
+      event.requestContext.eventType ===
+      WEBSOCKET_CONSTANTS.EVENT_TYPES.DISCONNECT
+    ) {
       try {
         await removeConnection(connectionService, connectionId);
         await removeAuthenticatedConnection(connectionId);
         return createSuccessResponse({
-          statusCode: 200,
+          statusCode: WEBSOCKET_CONSTANTS.STATUS_CODES.SUCCESS,
           body: JSON.stringify({ message: 'Disconnected' }),
         });
       } catch (error) {
@@ -92,7 +109,7 @@ const connectionHandler = async (
           error: appError.message,
         });
         return createSuccessResponse({
-          statusCode: 200,
+          statusCode: WEBSOCKET_CONSTANTS.STATUS_CODES.SUCCESS,
           body: JSON.stringify({ message: 'Disconnected' }),
         });
       }
@@ -100,10 +117,13 @@ const connectionHandler = async (
 
     const error = createError(
       ErrorType.VALIDATION_ERROR,
-      'Invalid event type for connection handler',
-      'INVALID_EVENT_TYPE',
+      ERROR_CONSTANTS.MESSAGES.INVALID_EVENT_TYPE,
+      ERROR_CONSTANTS.CODES.INVALID_EVENT_TYPE,
       {
-        expectedTypes: ['CONNECT', 'DISCONNECT'],
+        expectedTypes: [
+          WEBSOCKET_CONSTANTS.EVENT_TYPES.CONNECT,
+          WEBSOCKET_CONSTANTS.EVENT_TYPES.DISCONNECT,
+        ],
         actualType: event.requestContext.eventType,
       }
     );

@@ -1,3 +1,5 @@
+import { randomUUID } from 'crypto';
+
 import { Logger } from '@aws-lambda-powertools/logger';
 import { Metrics } from '@aws-lambda-powertools/metrics';
 import { Tracer } from '@aws-lambda-powertools/tracer';
@@ -16,6 +18,16 @@ export type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
 // HTTP response utilities for Lambda functions
 const defaultHeaders = {
   'Content-Type': 'application/json',
+};
+
+// UUID generation utility
+export const generateUUID = (): string => {
+  return randomUUID();
+};
+
+// Correlation ID generation utility
+export const generateCorrelationId = (prefix: string = 'req'): string => {
+  return `${prefix}-${Date.now()}-${randomUUID().substring(0, 8)}`;
 };
 
 export const createSuccessResponse = <T>(
@@ -269,7 +281,6 @@ export const createWebSocketHandler = <
       })
     );
   }
-
 
   return middy(handler).use(middlewares);
 };
