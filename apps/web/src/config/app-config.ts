@@ -8,22 +8,22 @@ import { z } from 'zod';
 
 // Environment variables schema
 const EnvironmentVarsSchema = z.object({
-  // WebSocket configuration
+  // WebSocket configuration (public)
   VITE_WEBSOCKET_URL: z.string().optional(),
 
-  // RUM configuration
+  // RUM configuration (public)
   VITE_AWS_RUM_APPLICATION_ID: z.string().optional(),
   VITE_AWS_RUM_GUEST_ROLE_ARN: z.string().optional(),
   VITE_AWS_RUM_IDENTITY_POOL_ID: z.string().optional(),
   VITE_APP_VERSION: z.string().default('1.0.0'),
   VITE_AWS_REGION: z.string().default('us-east-1'),
 
-  // Authentication configuration
+  // Authentication configuration (public - these are safe to expose)
   VITE_USER_POOL_ID: z.string().min(1),
   VITE_USER_POOL_CLIENT_ID: z.string().min(1),
   VITE_IDENTITY_POOL_ID: z.string().optional(),
 
-  // API configuration
+  // API configuration (public)
   VITE_API_BASE_URL: z.string().url().optional(),
   VITE_API_TIMEOUT: z
     .string()
@@ -34,7 +34,7 @@ const EnvironmentVarsSchema = z.object({
     .transform(val => parseInt(val, 10))
     .default('3'),
 
-  // Performance configuration
+  // Performance configuration (public)
   VITE_SLOW_RENDER_THRESHOLD: z
     .string()
     .transform(val => parseInt(val, 10))
@@ -52,7 +52,7 @@ const EnvironmentVarsSchema = z.object({
     .transform(val => parseFloat(val))
     .default('0.1'),
 
-  // WebSocket reconnection configuration
+  // WebSocket reconnection configuration (public)
   VITE_WS_RECONNECT_ATTEMPTS: z
     .string()
     .transform(val => parseInt(val, 10))
@@ -66,7 +66,7 @@ const EnvironmentVarsSchema = z.object({
     .transform(val => parseInt(val, 10))
     .default('30000'),
 
-  // Environment
+  // Environment (public)
   NODE_ENV: z
     .enum(['development', 'production', 'test'])
     .default('development'),
@@ -79,9 +79,30 @@ const EnvironmentVarsSchema = z.object({
 // Parse and validate environment variables
 const parseEnvironmentVars = (): z.infer<typeof EnvironmentVarsSchema> => {
   try {
-    return EnvironmentVarsSchema.parse(import.meta.env);
+    const env = EnvironmentVarsSchema.parse(import.meta.env);
+
+    // Additional validation for sensitive configurations
+    if (env.NODE_ENV === 'production') {
+      // In production, ensure required public configs are present
+      if (!env.VITE_USER_POOL_ID || !env.VITE_USER_POOL_CLIENT_ID) {
+        throw new Error(
+          'Missing required authentication configuration in production'
+        );
+      }
+    }
+
+    return env;
   } catch (error) {
     logger.error('Environment variables validation failed:', error);
+
+    // Provide helpful error messages
+    if (error instanceof z.ZodError) {
+      const missingFields = error.errors.map(e => e.path.join('.')).join(', ');
+      throw new Error(
+        `Invalid environment configuration. Missing or invalid fields: ${missingFields}`
+      );
+    }
+
     throw new Error('Invalid environment configuration');
   }
 };

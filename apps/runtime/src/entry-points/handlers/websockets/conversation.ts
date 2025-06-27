@@ -24,11 +24,14 @@ interface ChatMessage {
   timestamp: string;
 }
 
-interface WebSocketEvent {
-  action: string;
-  message?: string;
-  sessionId?: string;
-  token?: string;
+interface WebSocketMessage {
+  type: 'auth' | 'message' | 'ping';
+  data: {
+    action: string;
+    message?: string;
+    sessionId?: string;
+    token?: string;
+  };
 }
 
 const ddbClient = new DynamoDBClient({});
@@ -72,11 +75,48 @@ export const handler = async (
       return createErrorResponse(error, event);
     }
 
-    let websocketEvent: WebSocketEvent;
-    let parsedBody: any;
+    let websocketMessage: WebSocketMessage;
 
     try {
-      parsedBody = JSON.parse(event.body);
+      const parsedBody = JSON.parse(event.body);
+
+      // Validate message format
+      if (!parsedBody.type || !parsedBody.data) {
+        const error = createError(
+          ErrorType.VALIDATION_ERROR,
+          'Invalid message format. Expected {type, data} structure',
+          'INVALID_MESSAGE_FORMAT',
+          { parsedBody }
+        );
+
+        logger.error('Invalid message format', { parsedBody });
+
+        return createErrorResponse(error, event);
+      }
+
+      // Validate message type
+      if (!['auth', 'message', 'ping'].includes(parsedBody.type)) {
+        const error = createError(
+          ErrorType.VALIDATION_ERROR,
+          'Invalid message type. Expected: auth, message, or ping',
+          'INVALID_MESSAGE_TYPE',
+          { messageType: parsedBody.type }
+        );
+
+        logger.error('Invalid message type', { messageType: parsedBody.type });
+
+        return createErrorResponse(error, event);
+      }
+
+      websocketMessage = parsedBody as WebSocketMessage;
+
+      logger.info('Parsed WebSocket message', {
+        connectionId,
+        type: websocketMessage.type,
+        action: websocketMessage.data.action,
+        hasToken: !!websocketMessage.data.token,
+        messageLength: websocketMessage.data.message?.length,
+      });
     } catch (parseError) {
       const error = createError(
         ErrorType.VALIDATION_ERROR,
@@ -99,64 +139,18 @@ export const handler = async (
       return createErrorResponse(error, event);
     }
 
-    // Handle different message formats
-    if (parsedBody.type === 'auth' && parsedBody.data) {
-      // New format: {type: "auth", data: {action: "authenticate", token: "..."}}
-      websocketEvent = {
-        action: parsedBody.data.action,
-        token: parsedBody.data.token,
-        sessionId: parsedBody.data.sessionId,
-      };
-      logger.info('Parsed auth message (new format)', {
-        connectionId,
-        action: websocketEvent.action,
-        hasToken: !!websocketEvent.token,
-        tokenLength: websocketEvent.token?.length,
-      });
-    } else if (parsedBody.type === 'message' && parsedBody.data) {
-      // New format: {type: "message", data: {action: "sendMessage", message: "...", sessionId: "..."}}
-      websocketEvent = {
-        action: parsedBody.data.action,
-        message: parsedBody.data.message,
-        sessionId: parsedBody.data.sessionId,
-      };
-      logger.info('Parsed message (new format)', {
-        connectionId,
-        action: websocketEvent.action,
-        messageLength: websocketEvent.message?.length,
-      });
-    } else if (parsedBody.action) {
-      // Legacy format: {action: "authenticate", token: "..."} or {action: "sendMessage", message: "..."}
-      websocketEvent = parsedBody;
-      logger.info('Parsed message (legacy format)', {
-        connectionId,
-        action: websocketEvent.action,
-        hasToken: !!websocketEvent.token,
-        messageLength: websocketEvent.message?.length,
-      });
-    } else {
-      const error = createError(
-        ErrorType.VALIDATION_ERROR,
-        'Invalid message format',
-        'INVALID_MESSAGE_FORMAT',
-        { parsedBody }
-      );
-
-      logger.error('Invalid message format', { parsedBody });
-
-      return createErrorResponse(error, event);
-    }
-
-    const { action, message, sessionId, token } = websocketEvent;
-    logger.info('Parsed WebSocketEvent', { action, message, sessionId });
+    const { type, data } = websocketMessage;
+    const { action, message, sessionId, token } = data;
 
     // Handle authentication
-    if (action === 'authenticate') {
+    if (type === 'auth' && action === 'authenticate') {
       return await handleAuthentication(connectionId, event, token);
     }
 
     // Check if connection is authenticated for other actions
-    if (!authenticationService.isConnectionAuthenticated(connectionId)) {
+    const isAuthenticated =
+      await authenticationService.isConnectionAuthenticated(connectionId);
+    if (!isAuthenticated) {
       const error = createError(
         ErrorType.AUTHENTICATION_ERROR,
         'Authentication required',
@@ -182,52 +176,61 @@ export const handler = async (
     }
 
     // Handle regular messages
-    if (action !== 'sendMessage') {
-      const error = createError(
-        ErrorType.VALIDATION_ERROR,
-        'Invalid action',
-        'INVALID_ACTION',
-        {
-          expectedAction: 'sendMessage',
-          actualAction: action,
-        }
-      );
+    if (type === 'message' && action === 'sendMessage') {
+      if (!message) {
+        const error = createError(
+          ErrorType.VALIDATION_ERROR,
+          'Message is required',
+          'MISSING_MESSAGE',
+          { websocketMessage }
+        );
 
-      logger.error('Invalid action in MESSAGE event', { action });
+        logger.error('Missing message in sendMessage action', {
+          websocketMessage,
+        });
 
-      return createErrorResponse(error, event);
+        return createErrorResponse(error, event);
+      }
+
+      // Validate message length
+      if (message.length > 1000) {
+        const error = createError(
+          ErrorType.VALIDATION_ERROR,
+          'Message too long (max 1000 characters)',
+          'MESSAGE_TOO_LONG',
+          { messageLength: message.length, maxLength: 1000 }
+        );
+
+        logger.error('Message too long', { messageLength: message.length });
+
+        return createErrorResponse(error, event);
+      }
+
+      return await handleChatMessage(connectionId, event, message, sessionId);
     }
 
-    if (!message) {
-      const error = createError(
-        ErrorType.VALIDATION_ERROR,
-        'Message is required',
-        'MISSING_MESSAGE',
-        { websocketEvent }
-      );
-
-      logger.error('Missing message in sendMessage action', {
-        websocketEvent,
+    // Handle ping messages
+    if (type === 'ping') {
+      return createSuccessResponse({
+        statusCode: 200,
+        body: '',
       });
-
-      return createErrorResponse(error, event);
     }
 
-    // Validate message length
-    if (message.length > 1000) {
-      const error = createError(
-        ErrorType.VALIDATION_ERROR,
-        'Message too long (max 1000 characters)',
-        'MESSAGE_TOO_LONG',
-        { messageLength: message.length, maxLength: 1000 }
-      );
+    // Invalid action
+    const error = createError(
+      ErrorType.VALIDATION_ERROR,
+      'Invalid action',
+      'INVALID_ACTION',
+      {
+        expectedActions: ['authenticate', 'sendMessage'],
+        actualAction: action,
+      }
+    );
 
-      logger.error('Message too long', { messageLength: message.length });
+    logger.error('Invalid action in WebSocket message', { action });
 
-      return createErrorResponse(error, event);
-    }
-
-    return await handleChatMessage(connectionId, event, message, sessionId);
+    return createErrorResponse(error, event);
   } catch (error) {
     const appError = handleError(error as Error, {
       requestId: event.requestContext.requestId,
@@ -256,7 +259,7 @@ async function handleAuthentication(
     );
 
     if (authResult.success && authResult.user) {
-      authenticationService.storeAuthenticatedConnection(
+      await authenticationService.storeAuthenticatedConnection(
         connectionId,
         authResult.user
       );
@@ -323,7 +326,8 @@ async function handleChatMessage(
   sessionId?: string
 ): Promise<APIGatewayProxyResult> {
   try {
-    const user = authenticationService.getUserFromConnection(connectionId);
+    const user =
+      await authenticationService.getUserFromConnection(connectionId);
     if (!user) {
       const error = createError(
         ErrorType.AUTHENTICATION_ERROR,
@@ -455,7 +459,9 @@ async function handleChatMessage(
   } catch (error) {
     const appError = handleError(error as Error, {
       connectionId,
-      userId: authenticationService.getUserFromConnection(connectionId)?.userId,
+      userId: await authenticationService
+        .getUserFromConnection(connectionId)
+        ?.then(u => u?.userId),
       action: 'chat_message',
       event,
     });

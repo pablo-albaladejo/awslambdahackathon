@@ -104,7 +104,17 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
       }
 
       try {
-        ws.send(JSON.stringify(validation.data));
+        // Use new standardized message format
+        const message = {
+          type: 'message' as const,
+          data: {
+            action: 'sendMessage',
+            message: text,
+            sessionId: state.sessionId,
+          },
+        };
+
+        ws.send(JSON.stringify(message));
         setState(prev => ({
           ...prev,
           messages: [
@@ -120,7 +130,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
           isLoading: true,
           error: undefined,
         }));
-      } catch {
+      } catch (error) {
         const errorMessage = 'Failed to send message';
         setState(prev => ({ ...prev, error: errorMessage }));
         throw new Error(errorMessage);
@@ -139,7 +149,15 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
       error: undefined,
     }));
     reconnectAttemptsRef.current = 0;
-    const authMessage = webSocketValidation.createAuthMessage(token);
+
+    // Use new standardized message format
+    const authMessage = {
+      type: 'auth' as const,
+      data: {
+        action: 'authenticate',
+        token,
+      },
+    };
     ws.send(JSON.stringify(authMessage));
   }, [token]);
 

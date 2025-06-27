@@ -130,6 +130,9 @@ export class RuntimeStack extends cdk.Stack {
       this.websocketConnectionFunction
     );
 
+    // Grant DynamoDB permissions to MCP Host function for authentication
+    websocketConnectionsTable.table.grantReadWriteData(this.mcpHostFunction);
+
     // REST API construct
     const restApi = new RestApi(this, 'RestApi', {
       environment: props.environment,

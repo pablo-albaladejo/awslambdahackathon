@@ -185,8 +185,17 @@ async function handleDisconnect(
       });
     }
 
-    // Clean up authenticated connection from memory
-    authenticationService.removeAuthenticatedConnection(connectionId);
+    // Clean up authenticated connection from DynamoDB
+    try {
+      await authenticationService.removeAuthenticatedConnection(connectionId);
+    } catch (authError) {
+      // Log the error but don't fail the disconnect operation
+      logger.warn('Failed to remove authenticated connection', {
+        connectionId,
+        error:
+          authError instanceof Error ? authError.message : String(authError),
+      });
+    }
 
     logger.info('Connection cleanup completed', { connectionId });
 

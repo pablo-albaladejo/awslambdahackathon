@@ -1,3 +1,11 @@
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import {
+  DeleteCommand,
+  DynamoDBDocumentClient,
+  GetCommand,
+  PutCommand,
+  QueryCommand,
+} from '@aws-sdk/lib-dynamodb';
 import { logger } from '@awslambdahackathon/utils/lambda';
 import { CognitoJwtVerifier } from 'aws-jwt-verify';
 
@@ -19,22 +27,40 @@ export interface AuthenticatedConnection {
   user: AuthenticatedUser;
   isAuthenticated: boolean;
   authenticatedAt: number;
+  ttl: number;
 }
 
 export class AuthenticationService {
   private readonly verifier: ReturnType<typeof CognitoJwtVerifier.create>;
-  private readonly authenticatedConnections: Map<
-    string,
-    AuthenticatedConnection
-  >;
+  private readonly ddbClient: DynamoDBDocumentClient;
+  private readonly tableName: string;
 
   constructor() {
+    // Validate required environment variables
+    const userPoolId = process.env.COGNITO_USER_POOL_ID;
+    const clientId = process.env.COGNITO_CLIENT_ID;
+    const tableName = process.env.WEBSOCKET_CONNECTIONS_TABLE;
+
+    if (!userPoolId) {
+      throw new Error('COGNITO_USER_POOL_ID environment variable is required');
+    }
+    if (!clientId) {
+      throw new Error('COGNITO_CLIENT_ID environment variable is required');
+    }
+    if (!tableName) {
+      throw new Error(
+        'WEBSOCKET_CONNECTIONS_TABLE environment variable is required'
+      );
+    }
+
     this.verifier = CognitoJwtVerifier.create({
-      userPoolId: process.env.COGNITO_USER_POOL_ID!,
+      userPoolId,
       tokenUse: 'access',
-      clientId: process.env.COGNITO_CLIENT_ID!,
+      clientId,
     });
-    this.authenticatedConnections = new Map();
+
+    this.ddbClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+    this.tableName = tableName;
   }
 
   /**
@@ -114,98 +140,200 @@ export class AuthenticationService {
   }
 
   /**
-   * Store authenticated connection
+   * Store authenticated connection in DynamoDB
    */
-  storeAuthenticatedConnection(
+  async storeAuthenticatedConnection(
     connectionId: string,
     user: AuthenticatedUser
-  ): void {
-    const connection: AuthenticatedConnection = {
-      connectionId,
-      user,
-      isAuthenticated: true,
-      authenticatedAt: Date.now(),
-    };
+  ): Promise<void> {
+    const now = Date.now();
+    const ttl = Math.floor(now / 1000) + 24 * 60 * 60; // 24 hours TTL
 
-    this.authenticatedConnections.set(connectionId, connection);
+    try {
+      await this.ddbClient.send(
+        new PutCommand({
+          TableName: this.tableName,
+          Item: {
+            connectionId,
+            userId: user.userId,
+            username: user.username,
+            email: user.email,
+            groups: user.groups,
+            isAuthenticated: true,
+            authenticatedAt: now,
+            ttl,
+          },
+        })
+      );
 
-    logger.info('Authenticated connection stored', {
-      connectionId,
-      userId: user.userId,
-    });
+      logger.info('Authenticated connection stored in DynamoDB', {
+        connectionId,
+        userId: user.userId,
+        ttl,
+      });
+    } catch (error) {
+      logger.error('Failed to store authenticated connection', {
+        connectionId,
+        userId: user.userId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
   }
 
   /**
-   * Get authenticated connection
+   * Get authenticated connection from DynamoDB
    */
-  getAuthenticatedConnection(
+  async getAuthenticatedConnection(
     connectionId: string
-  ): AuthenticatedConnection | undefined {
-    return this.authenticatedConnections.get(connectionId);
+  ): Promise<AuthenticatedConnection | undefined> {
+    try {
+      const result = await this.ddbClient.send(
+        new GetCommand({
+          TableName: this.tableName,
+          Key: { connectionId },
+        })
+      );
+
+      if (!result.Item) {
+        return undefined;
+      }
+
+      const item = result.Item;
+      const connection: AuthenticatedConnection = {
+        connectionId: item.connectionId,
+        user: {
+          userId: item.userId,
+          username: item.username,
+          email: item.email,
+          groups: item.groups,
+        },
+        isAuthenticated: item.isAuthenticated,
+        authenticatedAt: item.authenticatedAt,
+        ttl: item.ttl,
+      };
+
+      // Check if connection has expired
+      const now = Math.floor(Date.now() / 1000);
+      if (connection.ttl && connection.ttl < now) {
+        logger.info('Connection expired, removing from database', {
+          connectionId,
+          ttl: connection.ttl,
+          now,
+        });
+        await this.removeAuthenticatedConnection(connectionId);
+        return undefined;
+      }
+
+      return connection;
+    } catch (error) {
+      logger.error('Failed to get authenticated connection', {
+        connectionId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return undefined;
+    }
   }
 
   /**
    * Check if connection is authenticated
    */
-  isConnectionAuthenticated(connectionId: string): boolean {
-    const connection = this.authenticatedConnections.get(connectionId);
+  async isConnectionAuthenticated(connectionId: string): Promise<boolean> {
+    const connection = await this.getAuthenticatedConnection(connectionId);
     return connection?.isAuthenticated || false;
   }
 
   /**
-   * Remove authenticated connection
+   * Remove authenticated connection from DynamoDB
    */
-  removeAuthenticatedConnection(connectionId: string): void {
-    const connection = this.authenticatedConnections.get(connectionId);
-    if (connection) {
-      this.authenticatedConnections.delete(connectionId);
-      logger.info('Authenticated connection removed', {
+  async removeAuthenticatedConnection(connectionId: string): Promise<void> {
+    try {
+      await this.ddbClient.send(
+        new DeleteCommand({
+          TableName: this.tableName,
+          Key: { connectionId },
+        })
+      );
+
+      logger.info('Authenticated connection removed from DynamoDB', {
         connectionId,
-        userId: connection.user.userId,
       });
+    } catch (error) {
+      logger.error('Failed to remove authenticated connection', {
+        connectionId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
     }
   }
 
   /**
    * Get user from authenticated connection
    */
-  getUserFromConnection(connectionId: string): AuthenticatedUser | undefined {
-    const connection = this.authenticatedConnections.get(connectionId);
+  async getUserFromConnection(
+    connectionId: string
+  ): Promise<AuthenticatedUser | undefined> {
+    const connection = await this.getAuthenticatedConnection(connectionId);
     return connection?.user;
   }
 
   /**
    * Check if user has required group
    */
-  hasUserGroup(connectionId: string, requiredGroup: string): boolean {
-    const user = this.getUserFromConnection(connectionId);
+  async hasUserGroup(
+    connectionId: string,
+    requiredGroup: string
+  ): Promise<boolean> {
+    const user = await this.getUserFromConnection(connectionId);
     return user?.groups?.includes(requiredGroup) || false;
   }
 
   /**
-   * Clean up expired connections (for production, use DynamoDB TTL)
+   * Clean up expired connections using DynamoDB TTL
+   * Note: DynamoDB automatically deletes items when TTL expires
+   * This method is for manual cleanup if needed
    */
-  cleanupExpiredConnections(maxAgeMs: number = 24 * 60 * 60 * 1000): void {
-    const now = Date.now();
-    const expiredConnections: string[] = [];
+  async cleanupExpiredConnections(): Promise<void> {
+    try {
+      const now = Math.floor(Date.now() / 1000);
 
-    for (const [
-      connectionId,
-      connection,
-    ] of this.authenticatedConnections.entries()) {
-      if (now - connection.authenticatedAt > maxAgeMs) {
-        expiredConnections.push(connectionId);
+      // Query for expired connections
+      const result = await this.ddbClient.send(
+        new QueryCommand({
+          TableName: this.tableName,
+          FilterExpression: 'ttl < :now',
+          ExpressionAttributeValues: {
+            ':now': now,
+          },
+        })
+      );
+
+      if (result.Items && result.Items.length > 0) {
+        logger.info('Found expired connections for cleanup', {
+          count: result.Items.length,
+        });
+
+        // Delete expired connections
+        const deletePromises = result.Items.map(item =>
+          this.ddbClient.send(
+            new DeleteCommand({
+              TableName: this.tableName,
+              Key: { connectionId: item.connectionId },
+            })
+          )
+        );
+
+        await Promise.all(deletePromises);
+
+        logger.info('Cleaned up expired connections', {
+          count: result.Items.length,
+        });
       }
-    }
-
-    expiredConnections.forEach(connectionId => {
-      this.removeAuthenticatedConnection(connectionId);
-    });
-
-    if (expiredConnections.length > 0) {
-      logger.info('Cleaned up expired connections', {
-        count: expiredConnections.length,
+    } catch (error) {
+      logger.error('Failed to cleanup expired connections', {
+        error: error instanceof Error ? error.message : String(error),
       });
+      throw error;
     }
   }
 }

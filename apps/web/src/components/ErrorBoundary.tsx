@@ -30,17 +30,51 @@ export class ErrorBoundary extends Component<
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     this.setState({ error, errorInfo });
 
+    // Sanitize error message for logging
+    const sanitizedError = this.sanitizeError(error);
+
     // Log error
     logger.error('React error boundary caught error', {
-      error: error.message,
-      stack: error.stack,
+      error: sanitizedError.message,
+      stack: sanitizedError.stack,
       componentStack: errorInfo.componentStack,
     });
 
     // Call custom error handler if provided
     if (this.props.onError) {
-      this.props.onError(error, errorInfo);
+      this.props.onError(sanitizedError, errorInfo);
     }
+  }
+
+  /**
+   * Sanitize error to prevent sensitive information disclosure
+   */
+  private sanitizeError(error: Error): Error {
+    const sanitizedError = new Error(error.message);
+
+    // Remove sensitive information from stack trace
+    if (error.stack) {
+      const sanitizedStack = error.stack
+        .split('\n')
+        .filter(line => {
+          // Remove lines that might contain sensitive information
+          const sensitivePatterns = [
+            /password/i,
+            /token/i,
+            /secret/i,
+            /key/i,
+            /credential/i,
+            /auth/i,
+          ];
+
+          return !sensitivePatterns.some(pattern => pattern.test(line));
+        })
+        .join('\n');
+
+      sanitizedError.stack = sanitizedStack;
+    }
+
+    return sanitizedError;
   }
 
   componentDidUpdate(prevProps: ErrorBoundaryProps) {
@@ -105,13 +139,14 @@ export class ErrorBoundary extends Component<
                 </summary>
                 <div className="mt-2 p-3 bg-gray-800 text-red-400 text-xs rounded overflow-auto max-h-32">
                   <div className="mb-2">
-                    <strong>Error:</strong> {this.state.error.message}
+                    <strong>Error:</strong>{' '}
+                    {this.sanitizeError(this.state.error).message}
                   </div>
                   {this.state.error.stack && (
                     <div>
                       <strong>Stack:</strong>
                       <pre className="whitespace-pre-wrap">
-                        {this.state.error.stack}
+                        {this.sanitizeError(this.state.error).stack}
                       </pre>
                     </div>
                   )}
