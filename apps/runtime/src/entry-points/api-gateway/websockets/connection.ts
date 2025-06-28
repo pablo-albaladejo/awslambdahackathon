@@ -6,6 +6,7 @@ import {
   metrics,
   tracer,
 } from '@awslambdahackathon/utils/lambda';
+import { container } from '@container';
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 
 import { removeAuthenticatedConnection } from '../../../application/use-cases/remove-authenticated-connection';
@@ -16,7 +17,6 @@ import {
   METRIC_CONSTANTS,
   WEBSOCKET_CONSTANTS,
 } from '../../../config/constants';
-import { container } from '../../../config/container';
 import { ConnectionService } from '../../../services/connection-service';
 import {
   createError,

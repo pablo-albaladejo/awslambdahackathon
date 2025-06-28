@@ -7,9 +7,8 @@ import {
   QueryCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { logger } from '@awslambdahackathon/utils/lambda';
+import { container } from '@container';
 import { CognitoJwtVerifier } from 'aws-jwt-verify';
-
-import { container } from '../config/container';
 
 import { circuitBreakerService } from './circuit-breaker-service';
 import { metricsService } from './metrics-service';
@@ -41,6 +40,7 @@ export class AuthenticationService {
   private readonly tableName: string;
 
   constructor() {
+    logger.info('Initializing AuthenticationService');
     // Validate required environment variables
     const userPoolId = process.env.COGNITO_USER_POOL_ID;
     const clientId = process.env.COGNITO_CLIENT_ID;

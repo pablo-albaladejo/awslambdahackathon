@@ -7,6 +7,7 @@ import {
   metrics,
   tracer,
 } from '@awslambdahackathon/utils/lambda';
+import { container } from '@container';
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 
 import { authenticateUser } from '../../../application/use-cases/authenticate-user';
@@ -19,7 +20,6 @@ import {
   METRIC_CONSTANTS,
   WEBSOCKET_CONSTANTS,
 } from '../../../config/constants';
-import { container } from '../../../config/container';
 import {
   createError,
   createErrorResponse,

@@ -1,3 +1,4 @@
+import { logger } from '@awslambdahackathon/utils/lambda';
 import type { APIGatewayProxyEvent } from 'aws-lambda';
 
 import { authenticationService } from '../services/authentication-service';
@@ -241,6 +242,7 @@ export class Container {
 
   private initializeServices(): void {
     // Register services
+    logger.info('Registering authenticationService in container');
     this.services.set('connectionService', new ConnectionService());
     this.services.set('authenticationService', authenticationService);
     this.services.set('chatService', chatService);
@@ -255,6 +257,10 @@ export class Container {
   }
 
   public get<T>(serviceName: string): T {
+    logger.info('Getting service from container', { serviceName });
+    logger.info('All services in container', {
+      services: Array.from(this.services.keys()),
+    });
     const service = this.services.get(serviceName);
     if (!service) {
       throw new Error(`Service '${serviceName}' not found in container`);

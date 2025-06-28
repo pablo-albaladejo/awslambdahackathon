@@ -1,7 +1,6 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, PutCommand } from '@aws-sdk/lib-dynamodb';
-
-import { container } from '../config/container';
+import { container } from '@container';
 
 import { authenticationService } from './authentication-service';
 import { circuitBreakerService } from './circuit-breaker-service';

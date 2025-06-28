@@ -568,7 +568,7 @@ export class ErrorHandlingService {
     if (appError.statusCode >= 500) {
       logger.error('Application error occurred', logData);
     } else if (appError.statusCode >= 400) {
-      logger.warn('Client error occurred', logData);
+      logger.error('Client error occurred', logData);
     } else {
       logger.info('Application error occurred', logData);
     }
