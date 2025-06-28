@@ -62,7 +62,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
   );
   const reconnectAttemptsRef = useRef(0);
   const isConnectingRef = useRef(false);
-  const [token, setToken] = useState<string | null>(null);
+  const tokenRef = useRef<string | null>(null);
   const [reconnectFailed, setReconnectFailed] = useState(false);
 
   const websocketConfig = getWebSocketConfig();
@@ -139,27 +139,47 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
     [state.sessionId]
   );
 
-  const handleOpen = useCallback(() => {
-    const ws = wsRef.current;
-    if (!ws || !token) return;
-    logger.info('WebSocket connected successfully, sending authentication');
+  const handleOpen = useCallback((event?: Event) => {
+    const ws = (event?.target as WebSocket) || wsRef.current;
+    const tokenToUse = tokenRef.current;
+    logger.info('[WebSocket] Open event triggered', {
+      hasWs: !!ws,
+      hasToken: !!tokenToUse,
+      wsReadyState: ws?.readyState,
+    });
+    if (!ws || !tokenToUse) {
+      logger.error('[WebSocket] Cannot send auth message', {
+        hasWs: !!ws,
+        hasToken: !!tokenToUse,
+      });
+      return;
+    }
+    logger.info('[WebSocket] Connected, sending authentication');
     setState(prev => ({
       ...prev,
       isReconnecting: false,
       error: undefined,
     }));
     reconnectAttemptsRef.current = 0;
-
-    // Use new standardized message format
     const authMessage = {
       type: 'auth' as const,
       data: {
         action: 'authenticate',
-        token,
+        token: tokenToUse,
       },
     };
-    ws.send(JSON.stringify(authMessage));
-  }, [token]);
+    logger.info('[WebSocket] Sending auth message', {
+      messageType: authMessage.type,
+      hasToken: !!authMessage.data.token,
+      tokenLength: authMessage.data.token?.length,
+    });
+    try {
+      ws.send(JSON.stringify(authMessage));
+      logger.info('[WebSocket] Auth message sent');
+    } catch (error) {
+      logger.error('[WebSocket] Failed to send auth message', { error });
+    }
+  }, []);
 
   const handleClose = useCallback(
     (event: CloseEvent) => {
@@ -228,6 +248,9 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
 
   const handleMessage = useCallback(
     (event: MessageEvent<string>) => {
+      logger.info('[WebSocket] Message received from server', {
+        raw: event.data,
+      });
       try {
         const validation = webSocketValidation.validateMessage(
           JSON.parse(event.data)
@@ -305,34 +328,39 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
     isConnectingRef.current = true;
     try {
       clearError();
+      logger.info('[WebSocket] Starting fetchAuthSession...');
       const session = await fetchAuthSession();
       const tokenValue = session.tokens?.accessToken.toString();
-      setToken(tokenValue || null);
+      logger.info('[WebSocket] Token obtained', {
+        tokenLength: tokenValue?.length,
+        tokenStart: tokenValue?.substring(0, 10) + '...',
+      });
+      tokenRef.current = tokenValue || null;
       if (!tokenValue) {
+        logger.error('[WebSocket] JWT token not available');
         throw new Error('JWT token not available. Please log in again.');
       }
-      logger.info('Connecting to WebSocket', {
+      logger.info('[WebSocket] Connecting to WebSocket', {
         url: websocketConfig.url,
         tokenLength: tokenValue.length,
         tokenStart: tokenValue.substring(0, 10) + '...',
       });
       const newWs = new WebSocket(websocketConfig.url);
+      wsRef.current = newWs as WebSocket & { cleanup: () => void };
       newWs.addEventListener('open', handleOpen);
       newWs.addEventListener('close', handleClose);
       newWs.addEventListener('error', handleWebSocketError);
       newWs.addEventListener('message', handleMessage);
-
-      // Guardamos cleanup en el ref
       (newWs as WebSocket & { cleanup: () => void }).cleanup = () => {
         newWs.removeEventListener('open', handleOpen);
         newWs.removeEventListener('close', handleClose);
         newWs.removeEventListener('error', handleWebSocketError);
         newWs.removeEventListener('message', handleMessage);
       };
-      wsRef.current = newWs as WebSocket & { cleanup: () => void };
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : 'Could not connect to chatbot';
+      logger.error('[WebSocket] Error connecting', { error });
       handleError(errorMessage);
       setState(prev => ({
         ...prev,
