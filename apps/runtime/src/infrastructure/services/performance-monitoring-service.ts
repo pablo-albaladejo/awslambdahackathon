@@ -516,6 +516,3 @@ export class PerformanceMonitor {
     }
   }
 }
-
-// Global instance
-export const performanceMonitoringService = new PerformanceMonitoringService();

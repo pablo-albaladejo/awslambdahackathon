@@ -246,6 +246,3 @@ export class MetricsService {
     });
   }
 }
-
-// Singleton instance
-export const metricsService = new MetricsService();

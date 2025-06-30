@@ -6,7 +6,35 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"],
-      "@container": ["src/config/container"]
+      "@container": ["src/config/container"],
+
+      // Domain Layer
+      "@domain/*": ["src/domain/*"],
+      "@domain/entities/*": ["src/domain/entities/*"],
+      "@domain/repositories/*": ["src/domain/repositories/*"],
+      "@domain/services/*": ["src/domain/services/*"],
+      "@domain/value-objects/*": ["src/domain/value-objects/*"],
+
+      // Application Layer
+      "@application/*": ["src/application/*"],
+      "@application/use-cases/*": ["src/application/use-cases/*"],
+
+      // Infrastructure Layer
+      "@infrastructure/*": ["src/infrastructure/*"],
+      "@infrastructure/adapters/*": ["src/infrastructure/adapters/*"],
+      "@infrastructure/adapters/inbound/*": [
+        "src/infrastructure/adapters/inbound/*"
+      ],
+      "@infrastructure/adapters/outbound/*": [
+        "src/infrastructure/adapters/outbound/*"
+      ],
+      "@infrastructure/services/*": ["src/infrastructure/services/*"],
+
+      // Config Layer
+      "@config/*": ["src/config/*"],
+
+      // Services Layer
+      "@services/*": ["src/services/*"]
     }
   },
   "include": ["src/**/*"],

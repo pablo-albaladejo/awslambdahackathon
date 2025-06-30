@@ -7,11 +7,10 @@ import {
   QueryCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { logger } from '@awslambdahackathon/utils/lambda';
-import { container } from '@container';
+import { container } from '@config/container';
+import { UserRepository } from '@domain/repositories/user';
+import { UserId } from '@domain/value-objects';
 import { CognitoJwtVerifier } from 'aws-jwt-verify';
-
-import { circuitBreakerService } from './circuit-breaker-service';
-import { metricsService } from './metrics-service';
 
 export interface AuthenticatedUser {
   userId: string;
@@ -71,162 +70,45 @@ export class AuthenticationService {
   /**
    * Authenticate a user with JWT token
    */
-  async authenticateUser(token: string): Promise<AuthenticationResult> {
-    const startTime = Date.now();
-    let success = false;
-    let errorType: string | undefined;
+  async authenticateUser(token: string): Promise<AuthenticatedUser | null> {
+    return container
+      .getCircuitBreakerService()
+      .execute('authentication', 'authenticateUser', async () => {
+        try {
+          const verifier = CognitoJwtVerifier.create({
+            userPoolId: process.env.USER_POOL_ID!,
+            tokenUse: 'access',
+            clientId: process.env.USER_POOL_CLIENT_ID!,
+          });
 
-    // Start performance monitoring for authentication
-    const performanceMonitor = container
-      .getPerformanceMonitoringService()
-      .startMonitoring('authentication_jwt_verification', {
-        tokenLength: token?.length,
-        hasToken: !!token,
-        correlationId: this.generateCorrelationId(),
-        operation: 'authentication_jwt_verification',
-        service: 'authentication',
-      });
+          const payload = await verifier.verify(token);
+          const userId = new UserId(payload.sub);
 
-    try {
-      logger.info('Starting authentication process', {
-        tokenLength: token?.length,
-        hasToken: !!token,
-        correlationId: this.generateCorrelationId(),
-      });
+          // Get user from repository
+          const userRepository =
+            container.get<UserRepository>('userRepository');
+          const user = await userRepository.findById(userId);
 
-      if (!token) {
-        errorType = 'MISSING_TOKEN';
-        logger.warn('Authentication failed: Missing token', {
-          correlationId: this.generateCorrelationId(),
-        });
+          if (!user) {
+            logger.warn('User not found in database', {
+              userId: userId.getValue(),
+            });
+            return null;
+          }
 
-        performanceMonitor.complete(false, {
-          error: 'MISSING_TOKEN',
-          errorType,
-        });
-
-        return {
-          success: false,
-          error: 'Missing authentication token',
-        };
-      }
-
-      logger.info('Verifying JWT token', {
-        userPoolId: process.env.COGNITO_USER_POOL_ID,
-        clientId: process.env.COGNITO_CLIENT_ID,
-        correlationId: this.generateCorrelationId(),
-      });
-
-      // Use circuit breaker for Cognito JWT verification
-      const payload = await circuitBreakerService.execute(
-        'cognito',
-        'verifyJWT',
-        async () => {
-          return await this.verifier.verify(token);
-        },
-        async () => {
-          // Fallback behavior when Cognito is unavailable
-          logger.warn(
-            'Cognito service unavailable, using fallback authentication',
-            {
-              correlationId: this.generateCorrelationId(),
-            }
-          );
-          throw new Error('Authentication service temporarily unavailable');
-        },
-        {
-          failureThreshold: 3, // 3 fallos antes de abrir el circuito
-          recoveryTimeout: 30000, // 30 segundos de espera
-          expectedResponseTime: 2000, // 2 segundos de tiempo de respuesta esperado
-          monitoringWindow: 60000, // Ventana de monitoreo de 1 minuto
-          minimumRequestCount: 5, // Mínimo 5 requests antes de abrir el circuito
+          return {
+            userId: user.getId().getValue(),
+            username: user.getUsername(),
+            email: user.getEmail(),
+            groups: user.getGroups(),
+          };
+        } catch (error) {
+          logger.error('Authentication failed', {
+            error: error instanceof Error ? error.message : String(error),
+          });
+          return null;
         }
-      );
-
-      logger.info('JWT token verified successfully', {
-        sub: payload.sub,
-        username: payload.username,
-        email: payload.email,
-        exp: payload.exp,
-        correlationId: this.generateCorrelationId(),
       });
-
-      // Verify token expiration
-      const now = Math.floor(Date.now() / 1000);
-      if (payload.exp && payload.exp < now) {
-        errorType = 'TOKEN_EXPIRED';
-        logger.warn('Authentication failed: Token expired', {
-          exp: payload.exp,
-          now,
-          correlationId: this.generateCorrelationId(),
-        });
-
-        performanceMonitor.complete(false, {
-          error: 'TOKEN_EXPIRED',
-          errorType,
-          exp: payload.exp,
-          now,
-        });
-
-        return {
-          success: false,
-          error: 'Token expired',
-        };
-      }
-
-      const user: AuthenticatedUser = {
-        userId: payload.sub,
-        username: (payload.username as string) || payload.sub,
-        email: (payload.email as string) || '',
-        groups: (payload['cognito:groups'] as string[]) || [],
-      };
-
-      success = true;
-      logger.info('User authenticated successfully', {
-        userId: user.userId,
-        username: user.username,
-        email: user.email,
-        groups: user.groups,
-        correlationId: this.generateCorrelationId(),
-      });
-
-      performanceMonitor.complete(true, {
-        userId: user.userId,
-        username: user.username,
-        email: user.email,
-        groups: user.groups,
-      });
-
-      return {
-        success: true,
-        user,
-      };
-    } catch (error) {
-      errorType = 'INVALID_TOKEN';
-      logger.error('Authentication failed', {
-        error: error instanceof Error ? error.message : String(error),
-        errorStack: error instanceof Error ? error.stack : undefined,
-        correlationId: this.generateCorrelationId(),
-      });
-
-      performanceMonitor.complete(false, {
-        error: 'INVALID_TOKEN',
-        errorType,
-        errorMessage: error instanceof Error ? error.message : String(error),
-      });
-
-      return {
-        success: false,
-        error: 'Invalid authentication token',
-      };
-    } finally {
-      const duration = Date.now() - startTime;
-      await metricsService.recordAuthenticationMetrics(
-        success,
-        duration,
-        errorType
-      );
-    }
   }
 
   /**
@@ -285,7 +167,7 @@ export class AuthenticationService {
       throw error;
     } finally {
       const duration = Date.now() - startTime;
-      await metricsService.recordDatabaseMetrics(
+      await container.getMetricsService().recordDatabaseMetrics(
         'store_connection',
         this.tableName,
         success,
@@ -371,7 +253,7 @@ export class AuthenticationService {
       return undefined;
     } finally {
       const duration = Date.now() - startTime;
-      await metricsService.recordDatabaseMetrics(
+      await container.getMetricsService().recordDatabaseMetrics(
         'get_connection',
         this.tableName,
         success,
@@ -433,7 +315,7 @@ export class AuthenticationService {
       throw error;
     } finally {
       const duration = Date.now() - startTime;
-      await metricsService.recordDatabaseMetrics(
+      await container.getMetricsService().recordDatabaseMetrics(
         'remove_connection',
         this.tableName,
         success,
@@ -540,7 +422,7 @@ export class AuthenticationService {
       throw error;
     } finally {
       const duration = Date.now() - startTime;
-      await metricsService.recordDatabaseMetrics(
+      await container.getMetricsService().recordDatabaseMetrics(
         'cleanup_expired',
         this.tableName,
         success,
@@ -557,6 +439,3 @@ export class AuthenticationService {
     return `auth-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   }
 }
-
-// Singleton instance
-export const authenticationService = new AuthenticationService();

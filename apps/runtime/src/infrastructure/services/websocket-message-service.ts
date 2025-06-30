@@ -5,10 +5,8 @@ import {
   PostToConnectionCommand,
 } from '@aws-sdk/client-apigatewaymanagementapi';
 import { logger } from '@awslambdahackathon/utils/lambda';
+import { container } from '@config/container';
 import type { APIGatewayProxyEvent } from 'aws-lambda';
-
-import { circuitBreakerService } from './circuit-breaker-service';
-import { metricsService } from './metrics-service';
 
 export interface WebSocketMessage {
   type: string;
@@ -79,7 +77,7 @@ export class WebSocketMessageService {
       const client = this.getClient(event);
 
       // Use circuit breaker for API Gateway Management API calls
-      await circuitBreakerService.execute(
+      await container.getCircuitBreakerService().execute(
         'apigateway-management',
         'postToConnection',
         async () => {
@@ -131,12 +129,9 @@ export class WebSocketMessageService {
       return false;
     } finally {
       const duration = Date.now() - startTime;
-      await metricsService.recordWebSocketMetrics(
-        'message_sent',
-        success,
-        duration,
-        errorType
-      );
+      await container
+        .getMetricsService()
+        .recordWebSocketMetrics('message_sent', success, duration, errorType);
     }
   }
 
@@ -268,6 +263,3 @@ export class WebSocketMessageService {
     return `ws-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   }
 }
-
-// Singleton instance
-export const websocketMessageService = new WebSocketMessageService();

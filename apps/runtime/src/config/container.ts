@@ -1,14 +1,22 @@
 import { logger } from '@awslambdahackathon/utils/lambda';
-import type { APIGatewayProxyEvent } from 'aws-lambda';
+import { AuthenticationService as DomainAuthenticationService } from '@domain/services/authentication-service';
+import { ChatService as DomainChatService } from '@domain/services/chat-service';
+import { ConnectionService as DomainConnectionService } from '@domain/services/connection-service';
+import { AuthenticationService as InfrastructureAuthenticationService } from '@infrastructure/services/authentication-service';
+import { ChatService as InfrastructureChatService } from '@infrastructure/services/chat-service';
+import { CircuitBreakerService as InfrastructureCircuitBreakerService } from '@infrastructure/services/circuit-breaker-service';
+import { ConnectionService as InfrastructureConnectionService } from '@infrastructure/services/connection-service';
+import {
+  AppError,
+  ErrorType,
+  ErrorHandlingService as InfrastructureErrorHandlingService,
+} from '@infrastructure/services/error-handling-service';
+import { MetricsService as InfrastructureMetricsService } from '@infrastructure/services/metrics-service';
+import { PerformanceMonitoringService as InfrastructurePerformanceMonitoringService } from '@infrastructure/services/performance-monitoring-service';
+import { WebSocketMessageService as InfrastructureWebSocketMessageService } from '@infrastructure/services/websocket-message-service';
+import type { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 
-import { authenticationService } from '../services/authentication-service';
-import { chatService } from '../services/chat-service';
-import { circuitBreakerService } from '../services/circuit-breaker-service';
-import { ConnectionService } from '../services/connection-service';
-import { errorHandlingService } from '../services/error-handling-service';
-import { metricsService } from '../services/metrics-service';
-import { performanceMonitoringService } from '../services/performance-monitoring-service';
-import { websocketMessageService } from '../services/websocket-message-service';
+// Import domain service interfaces
 
 // Define proper types for the services
 export interface User {
@@ -25,9 +33,16 @@ export interface Connection {
 }
 
 export interface ErrorContext {
-  connectionId: string;
-  event: APIGatewayProxyEvent;
-  error: Error;
+  requestId?: string;
+  connectionId?: string;
+  userId?: string;
+  action?: string;
+  event?: APIGatewayProxyEvent;
+  correlationId?: string;
+  timestamp?: string;
+  userAgent?: string;
+  sourceIp?: string;
+  stage?: string;
 }
 
 export interface MetricsMetadata {
@@ -75,6 +90,11 @@ export interface CircuitBreakerConfig {
   timeout?: number;
   errorThresholdPercentage?: number;
   resetTimeout?: number;
+  failureThreshold?: number;
+  recoveryTimeout?: number;
+  expectedResponseTime?: number;
+  monitoringWindow?: number;
+  minimumRequestCount?: number;
 }
 
 export interface CircuitBreakerStats {
@@ -85,36 +105,32 @@ export interface CircuitBreakerStats {
   nextAttemptTime?: Date;
 }
 
-// Service interfaces for dependency injection
-export interface IConnectionService {
-  storeConnection(connectionId: string): Promise<void>;
-  removeConnection(connectionId: string): Promise<void>;
-  getConnection(connectionId: string): Promise<Connection | null>;
-}
+// Service interfaces for dependency injection - using domain interfaces
+export type ConnectionServiceType = DomainConnectionService;
+export type ChatServiceType = DomainChatService;
+export type AuthenticationServiceType = DomainAuthenticationService;
 
-export interface IAuthenticationService {
-  storeAuthenticatedConnection(connectionId: string, user: User): Promise<void>;
-  removeAuthenticatedConnection(connectionId: string): Promise<void>;
-  isConnectionAuthenticated(connectionId: string): Promise<boolean>;
-}
-
-export interface IChatService {
-  storeAndEchoMessage(params: {
-    connectionId: string;
-    message: string;
-    sessionId?: string;
-  }): Promise<{ message: string; sessionId: string }>;
-}
-
-export interface IErrorHandlingService {
+export interface ErrorHandlingService {
+  createError(
+    type: ErrorType,
+    message: string,
+    code: string,
+    details?: Record<string, unknown>,
+    correlationId?: string
+  ): AppError;
+  handleError(error: Error | AppError, context?: ErrorContext): AppError;
+  createErrorResponse(
+    error: AppError,
+    event?: APIGatewayProxyEvent
+  ): APIGatewayProxyResult;
   handleWebSocketError(
-    error: Error,
+    error: AppError,
     connectionId: string,
     event: APIGatewayProxyEvent
   ): Promise<void>;
 }
 
-export interface IMetricsService {
+export interface MetricsService {
   recordErrorMetrics(
     code: string,
     context: string,
@@ -128,11 +144,25 @@ export interface IMetricsService {
   recordWebSocketMetrics(
     name: string,
     success: boolean,
-    duration: number
+    duration: number,
+    errorType?: string
+  ): Promise<void>;
+  recordDatabaseMetrics(
+    operation: string,
+    tableName: string,
+    success: boolean,
+    duration: number,
+    errorType?: string
+  ): Promise<void>;
+  recordAuthenticationMetrics(
+    success: boolean,
+    duration: number,
+    errorType?: string,
+    userId?: string
   ): Promise<void>;
 }
 
-export interface IWebSocketMessageService {
+export interface WebSocketMessageService {
   sendAuthResponse(
     connectionId: string,
     event: APIGatewayProxyEvent,
@@ -153,7 +183,7 @@ export interface IWebSocketMessageService {
   ): Promise<boolean>;
 }
 
-export interface IPerformanceMonitoringService {
+export interface PerformanceMonitoringService {
   startMonitoring(
     operation: string,
     context: PerformanceContext
@@ -197,7 +227,7 @@ export interface PerformanceStats {
   lastFlush: Date | null;
 }
 
-export interface ICircuitBreakerService {
+export interface CircuitBreakerService {
   execute<T>(
     serviceName: string,
     operation: string,
@@ -241,9 +271,20 @@ export class Container {
   }
 
   private initializeServices(): void {
+    // Initialize services
+    const connectionService = new InfrastructureConnectionService();
+    const authenticationService = new InfrastructureAuthenticationService();
+    const chatService = new InfrastructureChatService();
+    const errorHandlingService = new InfrastructureErrorHandlingService();
+    const metricsService = new InfrastructureMetricsService();
+    const websocketMessageService = new InfrastructureWebSocketMessageService();
+    const performanceMonitoringService =
+      new InfrastructurePerformanceMonitoringService();
+    const circuitBreakerService = new InfrastructureCircuitBreakerService();
+
     // Register services
-    logger.info('Registering authenticationService in container');
-    this.services.set('connectionService', new ConnectionService());
+    logger.info('Registering services in container');
+    this.services.set('connectionService', connectionService);
     this.services.set('authenticationService', authenticationService);
     this.services.set('chatService', chatService);
     this.services.set('errorHandlingService', errorHandlingService);
@@ -273,38 +314,38 @@ export class Container {
   }
 
   // Convenience methods for commonly used services
-  public getConnectionService(): IConnectionService {
-    return this.get<IConnectionService>('connectionService');
+  public getConnectionService(): ConnectionServiceType {
+    return this.get<ConnectionServiceType>('connectionService');
   }
 
-  public getAuthenticationService(): IAuthenticationService {
-    return this.get<IAuthenticationService>('authenticationService');
+  public getAuthenticationService(): AuthenticationServiceType {
+    return this.get<AuthenticationServiceType>('authenticationService');
   }
 
-  public getChatService(): IChatService {
-    return this.get<IChatService>('chatService');
+  public getChatService(): ChatServiceType {
+    return this.get<ChatServiceType>('chatService');
   }
 
-  public getErrorHandlingService(): IErrorHandlingService {
-    return this.get<IErrorHandlingService>('errorHandlingService');
+  public getErrorHandlingService(): ErrorHandlingService {
+    return this.get<ErrorHandlingService>('errorHandlingService');
   }
 
-  public getMetricsService(): IMetricsService {
-    return this.get<IMetricsService>('metricsService');
+  public getMetricsService(): MetricsService {
+    return this.get<MetricsService>('metricsService');
   }
 
-  public getWebSocketMessageService(): IWebSocketMessageService {
-    return this.get<IWebSocketMessageService>('websocketMessageService');
+  public getWebSocketMessageService(): WebSocketMessageService {
+    return this.get<WebSocketMessageService>('websocketMessageService');
   }
 
-  public getPerformanceMonitoringService(): IPerformanceMonitoringService {
-    return this.get<IPerformanceMonitoringService>(
+  public getPerformanceMonitoringService(): PerformanceMonitoringService {
+    return this.get<PerformanceMonitoringService>(
       'performanceMonitoringService'
     );
   }
 
-  public getCircuitBreakerService(): ICircuitBreakerService {
-    return this.get<ICircuitBreakerService>('circuitBreakerService');
+  public getCircuitBreakerService(): CircuitBreakerService {
+    return this.get<CircuitBreakerService>('circuitBreakerService');
   }
 }
 

@@ -4,6 +4,7 @@ import {
   ProvisionedThroughputExceededException,
 } from '@aws-sdk/client-dynamodb';
 import { logger } from '@awslambdahackathon/utils/lambda';
+import { container } from '@config/container';
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 
 export enum ErrorType {
@@ -228,20 +229,14 @@ export class ErrorHandlingService {
     connectionId: string,
     event: APIGatewayProxyEvent
   ): Promise<void> {
-    const { websocketMessageService } = await import(
-      './websocket-message-service'
-    );
-
     try {
       const enhancedMessage = this.createWebSocketErrorMessage(
         error,
         connectionId
       );
-      await websocketMessageService.sendErrorMessage(
-        connectionId,
-        event,
-        enhancedMessage
-      );
+      await container
+        .getWebSocketMessageService()
+        .sendErrorMessage(connectionId, event, enhancedMessage);
     } catch (sendError) {
       logger.error('Failed to send error message to WebSocket client', {
         connectionId,
@@ -574,14 +569,3 @@ export class ErrorHandlingService {
     }
   }
 }
-
-// Singleton instance
-export const errorHandlingService = new ErrorHandlingService();
-
-// Convenience functions
-export const createError =
-  errorHandlingService.createError.bind(errorHandlingService);
-export const handleError =
-  errorHandlingService.handleError.bind(errorHandlingService);
-export const createErrorResponse =
-  errorHandlingService.createErrorResponse.bind(errorHandlingService);

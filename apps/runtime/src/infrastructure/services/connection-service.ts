@@ -4,8 +4,7 @@ import {
   DynamoDBDocumentClient,
   PutCommand,
 } from '@aws-sdk/lib-dynamodb';
-
-import { circuitBreakerService } from './circuit-breaker-service';
+import { container } from '@config/container';
 
 const ddbClient = new DynamoDBClient({});
 const ddbDocClient = DynamoDBDocumentClient.from(ddbClient);
@@ -22,7 +21,7 @@ export class ConnectionService {
     };
 
     // Use circuit breaker for DynamoDB connection storage
-    await circuitBreakerService.execute(
+    await container.getCircuitBreakerService().execute(
       'dynamodb',
       'storeConnection',
       async () => {
@@ -49,7 +48,7 @@ export class ConnectionService {
 
   async removeConnection(connectionId: string): Promise<void> {
     // Use circuit breaker for DynamoDB connection removal
-    await circuitBreakerService.execute(
+    await container.getCircuitBreakerService().execute(
       'dynamodb',
       'removeConnection',
       async () => {

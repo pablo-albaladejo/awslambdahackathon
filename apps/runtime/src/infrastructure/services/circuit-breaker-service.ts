@@ -388,6 +388,3 @@ export class CircuitBreakerService {
     this.defaultConfig = { ...this.defaultConfig, ...config };
   }
 }
-
-// Global instance
-export const circuitBreakerService = new CircuitBreakerService();

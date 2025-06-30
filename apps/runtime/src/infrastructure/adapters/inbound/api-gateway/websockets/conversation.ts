@@ -1,3 +1,7 @@
+import { authenticateUser } from '@application/use-cases/authenticate-user';
+import { isConnectionAuthenticated } from '@application/use-cases/check-authenticated-connection';
+import { handlePingMessage as handlePingMessageUseCase } from '@application/use-cases/handle-ping-message';
+import { sendChatMessage } from '@application/use-cases/send-chat-message';
 import {
   commonSchemas,
   createSuccessResponse,
@@ -7,25 +11,16 @@ import {
   metrics,
   tracer,
 } from '@awslambdahackathon/utils/lambda';
-import { container } from '@container';
-import type { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-
-import { authenticateUser } from '../../../application/use-cases/authenticate-user';
-import { isConnectionAuthenticated } from '../../../application/use-cases/check-authenticated-connection';
-import { handlePingMessage as handlePingMessageUseCase } from '../../../application/use-cases/handle-ping-message';
-import { sendChatMessage } from '../../../application/use-cases/send-chat-message';
 import {
   CORRELATION_CONSTANTS,
   ERROR_CONSTANTS,
   METRIC_CONSTANTS,
   WEBSOCKET_CONSTANTS,
-} from '../../../config/constants';
-import {
-  createError,
-  createErrorResponse,
-  ErrorType,
-  handleError,
-} from '../../../services/error-handling-service';
+} from '@config/constants';
+import { container } from '@config/container';
+import { ConnectionId } from '@domain/value-objects/connection-id';
+import { ErrorType } from '@infrastructure/services/error-handling-service';
+import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 
 interface WebSocketMessage {
   type: 'auth' | 'message' | 'ping';
@@ -105,32 +100,28 @@ const handleAuthMessage = async (
   });
 
   const authResult = await authenticateUser(
+    container.getAuthenticationService(),
     typeof token === 'string' ? token : ''
   );
 
   if (authResult.success && authResult.user) {
-    const safeUserId = authResult.user.userId
-      ? String(authResult.user.userId)
-      : '';
+    const safeUserId = authResult.user.getUserId();
 
-    await container
-      .getAuthenticationService()
-      .storeAuthenticatedConnection(connectionId, {
-        ...authResult.user,
-        userId: safeUserId,
-        groups: authResult.user.groups || [],
-      });
+    await container.getAuthenticationService().storeAuthenticatedConnection({
+      connectionId: ConnectionId.create(connectionId),
+      user: authResult.user,
+    });
 
     await container
       .getWebSocketMessageService()
       .sendAuthResponse(connectionId, event, true, {
         userId: safeUserId,
-        username: authResult.user.username,
+        username: authResult.user.getUsername(),
       });
 
     logger.info('WebSocket authentication successful', {
       connectionId,
-      userId: authResult.user.userId,
+      userId: safeUserId,
       correlationId,
     });
 
@@ -138,7 +129,7 @@ const handleAuthMessage = async (
       .getMetricsService()
       .recordBusinessMetrics(METRIC_CONSTANTS.NAMES.AUTHENTICATION_SUCCESS, 1, {
         connectionId,
-        userId: authResult.user.userId,
+        userId: safeUserId,
       });
   } else {
     await container
@@ -188,18 +179,36 @@ const handleChatMessage = async (
     correlationId,
   });
 
-  const { message: echoMessage, sessionId: currentSessionId } =
-    await sendChatMessage(container.getChatService(), {
+  // Get user from connection to provide userId
+  const user = await container
+    .getAuthenticationService()
+    .getUserFromConnection(ConnectionId.create(connectionId));
+
+  if (!user) {
+    logger.error('User not found for connection', { connectionId });
+    throw new Error('User not found for connection');
+  }
+
+  const result = await sendChatMessage(container.getChatService(), {
+    connectionId,
+    message: chatMessage ?? '',
+    sessionId,
+    userId: user.getId().getValue(),
+  });
+
+  if (!result.success) {
+    logger.error('Failed to send chat message', {
+      error: result.error,
       connectionId,
-      message: chatMessage ?? '',
-      sessionId,
     });
+    throw new Error(result.error || 'Failed to send chat message');
+  }
 
   await container.getWebSocketMessageService().sendChatResponse(
     connectionId,
     event,
-    echoMessage,
-    currentSessionId,
+    result.message!,
+    result.sessionId!,
     true // isEcho
   );
 
@@ -327,7 +336,10 @@ const conversationHandler = async (
     }
 
     // Check if connection is authenticated for other actions
-    const isAuthenticated = await isConnectionAuthenticated(connectionId);
+    const isAuthenticated = await isConnectionAuthenticated(
+      container.getAuthenticationService(),
+      connectionId
+    );
     logger.info('Authentication status for connection', {
       connectionId,
       isAuthenticated,
@@ -337,12 +349,14 @@ const conversationHandler = async (
     });
 
     if (!isAuthenticated) {
-      const error = createError(
-        ErrorType.AUTHENTICATION_ERROR,
-        ERROR_CONSTANTS.MESSAGES.AUTHENTICATION_REQUIRED,
-        ERROR_CONSTANTS.CODES.UNAUTHENTICATED_CONNECTION,
-        { connectionId, action }
-      );
+      const error = container
+        .getErrorHandlingService()
+        .createError(
+          ErrorType.AUTHENTICATION_ERROR,
+          ERROR_CONSTANTS.MESSAGES.AUTHENTICATION_REQUIRED,
+          ERROR_CONSTANTS.CODES.UNAUTHENTICATED_CONNECTION,
+          { connectionId, action }
+        );
 
       logger.error('Unauthenticated connection attempting to send message', {
         connectionId,
@@ -363,7 +377,7 @@ const conversationHandler = async (
 
       await container
         .getErrorHandlingService()
-        .handleWebSocketError(new Error(error.message), connectionId, event);
+        .handleWebSocketError(error, connectionId, event);
 
       performanceMonitor.complete(false, {
         messageType: type,
@@ -405,15 +419,17 @@ const conversationHandler = async (
     }
 
     // Invalid action
-    const error = createError(
-      ErrorType.VALIDATION_ERROR,
-      ERROR_CONSTANTS.MESSAGES.INVALID_ACTION,
-      ERROR_CONSTANTS.CODES.INVALID_ACTION,
-      {
-        expectedActions: VALID_ACTIONS,
-        actualAction: action,
-      }
-    );
+    const error = container
+      .getErrorHandlingService()
+      .createError(
+        ErrorType.VALIDATION_ERROR,
+        ERROR_CONSTANTS.MESSAGES.INVALID_ACTION,
+        ERROR_CONSTANTS.CODES.INVALID_ACTION,
+        {
+          expectedActions: VALID_ACTIONS,
+          actualAction: action,
+        }
+      );
 
     logger.error('Invalid action in WebSocket message', {
       action,
@@ -437,14 +453,18 @@ const conversationHandler = async (
       error: 'INVALID_ACTION',
     });
 
-    return createErrorResponse(error, event);
+    return container
+      .getErrorHandlingService()
+      .createErrorResponse(error, event);
   } catch (error) {
-    const appError = handleError(error as Error, {
-      requestId: event.requestContext.requestId,
-      connectionId: event.requestContext.connectionId,
-      action: 'websocket_conversation',
-      event,
-    });
+    const appError = container
+      .getErrorHandlingService()
+      .handleError(error as Error, {
+        requestId: event.requestContext.requestId,
+        connectionId: event.requestContext.connectionId || 'unknown',
+        action: 'websocket_conversation',
+        event,
+      });
 
     await container
       .getMetricsService()
@@ -464,7 +484,9 @@ const conversationHandler = async (
       errorMessage: appError.message,
     });
 
-    return createErrorResponse(appError, event);
+    return container
+      .getErrorHandlingService()
+      .createErrorResponse(appError, event);
   } finally {
     const duration = Date.now() - startTime;
     await container

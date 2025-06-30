@@ -1,9 +1,7 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, PutCommand } from '@aws-sdk/lib-dynamodb';
-import { container } from '@container';
-
-import { authenticationService } from './authentication-service';
-import { circuitBreakerService } from './circuit-breaker-service';
+import { container } from '@config/container';
+import { ConnectionId } from '@domain/value-objects';
 
 const ddbClient = new DynamoDBClient({});
 const ddbDocClient = DynamoDBDocumentClient.from(ddbClient);
@@ -34,8 +32,9 @@ export class ChatService {
       if (typeof message !== 'string')
         throw new Error('Message must be a string');
 
-      const user =
-        await authenticationService.getUserFromConnection(connectionId);
+      const user = await container
+        .getAuthenticationService()
+        .getUserFromConnection(ConnectionId.create(connectionId));
       if (!user) throw new Error('User not found for authenticated connection');
 
       const now = new Date();
@@ -49,7 +48,7 @@ export class ChatService {
       };
 
       // Use circuit breaker for DynamoDB user message storage
-      await circuitBreakerService.execute(
+      await container.getCircuitBreakerService().execute(
         'dynamodb',
         'storeUserMessage',
         async () => {
@@ -61,7 +60,7 @@ export class ChatService {
                 ttl: Math.floor(now.getTime() / 1000) + 24 * 60 * 60,
                 type: 'user',
                 connectionId,
-                userId: user.userId,
+                userId: user.getId().getValue(),
               },
             })
           );
@@ -87,7 +86,7 @@ export class ChatService {
       };
 
       // Use circuit breaker for DynamoDB bot message storage
-      await circuitBreakerService.execute(
+      await container.getCircuitBreakerService().execute(
         'dynamodb',
         'storeBotMessage',
         async () => {
@@ -99,7 +98,7 @@ export class ChatService {
                 ttl: Math.floor(now.getTime() / 1000) + 24 * 60 * 60,
                 type: 'bot',
                 connectionId,
-                userId: user.userId,
+                userId: user.getId().getValue(),
               },
             })
           );
@@ -118,7 +117,7 @@ export class ChatService {
       );
 
       performanceMonitor.complete(true, {
-        userId: user.userId,
+        userId: user.getId().getValue(),
         sessionId: currentSessionId,
         messageLength: message.length,
         messageType: 'user_and_bot',
@@ -136,5 +135,3 @@ export class ChatService {
     }
   }
 }
-
-export const chatService = new ChatService();
