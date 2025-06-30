@@ -7,11 +7,10 @@ import {
   WebSocketMessageEventDto,
   WebSocketPingEventDto,
 } from '@awslambdahackathon/types';
-
-import { Connection } from '../../../domain/entities/connection';
-import { Message } from '../../../domain/entities/message';
-import { User } from '../../../domain/entities/user';
-import { CompleteWebSocketEventMapper } from '../interfaces/websocket-mapper.interface';
+import { Connection } from '@domain/entities/connection';
+import { Message } from '@domain/entities/message';
+import { User } from '@domain/entities/user';
+import { CompleteWebSocketEventMapper } from '@infrastructure/mappers/interfaces/websocket-mapper.interface';
 
 /**
  * Mapper for WebSocket events

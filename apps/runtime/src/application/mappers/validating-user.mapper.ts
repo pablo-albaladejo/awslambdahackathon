@@ -1,12 +1,12 @@
+import { CreateUserDto, UserDto } from '@application/dto/domain/user.dto';
+import { User } from '@domain/entities/user';
 import { z } from 'zod';
 
-import { User } from '../../domain/entities/user';
 import {
   MappingResult,
   ValidatingMapper,
-} from '../../shared/mappers/mapper.interface';
-import { BaseValidator } from '../../shared/validators/base.validator';
-import { CreateUserDto, UserDto } from '../dto/domain/user.dto';
+} from '@/shared/mappers/mapper.interface';
+import { BaseValidator } from '@/shared/validators/base.validator';
 
 // Zod schemas for validation
 const UserDtoSchema = z.object({

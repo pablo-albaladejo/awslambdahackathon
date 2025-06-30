@@ -1,4 +1,4 @@
-import { MessageStatus, MessageType } from '../../../domain/entities/message';
+import { MessageStatus, MessageType } from '@domain/entities/message';
 
 /**
  * DTO for Message entity

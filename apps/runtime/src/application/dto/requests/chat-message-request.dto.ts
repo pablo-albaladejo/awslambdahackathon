@@ -2,7 +2,7 @@ import {
   BaseRequestDto,
   FilteredRequestDto,
   PaginatedRequestDto,
-} from '../../../shared/dto/base/base-request.dto';
+} from '@/shared/dto/base/base-request.dto';
 
 /**
  * DTO for sending chat messages

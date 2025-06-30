@@ -1,4 +1,4 @@
-import { DomainError } from './domain-errors';
+import { DomainError } from '@domain/errors/domain-errors';
 
 export class ValidationError extends DomainError {
   constructor(errors: Record<string, unknown>) {

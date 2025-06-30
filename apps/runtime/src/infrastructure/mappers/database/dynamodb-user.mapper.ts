@@ -1,12 +1,11 @@
 import { AttributeValue } from '@aws-sdk/client-dynamodb';
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
-
-import { User, UserGroup } from '../../../domain/entities/user';
+import { User, UserGroup } from '@domain/entities/user';
 import {
   UserQueryDto,
   UserRecordPlainDto,
-} from '../../dto/database/user-record.dto';
-import { DynamoDBQueryMapper } from '../interfaces/database-mapper.interface';
+} from '@infrastructure/dto/database/user-record.dto';
+import { DynamoDBQueryMapper } from '@infrastructure/mappers/interfaces/database-mapper.interface';
 
 /**
  * Mapper for User entity to/from DynamoDB records

@@ -2,7 +2,7 @@ import {
   BaseResponseDto,
   ErrorResponseDto,
   SuccessResponseDto,
-} from '../../../shared/dto/base/base-response.dto';
+} from '@/shared/dto/base/base-response.dto';
 
 /**
  * User information in authentication responses

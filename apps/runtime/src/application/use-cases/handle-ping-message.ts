@@ -1,7 +1,6 @@
+import { BaseResult, BaseUseCase } from '@application/use-cases/base-use-case';
 import { Logger } from '@config/container';
 import { PerformanceMonitoringService } from '@domain/services/performance-monitoring-service';
-
-import { BaseResult, BaseUseCase } from './base-use-case';
 
 interface HandlePingMessageCommand {
   connectionId: string;

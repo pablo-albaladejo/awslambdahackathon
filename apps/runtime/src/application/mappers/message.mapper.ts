@@ -1,12 +1,14 @@
-import { Message, MessageType } from '../../domain/entities/message';
-import { SessionId } from '../../domain/value-objects/session-id';
-import { UserId } from '../../domain/value-objects/user-id';
-import { BidirectionalMapper } from '../../shared/mappers/mapper.interface';
+import { Message, MessageType } from '@domain/entities/message';
+import { SessionId } from '@domain/value-objects/session-id';
+import { UserId } from '@domain/value-objects/user-id';
+
 import {
   CreateMessageDto,
   MessageDto,
   UpdateMessageDto,
 } from '../dto/domain/message.dto';
+
+import { BidirectionalMapper } from '@/shared/mappers/mapper.interface';
 
 /**
  * Bidirectional mapper for Message entity and MessageDto

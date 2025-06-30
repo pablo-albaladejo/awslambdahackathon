@@ -5,8 +5,7 @@ import {
   APIGatewayWebSocketMessageDto,
   APIGatewayWebSocketResponseDto,
 } from '@awslambdahackathon/types';
-
-import { CompleteAPIGatewayEventMapper } from '../interfaces/websocket-mapper.interface';
+import { CompleteAPIGatewayEventMapper } from '@infrastructure/mappers/interfaces/websocket-mapper.interface';
 
 /**
  * Mapper for API Gateway WebSocket events

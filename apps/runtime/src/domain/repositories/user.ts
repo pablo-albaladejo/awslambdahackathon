@@ -1,8 +1,7 @@
 import { User } from '@domain/entities/user';
+import { Specification } from '@domain/repositories/specification';
 import { ConnectionId } from '@domain/value-objects';
 import { UserId } from '@domain/value-objects/user-id';
-
-import { Specification } from './specification';
 
 export interface UserRepository {
   findById(id: UserId | string): Promise<User | null>;

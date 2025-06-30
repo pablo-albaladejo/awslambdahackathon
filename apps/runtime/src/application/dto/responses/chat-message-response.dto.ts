@@ -2,7 +2,7 @@ import {
   BaseResponseDto,
   PaginatedResponseDto,
   SuccessResponseDto,
-} from '../../../shared/dto/base/base-response.dto';
+} from '@/shared/dto/base/base-response.dto';
 
 /**
  * Chat message data in responses

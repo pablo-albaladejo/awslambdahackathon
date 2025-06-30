@@ -1,4 +1,4 @@
-import { UserGroup } from '../../../domain/entities/user';
+import { UserGroup } from '@domain/entities/user';
 
 /**
  * DTO for User entity

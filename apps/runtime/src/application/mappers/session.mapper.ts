@@ -1,11 +1,13 @@
-import { Session, SessionStatus } from '../../domain/entities/session';
-import { UserId } from '../../domain/value-objects/user-id';
-import { BidirectionalMapper } from '../../shared/mappers/mapper.interface';
+import { Session, SessionStatus } from '@domain/entities/session';
+import { UserId } from '@domain/value-objects/user-id';
+
 import {
   CreateSessionDto,
   SessionDto,
   UpdateSessionDto,
 } from '../dto/domain/session.dto';
+
+import { BidirectionalMapper } from '@/shared/mappers/mapper.interface';
 
 /**
  * Bidirectional mapper for Session entity and SessionDto

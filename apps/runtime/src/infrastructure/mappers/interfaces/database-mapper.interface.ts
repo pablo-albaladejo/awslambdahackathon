@@ -1,6 +1,6 @@
 import { AttributeValue } from '@aws-sdk/client-dynamodb';
 
-import { BidirectionalMapper } from '../../../shared/mappers/mapper.interface';
+import { BidirectionalMapper } from '@/shared/mappers/mapper.interface';
 
 /**
  * Interface for DynamoDB mappers

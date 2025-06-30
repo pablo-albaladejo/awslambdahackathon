@@ -12,10 +12,9 @@ import {
   WebSocketMessageEventDto,
   WebSocketPingEventDto,
 } from '@awslambdahackathon/types';
-
-import { Connection } from '../../../domain/entities/connection';
-import { Message } from '../../../domain/entities/message';
-import { User } from '../../../domain/entities/user';
+import { Connection } from '@domain/entities/connection';
+import { Message } from '@domain/entities/message';
+import { User } from '@domain/entities/user';
 
 /**
  * Interface for WebSocket event mappers

@@ -1,9 +1,8 @@
+import { BaseResult, BaseUseCase } from '@application/use-cases/base-use-case';
 import { Logger } from '@config/container';
 import { DomainError } from '@domain/errors/domain-errors';
 import { PerformanceMonitoringService } from '@domain/services/performance-monitoring-service';
 import { AuthenticationService } from '@infrastructure/services/authentication-service';
-
-import { BaseResult, BaseUseCase } from './base-use-case';
 
 export interface AuthenticateUserCommand {
   token: string;

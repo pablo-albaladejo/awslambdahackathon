@@ -1,6 +1,11 @@
-import { User } from '../../domain/entities/user';
-import { BidirectionalMapper } from '../../shared/mappers/mapper.interface';
-import { CreateUserDto, UserDto, UserUpdateDto } from '../dto/domain/user.dto';
+import {
+  CreateUserDto,
+  UserDto,
+  UserUpdateDto,
+} from '@application/dto/domain/user.dto';
+import { User } from '@domain/entities/user';
+
+import { BidirectionalMapper } from '@/shared/mappers/mapper.interface';
 
 /**
  * Bidirectional mapper for User entity and UserDto

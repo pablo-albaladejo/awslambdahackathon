@@ -1,6 +1,5 @@
 import { User, UserGroup } from '@domain/entities/user';
-
-import { Specification } from '../specification';
+import { Specification } from '@domain/repositories/specification';
 
 // User group constants
 const USER_GROUPS = {

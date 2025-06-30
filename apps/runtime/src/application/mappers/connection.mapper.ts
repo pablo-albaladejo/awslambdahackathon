@@ -1,10 +1,12 @@
-import { Connection, ConnectionStatus } from '../../domain/entities/connection';
-import { BidirectionalMapper } from '../../shared/mappers/mapper.interface';
+import { Connection, ConnectionStatus } from '@domain/entities/connection';
+
 import {
   ConnectionDto,
   CreateConnectionDto,
   UpdateConnectionDto,
 } from '../dto/domain/connection.dto';
+
+import { BidirectionalMapper } from '@/shared/mappers/mapper.interface';
 
 /**
  * Bidirectional mapper for Connection entity and ConnectionDto

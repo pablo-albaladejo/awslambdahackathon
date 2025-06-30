@@ -1,4 +1,4 @@
-import { BaseRequestDto } from '../../../shared/dto/base/base-request.dto';
+import { BaseRequestDto } from '@/shared/dto/base/base-request.dto';
 
 /**
  * DTO for authentication requests

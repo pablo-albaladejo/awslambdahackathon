@@ -1,16 +1,11 @@
 import { AttributeValue } from '@aws-sdk/client-dynamodb';
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
-
-import {
-  Message,
-  MessageStatus,
-  MessageType,
-} from '../../../domain/entities/message';
+import { Message, MessageStatus, MessageType } from '@domain/entities/message';
 import {
   MessageQueryDto,
   MessageRecordPlainDto,
-} from '../../dto/database/message-record.dto';
-import { DynamoDBQueryMapper } from '../interfaces/database-mapper.interface';
+} from '@infrastructure/dto/database/message-record.dto';
+import { DynamoDBQueryMapper } from '@infrastructure/mappers/interfaces/database-mapper.interface';
 
 /**
  * Mapper for Message entity to/from DynamoDB records

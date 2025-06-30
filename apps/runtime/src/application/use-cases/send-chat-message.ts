@@ -1,11 +1,10 @@
+import { BaseResult, BaseUseCase } from '@application/use-cases/base-use-case';
 import { Logger } from '@config/container';
 import { Message } from '@domain/entities/message';
 import { MessageValidationException } from '@domain/errors/domain-errors';
 import { ChatService } from '@domain/services/chat-service';
 import { PerformanceMonitoringService } from '@domain/services/performance-monitoring-service';
 import { SessionId, UserId } from '@domain/value-objects';
-
-import { BaseResult, BaseUseCase } from './base-use-case';
 
 interface SendChatMessageCommand {
   content: string;
