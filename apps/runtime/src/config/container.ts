@@ -112,6 +112,13 @@ class DependencyContainer implements Container {
   }
 
   resolve<T>(token: Token<T>): T {
+    // First check if there's a direct instance (for AWS clients, configs, etc.)
+    const directInstance = this.instances.get(token);
+    if (directInstance) {
+      return directInstance as T;
+    }
+
+    // Then check for registered services
     const registration = this.registry.get(token);
     if (!registration) {
       throw new Error(`No registration found for token: ${token.toString()}`);
