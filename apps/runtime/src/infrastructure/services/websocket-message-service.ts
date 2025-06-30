@@ -1,11 +1,10 @@
-import crypto from 'crypto';
-
 import {
   ApiGatewayManagementApiClient,
   PostToConnectionCommand,
 } from '@aws-sdk/client-apigatewaymanagementapi';
 import { logger } from '@awslambdahackathon/utils/lambda';
 import { container } from '@config/container';
+import { Message } from '@domain/entities';
 import type { APIGatewayProxyEvent } from 'aws-lambda';
 
 export interface WebSocketMessage {
@@ -14,7 +13,6 @@ export interface WebSocketMessage {
   sessionId?: string;
   success?: boolean;
   error?: string;
-  isEcho?: boolean;
   [key: string]: unknown;
 }
 
@@ -22,12 +20,6 @@ export interface AuthResponse {
   userId?: string;
   username?: string;
   error?: string;
-}
-
-export interface ChatResponse {
-  message: string;
-  sessionId: string;
-  isEcho: boolean;
 }
 
 export class WebSocketMessageService {
@@ -84,7 +76,7 @@ export class WebSocketMessageService {
           return await client.send(
             new PostToConnectionCommand({
               ConnectionId: connectionId,
-              Data: Buffer.from(JSON.stringify(message)),
+              Data: new TextEncoder().encode(JSON.stringify(message)),
             })
           );
         },
@@ -168,30 +160,50 @@ export class WebSocketMessageService {
   async sendChatResponse(
     connectionId: string,
     event: APIGatewayProxyEvent,
-    message: string,
-    sessionId: string,
-    isEcho: boolean
+    userMessage: Message,
+    botMessage: Message
   ): Promise<boolean> {
-    const response: WebSocketMessage = {
+    const userMessageResponse: WebSocketMessage = {
       type: 'message_response',
       data: {
-        message,
-        sessionId,
-        messageId: crypto.randomUUID(),
-        timestamp: new Date().toISOString(),
-        isEcho,
+        message: userMessage.getContent(),
+        sessionId: userMessage.getSessionId().getValue(),
+        messageId: userMessage.getId().getValue(),
+        timestamp: userMessage.getCreatedAt().toISOString(),
+        isEcho: false, // User message is not an echo
       },
     };
 
-    logger.info('Sending chat response', {
+    const botMessageResponse: WebSocketMessage = {
+      type: 'message_response',
+      data: {
+        message: botMessage.getContent(),
+        sessionId: botMessage.getSessionId().getValue(),
+        messageId: botMessage.getId().getValue(),
+        timestamp: botMessage.getCreatedAt().toISOString(),
+        isEcho: true, // Bot message is the "echo" or response
+      },
+    };
+
+    logger.info('Sending chat responses', {
       connectionId,
-      sessionId,
-      messageLength: message.length,
-      isEcho,
+      userMessageId: userMessage.getId().getValue(),
+      botMessageId: botMessage.getId().getValue(),
       correlationId: this.generateCorrelationId(),
     });
 
-    return this.sendMessage(connectionId, event, response);
+    const userMessageSent = await this.sendMessage(
+      connectionId,
+      event,
+      userMessageResponse
+    );
+    const botMessageSent = await this.sendMessage(
+      connectionId,
+      event,
+      botMessageResponse
+    );
+
+    return userMessageSent && botMessageSent;
   }
 
   /**

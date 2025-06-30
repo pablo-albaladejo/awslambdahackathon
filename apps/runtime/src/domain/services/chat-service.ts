@@ -9,9 +9,9 @@ export interface ProcessMessageCommand {
 }
 
 export interface ProcessMessageResult {
-  message: Message;
+  userMessage: Message;
+  botMessage: Message;
   sessionId: SessionId;
-  isEcho: boolean;
 }
 
 export interface MessageValidationResult {
@@ -22,6 +22,5 @@ export interface MessageValidationResult {
 export interface ChatService {
   processMessage(command: ProcessMessageCommand): Promise<ProcessMessageResult>;
   validateMessage(message: Message): Promise<MessageValidationResult>;
-  createEchoMessage(originalMessage: Message): Promise<Message>;
   canUserSendMessage(userId: UserId): Promise<boolean>;
 }

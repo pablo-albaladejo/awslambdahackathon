@@ -11,12 +11,14 @@ import {
   ProcessMessageCommand,
   ProcessMessageResult,
 } from '@domain/services/chat-service';
-import { SessionId, UserId } from '@domain/value-objects';
+import { InvokeLLMCommand, LLMService } from '@domain/services/llm-service';
+import { UserId } from '@domain/value-objects';
 
 export class ChatService implements DomainChatService {
   private readonly userRepository: UserRepository;
   private readonly messageRepository: MessageRepository;
   private readonly sessionRepository: SessionRepository;
+  private readonly llmService: LLMService;
 
   constructor() {
     this.userRepository = container.get<UserRepository>('UserRepository');
@@ -24,6 +26,7 @@ export class ChatService implements DomainChatService {
       container.get<MessageRepository>('MessageRepository');
     this.sessionRepository =
       container.get<SessionRepository>('SessionRepository');
+    this.llmService = container.get<LLMService>('LLMService');
   }
 
   async processMessage(
@@ -77,25 +80,36 @@ export class ChatService implements DomainChatService {
         createdAt: now,
       });
 
-      // Store the message using repository
+      // Store the user message
       await this.messageRepository.save(message);
 
-      // Create echo message if it's a user message
-      let echoMessage: Message | null = null;
-      let isEcho = false;
+      // Invoke LLM for bot response
+      const llmCommand: InvokeLLMCommand = {
+        prompt: command.content,
+        userId: command.userId,
+        sessionId: command.sessionId,
+        previousMessages: [], // TODO: Implement fetching previous messages for context
+      };
+      const llmResult = await this.llmService.invokeModel(llmCommand);
 
-      if (command.messageType === 'user') {
-        echoMessage = await this.createEchoMessage(message);
-        await this.messageRepository.save(echoMessage);
-        isEcho = true;
-      }
+      const botMessage = Message.fromData({
+        id: `${MESSAGE_CONFIG.ID_PREFIX.MESSAGE}${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        content: llmResult.response,
+        type: MessageType.BOT,
+        userId: command.userId.getValue(), // Bot message is associated with the user who initiated the conversation
+        sessionId: command.sessionId.getValue(),
+        createdAt: new Date(),
+      });
+
+      // Store the bot message
+      await this.messageRepository.save(botMessage);
 
       performanceMonitor.complete(true);
 
       return {
-        message: echoMessage || message,
+        userMessage: message,
+        botMessage: botMessage,
         sessionId: command.sessionId,
-        isEcho,
       };
     } catch (error) {
       performanceMonitor.complete(false);
@@ -156,18 +170,6 @@ export class ChatService implements DomainChatService {
     }
   }
 
-  async createEchoMessage(originalMessage: Message): Promise<Message> {
-    const now = new Date();
-    return Message.fromData({
-      id: `${MESSAGE_CONFIG.ID_PREFIX.ECHO}${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      content: `Echo: ${originalMessage.getContent()}`,
-      type: MessageType.BOT,
-      userId: originalMessage.getUserId().getValue(),
-      sessionId: originalMessage.getSessionId().getValue(),
-      createdAt: now,
-    });
-  }
-
   async canUserSendMessage(userId: UserId): Promise<boolean> {
     try {
       // Check if user exists and is active
@@ -202,64 +204,6 @@ export class ChatService implements DomainChatService {
         return MessageType.SYSTEM;
       default:
         return MessageType.USER;
-    }
-  }
-
-  async storeAndEchoMessage({
-    connectionId,
-    message,
-    sessionId,
-  }: {
-    connectionId: string;
-    message: string;
-    sessionId?: string;
-  }): Promise<{ message: string; sessionId: string }> {
-    try {
-      // Get or create session
-      const session = sessionId
-        ? await this.sessionRepository.findById(SessionId.create(sessionId))
-        : null;
-
-      const finalSessionId =
-        session?.getId() || SessionId.create(`session_${Date.now()}`);
-
-      // Create user message
-      const userMessage = Message.fromData({
-        id: `${MESSAGE_CONFIG.ID_PREFIX.MESSAGE}${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        content: message,
-        type: MessageType.USER,
-        userId: 'system', // This should come from authentication
-        sessionId: finalSessionId.getValue(),
-        createdAt: new Date(),
-      });
-
-      // Store user message
-      await this.messageRepository.save(userMessage);
-
-      // Create and store echo message
-      const echoMessage = Message.fromData({
-        id: `${MESSAGE_CONFIG.ID_PREFIX.ECHO}${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        content: `Echo: ${message}`,
-        type: MessageType.BOT,
-        userId: 'system',
-        sessionId: finalSessionId.getValue(),
-        createdAt: new Date(),
-      });
-
-      await this.messageRepository.save(echoMessage);
-
-      return {
-        message: echoMessage.getContent(),
-        sessionId: finalSessionId.getValue(),
-      };
-    } catch (error) {
-      logger.error('Error storing and echoing message', {
-        connectionId,
-        message,
-        sessionId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      throw error;
     }
   }
 }

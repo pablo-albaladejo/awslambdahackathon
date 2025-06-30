@@ -83,7 +83,10 @@ export class DynamoDBSessionRepository implements SessionRepository {
       const result = await this.ddbClient.send(
         new ScanCommand({
           TableName: this.tableName,
-          FilterExpression: 'status = :status',
+          FilterExpression: '#status = :status',
+          ExpressionAttributeNames: {
+            '#status': 'status',
+          },
           ExpressionAttributeValues: {
             ':status': status,
           },
@@ -110,7 +113,10 @@ export class DynamoDBSessionRepository implements SessionRepository {
           TableName: this.tableName,
           IndexName: 'userId-index',
           KeyConditionExpression: 'userId = :userId',
-          FilterExpression: 'status = :status',
+          FilterExpression: '#status = :status',
+          ExpressionAttributeNames: {
+            '#status': 'status',
+          },
           ExpressionAttributeValues: {
             ':userId': userId.getValue(),
             ':status': SessionStatus.ACTIVE,
@@ -330,7 +336,11 @@ export class DynamoDBSessionRepository implements SessionRepository {
       const result = await this.ddbClient.send(
         new ScanCommand({
           TableName: this.tableName,
-          FilterExpression: 'lastActivityAt < :cutoffTime AND status = :status',
+          FilterExpression:
+            'lastActivityAt < :cutoffTime AND #status = :status',
+          ExpressionAttributeNames: {
+            '#status': 'status',
+          },
           ExpressionAttributeValues: {
             ':cutoffTime': cutoffTime,
             ':status': SessionStatus.ACTIVE,
@@ -381,7 +391,10 @@ export class DynamoDBSessionRepository implements SessionRepository {
           TableName: this.tableName,
           IndexName: 'userId-index',
           KeyConditionExpression: 'userId = :userId',
-          FilterExpression: 'status = :status',
+          FilterExpression: '#status = :status',
+          ExpressionAttributeNames: {
+            '#status': 'status',
+          },
           ExpressionAttributeValues: {
             ':userId': userId.getValue(),
             ':status': SessionStatus.ACTIVE,
@@ -431,7 +444,10 @@ export class DynamoDBSessionRepository implements SessionRepository {
       const result = await this.ddbClient.send(
         new ScanCommand({
           TableName: this.tableName,
-          FilterExpression: 'status = :status',
+          FilterExpression: '#status = :status',
+          ExpressionAttributeNames: {
+            '#status': 'status',
+          },
           ExpressionAttributeValues: {
             ':status': status,
           },

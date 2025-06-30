@@ -14,7 +14,8 @@ interface SendChatMessageCommand {
 }
 
 interface SendChatMessageResult extends BaseResult {
-  message?: Message;
+  userMessage?: Message;
+  botMessage?: Message;
 }
 
 export interface SendChatMessageUseCase {
@@ -74,15 +75,16 @@ export class SendChatMessageUseCaseImpl
       });
 
       this.logger.info('Chat message processed successfully', {
-        messageId: result.message.getId().getValue(),
+        userMessageId: result.userMessage.getId().getValue(),
+        botMessageId: result.botMessage.getId().getValue(),
         userId: command.userId,
         sessionId: command.sessionId,
-        isEcho: result.isEcho,
       });
 
       return {
         success: true,
-        message: result.message,
+        userMessage: result.userMessage,
+        botMessage: result.botMessage,
       };
     } catch (error) {
       return this.handleError(error, {
