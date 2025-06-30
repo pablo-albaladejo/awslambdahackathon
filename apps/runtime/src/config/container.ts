@@ -30,8 +30,13 @@ import { ChatService as ChatServiceInterface } from '@domain/services/chat-servi
 import { CircuitBreakerService } from '@domain/services/circuit-breaker-service';
 import { CommunicationService } from '@domain/services/communication-service';
 import { ErrorHandlingService } from '@domain/services/error-handling-service';
+import { LLMService } from '@domain/services/llm-service';
 import { MetricsService } from '@domain/services/metrics-service';
 import { PerformanceMonitoringService } from '@domain/services/performance-monitoring-service';
+import {
+  BedrockConfig,
+  BedrockLLMAdapter,
+} from '@infrastructure/adapters/outbound/bedrock/bedrock-llm-adapter';
 import { AwsCloudWatchMetricsAdapter } from '@infrastructure/adapters/outbound/cloudwatch/cloudwatch-metrics-adapter';
 import { DynamoDBConnectionRepository } from '@infrastructure/adapters/outbound/dynamodb/dynamodb-connection';
 import { DynamoDBMessageRepository } from '@infrastructure/adapters/outbound/dynamodb/dynamodb-message';
@@ -224,6 +229,15 @@ class DependencyContainer implements Container {
     this.instances.set('MessagesDBConfig', this.configs.messagesDB);
     this.instances.set('WebSocketConfig', this.configs.webSocket);
     this.instances.set('CloudWatchConfig', this.configs.cloudWatch);
+
+    // Register Bedrock configuration
+    const bedrockConfig: BedrockConfig = {
+      region: process.env.AWS_REGION || 'us-east-2',
+      defaultModel: 'nova-micro',
+      timeout: 30000,
+      maxRetries: 3,
+    };
+    this.instances.set('BedrockConfig', bedrockConfig);
 
     // Register AWS clients as singletons
     const dynamoDBClient = new DynamoDBClient({
@@ -439,6 +453,15 @@ class DependencyContainer implements Container {
           'Logger',
           'PerformanceMonitoringService',
         ],
+      }
+    );
+
+    this.register<LLMService>(
+      'LLMService',
+      BedrockLLMAdapter as Constructor<LLMService>,
+      {
+        singleton: true,
+        dependencies: ['BedrockConfig'],
       }
     );
   }
