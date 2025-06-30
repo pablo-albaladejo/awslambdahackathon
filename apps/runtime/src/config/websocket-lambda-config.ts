@@ -14,7 +14,6 @@ const WebSocketLambdaEnvironmentVarsSchema =
     // Database configuration
     WEBSOCKET_CONNECTIONS_TABLE: z.string().min(1),
     WEBSOCKET_MESSAGES_TABLE: z.string().min(1),
-    DYNAMODB_ENDPOINT: z.string().url().optional(), // For local development
 
     // WebSocket configuration
     WEBSOCKET_ENDPOINT: z.string().url(),
@@ -60,7 +59,6 @@ export interface WebSocketLambdaConfig extends BaseLambdaConfig {
     connectionsTable: string;
     messagesTable: string;
     region: string;
-    endpoint?: string;
   };
   websocket: {
     endpoint: string;
@@ -109,7 +107,6 @@ export const createWebSocketLambdaConfig = (): WebSocketLambdaConfig => {
       connectionsTable: env.WEBSOCKET_CONNECTIONS_TABLE,
       messagesTable: env.WEBSOCKET_MESSAGES_TABLE,
       region: env.AWS_REGION,
-      endpoint: env.DYNAMODB_ENDPOINT,
     },
     websocket: {
       endpoint: env.WEBSOCKET_ENDPOINT,
@@ -169,6 +166,3 @@ export const getWebSocketConfig = () => WEBSOCKET_LAMBDA_CONFIG.websocket;
 export const getWebSocketAuthConfig = () => WEBSOCKET_LAMBDA_CONFIG.auth;
 export const getWebSocketRateLimitConfig = () =>
   WEBSOCKET_LAMBDA_CONFIG.rateLimit;
-
-// Export development helper
-export const isLocalDevelopment = () => !!process.env.DYNAMODB_ENDPOINT;

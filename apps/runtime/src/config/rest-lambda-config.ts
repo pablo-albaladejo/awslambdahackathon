@@ -10,9 +10,6 @@ import {
 
 // REST API-specific environment variables schema (minimal)
 const RestLambdaEnvironmentVarsSchema = BaseLambdaEnvironmentVarsSchema.extend({
-  // Optional database configuration (only if needed)
-  DYNAMODB_ENDPOINT: z.string().url().optional(), // For local development
-
   // Optional authentication configuration (only if needed)
   COGNITO_USER_POOL_ID: z.string().min(1).optional(),
   COGNITO_CLIENT_ID: z.string().min(1).optional(),
@@ -41,10 +38,6 @@ const RestLambdaEnvironmentVarsSchema = BaseLambdaEnvironmentVarsSchema.extend({
 
 // REST Lambda configuration interface (extends base only)
 export interface RestLambdaConfig extends BaseLambdaConfig {
-  database?: {
-    region: string;
-    endpoint?: string;
-  };
   auth?: {
     userPoolId: string;
     userPoolClientId: string;
@@ -100,14 +93,6 @@ export const createRestLambdaConfig = (): RestLambdaConfig => {
     },
   };
 
-  // Add optional database config if endpoint is provided
-  if (env.DYNAMODB_ENDPOINT) {
-    config.database = {
-      region: env.AWS_REGION,
-      endpoint: env.DYNAMODB_ENDPOINT,
-    };
-  }
-
   // Add optional auth config if Cognito variables are provided
   if (env.COGNITO_USER_POOL_ID && env.COGNITO_CLIENT_ID) {
     config.auth = {
@@ -126,13 +111,11 @@ export const validateRestRequiredEnvironmentVariables = (): void => {
   validateBaseRequiredEnvironmentVariables();
 
   // Log what optional features are available
-  const hasDatabase = !!process.env.DYNAMODB_ENDPOINT;
   const hasAuth = !!(
     process.env.COGNITO_USER_POOL_ID && process.env.COGNITO_CLIENT_ID
   );
 
   logger.info('REST Lambda configuration:', {
-    hasDatabase,
     hasAuth,
     rateLimitEnabled: process.env.RATE_LIMIT_ENABLED === 'true',
   });
@@ -142,7 +125,6 @@ export const validateRestRequiredEnvironmentVariables = (): void => {
 export const REST_LAMBDA_CONFIG = createRestLambdaConfig();
 
 // Export configuration getters for type safety
-export const getRestDatabaseConfig = () => REST_LAMBDA_CONFIG.database;
 export const getRestAuthConfig = () => REST_LAMBDA_CONFIG.auth;
 export const getRestRateLimitConfig = () => REST_LAMBDA_CONFIG.rateLimit;
 export const getRestCorsConfig = () => REST_LAMBDA_CONFIG.cors;

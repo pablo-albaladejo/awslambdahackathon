@@ -15,10 +15,40 @@ export const BaseLambdaEnvironmentVarsSchema = z.object({
   CLOUDWATCH_NAMESPACE: z.string().min(1),
 
   // Logging configuration
-  LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
+  LOG_LEVEL: z
+    .string()
+    .default('info')
+    .transform(val => {
+      const normalized = val.toLowerCase();
+      if (['debug', 'info', 'warn', 'error'].includes(normalized)) {
+        return normalized as 'debug' | 'info' | 'warn' | 'error';
+      }
+      throw new Error(
+        `Invalid LOG_LEVEL: ${val}. Must be one of: debug, info, warn, error`
+      );
+    }),
   NODE_ENV: z
-    .enum(['development', 'production', 'test'])
-    .default('development'),
+    .string()
+    .default('development')
+    .transform(val => {
+      // Handle common aliases
+      const normalized = val.toLowerCase();
+      switch (normalized) {
+        case 'dev':
+        case 'develop':
+        case 'development':
+          return 'development' as const;
+        case 'prod':
+        case 'production':
+          return 'production' as const;
+        case 'test':
+          return 'test' as const;
+        default:
+          throw new Error(
+            `Invalid NODE_ENV: ${val}. Must be one of: development, production, test (or aliases: dev, prod)`
+          );
+      }
+    }),
 
   // AWS Lambda context (optional, auto-populated by AWS)
   AWS_LAMBDA_FUNCTION_VERSION: z.string().optional(),

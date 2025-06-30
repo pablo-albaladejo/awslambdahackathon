@@ -90,7 +90,6 @@ class DependencyContainer implements Container {
       dynamoDB: {
         tableName: process.env.WEBSOCKET_MESSAGES_TABLE!, // Use messages table as default for DynamoDBConfig
         region: process.env.AWS_REGION!,
-        endpoint: process.env.DYNAMODB_ENDPOINT,
       },
       webSocket: {
         endpoint: process.env.WEBSOCKET_ENDPOINT!,
@@ -244,9 +243,6 @@ class DependencyContainer implements Container {
     // Register AWS clients as singletons
     const dynamoDBClient = new DynamoDBClient({
       region: this.configs.dynamoDB.region,
-      ...(this.configs.dynamoDB.endpoint && {
-        endpoint: this.configs.dynamoDB.endpoint,
-      }),
     });
     const dynamoDBDocClient = DynamoDBDocumentClient.from(dynamoDBClient);
     const cloudWatchClient = new CloudWatchClient({
