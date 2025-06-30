@@ -11,7 +11,8 @@ import {
   WEBSOCKET_CONSTANTS,
 } from '@config/constants';
 import { container } from '@config/container';
-import { ConnectionId } from '@domain/value-objects';
+import { ConnectionRepository } from '@domain/repositories/connection';
+import { ConnectionId, SessionId } from '@domain/value-objects';
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 
 // Type guards for safe type checking
@@ -100,6 +101,44 @@ function storeAuthenticatedConnection(connectionId: string, user: unknown) {
     connectionId: ConnectionId.create(connectionId),
     user: user as never,
   });
+}
+
+// Helper function to associate connection with session
+async function associateConnectionWithSession(
+  connectionId: string,
+  sessionId: string,
+  correlationId: string
+): Promise<void> {
+  try {
+    const connectionRepository = container.get<ConnectionRepository>(
+      'ConnectionRepository'
+    );
+    const connection = await connectionRepository.findById(
+      ConnectionId.create(connectionId)
+    );
+
+    if (connection && !connection.getSessionId()) {
+      // Only associate if connection doesn't already have a session
+      const updatedConnection = connection.associateWithSession(
+        SessionId.create(sessionId)
+      );
+      await connectionRepository.save(updatedConnection);
+
+      logger.info('Associated connection with session', {
+        connectionId,
+        sessionId,
+        correlationId,
+      });
+    }
+  } catch (error) {
+    logger.warn('Failed to associate connection with session', {
+      connectionId,
+      sessionId,
+      error: error instanceof Error ? error.message : String(error),
+      correlationId,
+    });
+    // Don't fail the message sending if session association fails
+  }
 }
 
 // Handler for authentication messages
@@ -219,6 +258,15 @@ const handleChatMessage = async (
   if (!user) {
     logger.error('User not found for connection', { connectionId });
     throw new Error('User not found for connection');
+  }
+
+  // Associate connection with session if sessionId is provided
+  if (sessionId) {
+    await associateConnectionWithSession(
+      connectionId,
+      sessionId,
+      correlationId
+    );
   }
 
   const sendChatMessageUseCase = container.getSendChatMessageUseCase();

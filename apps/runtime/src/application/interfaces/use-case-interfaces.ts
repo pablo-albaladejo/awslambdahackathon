@@ -2,6 +2,7 @@
 export interface StoreConnectionUseCase {
   execute(command: {
     connectionId: string;
+    sessionId?: string;
   }): Promise<{ success: boolean; error?: string; errorCode?: string }>;
 }
 

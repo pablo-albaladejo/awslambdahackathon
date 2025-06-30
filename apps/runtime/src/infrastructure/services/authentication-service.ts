@@ -108,6 +108,7 @@ export class AuthenticationService implements DomainAuthenticationService {
     const connection = new Connection(
       command.connectionId,
       command.user.getId(),
+      null, // sessionId will be associated separately when needed
       ConnectionStatus.AUTHENTICATED,
       new Date(),
       new Date()

@@ -8,6 +8,9 @@ export interface ConnectionDto {
   /** User ID associated with the connection */
   userId: string;
 
+  /** Session ID associated with the connection */
+  sessionId?: string;
+
   /** Connection timestamp */
   connectedAt: string;
 
@@ -30,6 +33,9 @@ export interface CreateConnectionDto {
 
   /** User ID associated with the connection */
   userId: string;
+
+  /** Session ID associated with the connection */
+  sessionId?: string;
 
   /** Optional metadata */
   metadata?: Record<string, unknown>;

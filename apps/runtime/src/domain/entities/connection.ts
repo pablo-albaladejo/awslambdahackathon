@@ -1,4 +1,4 @@
-import { ConnectionId, UserId } from '@domain/value-objects';
+import { ConnectionId, SessionId, UserId } from '@domain/value-objects';
 
 export enum ConnectionStatus {
   CONNECTED = 'connected',
@@ -11,6 +11,7 @@ export class Connection {
   constructor(
     private readonly id: ConnectionId,
     private readonly userId: UserId | null,
+    private readonly sessionId: SessionId | null,
     private readonly status: ConnectionStatus,
     private readonly connectedAt: Date,
     private readonly lastActivityAt: Date = new Date(),
@@ -26,6 +27,10 @@ export class Connection {
 
   getUserId(): UserId | null {
     return this.userId;
+  }
+
+  getSessionId(): SessionId | null {
+    return this.sessionId;
   }
 
   getStatus(): ConnectionStatus {
@@ -81,13 +86,40 @@ export class Connection {
     return Math.max(0, expirationTime.getTime() - now.getTime());
   }
 
-  authenticate(userId: UserId): Connection {
+  authenticate(userId: UserId, sessionId?: SessionId): Connection {
     return new Connection(
       this.id,
       userId,
+      sessionId || this.sessionId,
       ConnectionStatus.AUTHENTICATED,
       this.connectedAt,
       new Date(),
+      this.ttl,
+      this.metadata
+    );
+  }
+
+  associateWithSession(sessionId: SessionId): Connection {
+    return new Connection(
+      this.id,
+      this.userId,
+      sessionId,
+      this.status,
+      this.connectedAt,
+      this.lastActivityAt,
+      this.ttl,
+      this.metadata
+    );
+  }
+
+  removeSessionAssociation(): Connection {
+    return new Connection(
+      this.id,
+      this.userId,
+      null,
+      this.status,
+      this.connectedAt,
+      this.lastActivityAt,
       this.ttl,
       this.metadata
     );
@@ -97,6 +129,7 @@ export class Connection {
     return new Connection(
       this.id,
       this.userId,
+      this.sessionId,
       this.status,
       this.connectedAt,
       new Date(),
@@ -109,6 +142,7 @@ export class Connection {
     return new Connection(
       this.id,
       this.userId,
+      this.sessionId,
       ConnectionStatus.DISCONNECTED,
       this.connectedAt,
       this.lastActivityAt,
@@ -121,6 +155,7 @@ export class Connection {
     return new Connection(
       this.id,
       this.userId,
+      this.sessionId,
       ConnectionStatus.SUSPENDED,
       this.connectedAt,
       this.lastActivityAt,
@@ -133,6 +168,7 @@ export class Connection {
     return new Connection(
       this.id,
       this.userId,
+      this.sessionId,
       ConnectionStatus.CONNECTED,
       this.connectedAt,
       new Date(),
@@ -145,6 +181,7 @@ export class Connection {
     return new Connection(
       this.id,
       this.userId,
+      this.sessionId,
       this.status,
       this.connectedAt,
       this.lastActivityAt,
@@ -158,6 +195,7 @@ export class Connection {
     return new Connection(
       this.id,
       this.userId,
+      this.sessionId,
       this.status,
       this.connectedAt,
       this.lastActivityAt,
@@ -172,6 +210,7 @@ export class Connection {
     return new Connection(
       this.id,
       this.userId,
+      this.sessionId,
       this.status,
       this.connectedAt,
       this.lastActivityAt,
@@ -207,10 +246,11 @@ export class Connection {
     }
   }
 
-  static create(connectionId: string): Connection {
+  static create(connectionId: string, sessionId?: string): Connection {
     return new Connection(
       ConnectionId.create(connectionId),
       null,
+      sessionId ? SessionId.create(sessionId) : null,
       ConnectionStatus.CONNECTED,
       new Date()
     );
@@ -219,6 +259,7 @@ export class Connection {
   static fromData(data: {
     id: string;
     userId?: string;
+    sessionId?: string;
     status: ConnectionStatus;
     connectedAt: Date;
     lastActivityAt?: Date;
@@ -228,6 +269,7 @@ export class Connection {
     return new Connection(
       ConnectionId.create(data.id),
       data.userId ? UserId.create(data.userId) : null,
+      data.sessionId ? SessionId.create(data.sessionId) : null,
       data.status,
       data.connectedAt,
       data.lastActivityAt || new Date(),

@@ -1,11 +1,12 @@
 import { BaseResult, BaseUseCase } from '@application/use-cases/base-use-case';
 import { Logger } from '@awslambdahackathon/types';
 import { PerformanceMonitoringService } from '@domain/services/performance-monitoring-service';
-import { ConnectionId } from '@domain/value-objects';
+import { ConnectionId, SessionId } from '@domain/value-objects';
 import { ConnectionService } from '@infrastructure/services/connection-service';
 
 interface StoreConnectionCommand {
   connectionId: string;
+  sessionId?: string;
 }
 
 interface StoreConnectionResult extends BaseResult {}
@@ -40,6 +41,9 @@ export class StoreConnectionUseCaseImpl
 
       await this.connectionService.storeConnection({
         connectionId: ConnectionId.create(command.connectionId),
+        sessionId: command.sessionId
+          ? SessionId.create(command.sessionId)
+          : undefined,
       });
 
       this.logger.info('Connection stored successfully', {

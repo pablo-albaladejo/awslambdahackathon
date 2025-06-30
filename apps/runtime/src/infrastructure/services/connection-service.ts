@@ -20,7 +20,10 @@ export class ConnectionService implements DomainConnectionService {
   }
 
   async storeConnection(command: StoreConnectionCommand): Promise<void> {
-    const connection = Connection.create(command.connectionId.getValue());
+    const connection = Connection.create(
+      command.connectionId.getValue(),
+      command.sessionId?.getValue()
+    );
 
     // Use circuit breaker for connection storage
     await container.getCircuitBreakerService().execute(

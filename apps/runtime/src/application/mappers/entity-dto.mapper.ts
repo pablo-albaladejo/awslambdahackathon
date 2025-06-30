@@ -38,7 +38,7 @@ export class ConnectionEntityMapper {
     return {
       id: connection.getId().getValue(),
       userId: connection.getUserId()?.getValue() || '',
-      sessionId: undefined,
+      sessionId: connection.getSessionId()?.getValue(),
       connectedAt: connection.getConnectedAt().toISOString(),
       lastPingAt: connection.getLastActivityAt().toISOString(),
       isActive: connection.isConnected(),

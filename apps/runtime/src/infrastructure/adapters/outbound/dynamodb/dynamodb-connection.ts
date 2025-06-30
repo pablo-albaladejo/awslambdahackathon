@@ -14,7 +14,7 @@ import {
   AuthenticatedConnectionData,
   ConnectionRepository,
 } from '@domain/repositories/connection';
-import { ConnectionId, UserId } from '@domain/value-objects';
+import { ConnectionId, SessionId, UserId } from '@domain/value-objects';
 import { DynamoDBConfig } from '@infrastructure/config/database-config';
 
 export class DynamoDBConnectionRepository implements ConnectionRepository {
@@ -77,6 +77,32 @@ export class DynamoDBConnectionRepository implements ConnectionRepository {
     }
   }
 
+  async findBySessionId(sessionId: SessionId): Promise<Connection[]> {
+    try {
+      const result = await this.ddbClient.send(
+        new QueryCommand({
+          TableName: this.tableName,
+          IndexName: 'sessionId-index',
+          KeyConditionExpression: 'sessionId = :sessionId',
+          ExpressionAttributeValues: {
+            ':sessionId': sessionId.getValue(),
+          },
+        })
+      );
+
+      if (!result.Items) {
+        return [];
+      }
+
+      return result.Items.map(item => this.mapToConnection(item));
+    } catch (error) {
+      logger.error('Error finding connections by session ID', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw new Error('Failed to find connections by session ID');
+    }
+  }
+
   async findByStatus(status: ConnectionStatus): Promise<Connection[]> {
     try {
       const result = await this.ddbClient.send(
@@ -113,7 +139,7 @@ export class DynamoDBConnectionRepository implements ConnectionRepository {
             sk: `CONNECTION#${connection.getId().getValue()}`,
             connectionId: connection.getId().getValue(),
             userId: connection.getUserId()?.getValue(),
-            sessionId: null, // TODO: Add sessionId to Connection entity when implementing session association
+            sessionId: connection.getSessionId()?.getValue(),
             status: connection.getStatus(),
             connectedAt: connection.getConnectedAt().toISOString(),
             lastActivityAt: connection.getLastActivityAt().toISOString(),
@@ -404,6 +430,7 @@ export class DynamoDBConnectionRepository implements ConnectionRepository {
     return Connection.fromData({
       id: safeString(item.connectionId || item.id),
       userId: item.userId ? safeString(item.userId) : undefined,
+      sessionId: item.sessionId ? safeString(item.sessionId) : undefined,
       status: safeConnectionStatus(item.status),
       connectedAt: new Date(safeString(item.connectedAt)),
       lastActivityAt: item.lastActivityAt

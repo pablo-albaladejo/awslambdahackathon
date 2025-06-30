@@ -21,6 +21,7 @@ export class ConnectionMapper
     return Connection.fromData({
       id: dto.id,
       userId: dto.userId,
+      sessionId: dto.sessionId,
       status: dto.isActive
         ? ConnectionStatus.AUTHENTICATED
         : ConnectionStatus.DISCONNECTED,
@@ -37,6 +38,7 @@ export class ConnectionMapper
     return {
       id: entity.getId().getValue(),
       userId: entity.getUserId()?.getValue() || '',
+      sessionId: entity.getSessionId()?.getValue(),
       connectedAt: entity.getConnectedAt().toISOString(),
       lastActivityAt: entity.getLastActivityAt().toISOString(),
       isActive: entity.isConnected(),
@@ -62,7 +64,7 @@ export class ConnectionMapper
    * Maps CreateConnectionDto to Connection entity
    */
   fromCreateDto(dto: CreateConnectionDto): Connection {
-    return Connection.create(dto.id);
+    return Connection.create(dto.id, dto.sessionId);
   }
 
   /**

@@ -1,6 +1,6 @@
 import { Connection, ConnectionStatus } from '@domain/entities';
 import { User } from '@domain/entities/user';
-import { ConnectionId, UserId } from '@domain/value-objects';
+import { ConnectionId, SessionId, UserId } from '@domain/value-objects';
 
 export interface AuthenticatedConnectionData {
   connectionId: string;
@@ -16,6 +16,7 @@ export interface AuthenticatedConnectionData {
 export interface ConnectionRepository {
   findById(id: ConnectionId): Promise<Connection | null>;
   findByUserId(userId: UserId): Promise<Connection[]>;
+  findBySessionId(sessionId: SessionId): Promise<Connection[]>;
   findByStatus(status: ConnectionStatus): Promise<Connection[]>;
   save(connection: Connection): Promise<void>;
   delete(id: ConnectionId): Promise<void>;
