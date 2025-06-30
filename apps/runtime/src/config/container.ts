@@ -79,7 +79,8 @@ class DependencyContainer implements Container {
   >();
   private readonly instances = new Map<Token, unknown>();
   private readonly configs: {
-    dynamoDB: DynamoDBConfig;
+    connectionsDB: DynamoDBConfig;
+    messagesDB: DynamoDBConfig;
     webSocket: WebSocketConfig;
     cloudWatch: CloudWatchConfig;
   };
@@ -88,10 +89,14 @@ class DependencyContainer implements Container {
     // Validate required environment variables using WebSocket-specific validation
     validateWebSocketRequiredEnvironmentVariables();
 
-    // Initialize configurations
+    // Initialize separate configurations for connections and messages
     this.configs = {
-      dynamoDB: {
-        tableName: process.env.WEBSOCKET_MESSAGES_TABLE!, // Use messages table as default for DynamoDBConfig
+      connectionsDB: {
+        tableName: process.env.WEBSOCKET_CONNECTIONS_TABLE!,
+        region: process.env.AWS_REGION!,
+      },
+      messagesDB: {
+        tableName: process.env.WEBSOCKET_MESSAGES_TABLE!,
         region: process.env.AWS_REGION!,
       },
       webSocket: {
@@ -209,30 +214,31 @@ class DependencyContainer implements Container {
 
   private registerServices(): void {
     // Register configurations as singletons - direct instances
-    this.instances.set('DynamoDBConfig', this.configs.dynamoDB);
+    this.instances.set('ConnectionsDBConfig', this.configs.connectionsDB);
+    this.instances.set('MessagesDBConfig', this.configs.messagesDB);
     this.instances.set('WebSocketConfig', this.configs.webSocket);
     this.instances.set('CloudWatchConfig', this.configs.cloudWatch);
 
     // Register AWS clients as singletons
     const dynamoDBClient = new DynamoDBClient({
-      region: this.configs.dynamoDB.region,
+      region: this.configs.connectionsDB.region, // Use region from connections config
     });
     const dynamoDBDocClient = DynamoDBDocumentClient.from(dynamoDBClient);
     const cloudWatchClient = new CloudWatchClient({
-      region: this.configs.dynamoDB.region,
+      region: this.configs.connectionsDB.region, // Use region from connections config
     });
 
     this.instances.set('DynamoDBClient', dynamoDBClient);
     this.instances.set('DynamoDBDocumentClient', dynamoDBDocClient);
     this.instances.set('CloudWatchClient', cloudWatchClient);
 
-    // Register repositories with AWS client injection
+    // Register repositories with correct table configurations
     this.register<UserRepository>(
       'UserRepository',
       DynamoDBUserRepository as Constructor<UserRepository>,
       {
         singleton: true,
-        dependencies: ['DynamoDBDocumentClient', 'DynamoDBConfig'],
+        dependencies: ['DynamoDBDocumentClient', 'ConnectionsDBConfig'],
       }
     );
 
@@ -241,7 +247,7 @@ class DependencyContainer implements Container {
       DynamoDBConnectionRepository as Constructor<ConnectionRepository>,
       {
         singleton: true,
-        dependencies: ['DynamoDBDocumentClient', 'DynamoDBConfig'],
+        dependencies: ['DynamoDBDocumentClient', 'ConnectionsDBConfig'],
       }
     );
 
@@ -250,7 +256,7 @@ class DependencyContainer implements Container {
       DynamoDBMessageRepository as Constructor<MessageRepository>,
       {
         singleton: true,
-        dependencies: ['DynamoDBDocumentClient', 'DynamoDBConfig'],
+        dependencies: ['DynamoDBDocumentClient', 'MessagesDBConfig'],
       }
     );
 
@@ -259,7 +265,7 @@ class DependencyContainer implements Container {
       DynamoDBSessionRepository as Constructor<SessionRepository>,
       {
         singleton: true,
-        dependencies: ['DynamoDBDocumentClient', 'DynamoDBConfig'],
+        dependencies: ['DynamoDBDocumentClient', 'MessagesDBConfig'],
       }
     );
 

@@ -31,8 +31,7 @@ export class DynamoDBConnectionRepository implements ConnectionRepository {
         new GetCommand({
           TableName: this.tableName,
           Key: {
-            pk: `CONNECTION#${id.getValue()}`,
-            sk: `CONNECTION#${id.getValue()}`,
+            connectionId: id.getValue(),
           },
         })
       );
@@ -55,10 +54,9 @@ export class DynamoDBConnectionRepository implements ConnectionRepository {
       const result = await this.ddbClient.send(
         new ScanCommand({
           TableName: this.tableName,
-          FilterExpression: 'userId = :userId AND begins_with(pk, :prefix)',
+          FilterExpression: 'userId = :userId',
           ExpressionAttributeValues: {
             ':userId': userId.getValue(),
-            ':prefix': 'CONNECTION#',
           },
         })
       );
@@ -81,11 +79,9 @@ export class DynamoDBConnectionRepository implements ConnectionRepository {
       const result = await this.ddbClient.send(
         new ScanCommand({
           TableName: this.tableName,
-          FilterExpression:
-            'sessionId = :sessionId AND begins_with(pk, :prefix)',
+          FilterExpression: 'sessionId = :sessionId',
           ExpressionAttributeValues: {
             ':sessionId': sessionId.getValue(),
-            ':prefix': 'CONNECTION#',
           },
         })
       );
@@ -108,13 +104,12 @@ export class DynamoDBConnectionRepository implements ConnectionRepository {
       const result = await this.ddbClient.send(
         new ScanCommand({
           TableName: this.tableName,
-          FilterExpression: '#status = :status AND begins_with(pk, :prefix)',
+          FilterExpression: '#status = :status',
           ExpressionAttributeNames: {
             '#status': 'status',
           },
           ExpressionAttributeValues: {
             ':status': status,
-            ':prefix': 'CONNECTION#',
           },
         })
       );
@@ -138,8 +133,6 @@ export class DynamoDBConnectionRepository implements ConnectionRepository {
         new PutCommand({
           TableName: this.tableName,
           Item: {
-            pk: `CONNECTION#${connection.getId().getValue()}`,
-            sk: `CONNECTION#${connection.getId().getValue()}`,
             connectionId: connection.getId().getValue(),
             userId: connection.getUserId()?.getValue(),
             sessionId: connection.getSessionId()?.getValue(),
@@ -166,8 +159,7 @@ export class DynamoDBConnectionRepository implements ConnectionRepository {
         new DeleteCommand({
           TableName: this.tableName,
           Key: {
-            pk: `CONNECTION#${id.getValue()}`,
-            sk: `CONNECTION#${id.getValue()}`,
+            connectionId: id.getValue(),
           },
         })
       );
@@ -185,8 +177,7 @@ export class DynamoDBConnectionRepository implements ConnectionRepository {
         new GetCommand({
           TableName: this.tableName,
           Key: {
-            pk: `CONNECTION#${id.getValue()}`,
-            sk: `CONNECTION#${id.getValue()}`,
+            connectionId: id.getValue(),
           },
         })
       );
@@ -206,8 +197,7 @@ export class DynamoDBConnectionRepository implements ConnectionRepository {
         new UpdateCommand({
           TableName: this.tableName,
           Key: {
-            pk: `CONNECTION#${id.getValue()}`,
-            sk: `CONNECTION#${id.getValue()}`,
+            connectionId: id.getValue(),
           },
           UpdateExpression: 'SET lastActivityAt = :lastActivityAt',
           ExpressionAttributeValues: {
@@ -288,9 +278,7 @@ export class DynamoDBConnectionRepository implements ConnectionRepository {
         new PutCommand({
           TableName: this.tableName,
           Item: {
-            pk: `AUTH#${connectionId.getValue()}`,
-            sk: `AUTH#${connectionId.getValue()}`,
-            connectionId: connectionId.getValue(),
+            connectionId: `AUTH#${connectionId.getValue()}`,
             userId: user.getId().getValue(),
             username: user.getUsername(),
             email: user.getEmail(),
@@ -318,8 +306,7 @@ export class DynamoDBConnectionRepository implements ConnectionRepository {
         new GetCommand({
           TableName: this.tableName,
           Key: {
-            pk: `AUTH#${connectionId.getValue()}`,
-            sk: `AUTH#${connectionId.getValue()}`,
+            connectionId: `AUTH#${connectionId.getValue()}`,
           },
         })
       );
@@ -354,8 +341,7 @@ export class DynamoDBConnectionRepository implements ConnectionRepository {
         new DeleteCommand({
           TableName: this.tableName,
           Key: {
-            pk: `AUTH#${connectionId.getValue()}`,
-            sk: `AUTH#${connectionId.getValue()}`,
+            connectionId: `AUTH#${connectionId.getValue()}`,
           },
         })
       );
@@ -375,7 +361,8 @@ export class DynamoDBConnectionRepository implements ConnectionRepository {
       const result = await this.ddbClient.send(
         new ScanCommand({
           TableName: this.tableName,
-          FilterExpression: 'begins_with(pk, :authPrefix) AND expiresAt < :now',
+          FilterExpression:
+            'begins_with(connectionId, :authPrefix) AND expiresAt < :now',
           ExpressionAttributeValues: {
             ':authPrefix': 'AUTH#',
             ':now': now,
@@ -431,7 +418,7 @@ export class DynamoDBConnectionRepository implements ConnectionRepository {
     };
 
     return Connection.fromData({
-      id: safeString(item.connectionId || item.id),
+      id: safeString(item.connectionId),
       userId: item.userId ? safeString(item.userId) : undefined,
       sessionId: item.sessionId ? safeString(item.sessionId) : undefined,
       status: safeConnectionStatus(item.status),
