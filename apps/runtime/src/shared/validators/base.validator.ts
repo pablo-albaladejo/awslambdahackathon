@@ -219,13 +219,6 @@ export class ValidationUtils {
   }
 
   /**
-   * Creates a schema that validates email format
-   */
-  static email(fieldName: string = 'email') {
-    return z.string().email(`${fieldName} must be a valid email address`);
-  }
-
-  /**
    * Creates a schema that validates URL format
    */
   static url(fieldName: string = 'url') {

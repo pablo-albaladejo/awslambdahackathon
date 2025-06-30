@@ -16,14 +16,12 @@ export class DynamoDBUserMapper
   private static readonly ENTITY_TYPE = 'USER';
   private static readonly PK_PREFIX = 'USER#';
   private static readonly SK_PREFIX = 'PROFILE#';
-  private static readonly GSI1_PREFIX = 'EMAIL#';
 
   /**
    * Maps User entity to DynamoDB record (plain)
    */
   mapToDto(user: User): UserRecordPlainDto {
     const userId = user.getUserId();
-    const email = user.getEmail();
     const createdAt = user.getCreatedAt();
 
     return {
@@ -31,14 +29,11 @@ export class DynamoDBUserMapper
       SK: `${DynamoDBUserMapper.SK_PREFIX}${userId}`,
       userId,
       username: user.getUsername(),
-      email,
       groups: user.getGroups(),
       isActive: user.isActive(),
       createdAt: createdAt.toISOString(),
       lastActivityAt: user.getLastActivityAt().toISOString(),
       entityType: DynamoDBUserMapper.ENTITY_TYPE,
-      GSI1PK: `${DynamoDBUserMapper.GSI1_PREFIX}${email}`,
-      GSI1SK: `USER#${userId}`,
       ttl: Math.floor(Date.now() / 1000) + 365 * 24 * 60 * 60, // 1 year TTL
     };
   }
@@ -47,34 +42,14 @@ export class DynamoDBUserMapper
    * Maps DynamoDB record (plain) to User entity
    */
   mapToDomain(record: UserRecordPlainDto): User {
-    // Handle invalid or missing email by providing a default
-    const email = this.sanitizeEmail(record.email, record.userId);
-
     return User.fromData({
       id: record.userId,
       username: record.username,
-      email: email,
       groups: record.groups as UserGroup[], // Type conversion for groups
       isActive: record.isActive,
       createdAt: new Date(record.createdAt),
       lastActivityAt: new Date(record.lastActivityAt),
     });
-  }
-
-  /**
-   * Sanitizes email field, providing a default if invalid
-   */
-  private sanitizeEmail(
-    email: string | undefined | null,
-    userId: string
-  ): string {
-    // Check if email is valid (not empty and contains @)
-    if (email && email.trim() && email.includes('@')) {
-      return email.trim();
-    }
-
-    // Provide a default email based on userId
-    return `${userId}@placeholder.local`;
   }
 
   /**
@@ -134,19 +109,6 @@ export class DynamoDBUserMapper
   }
 
   /**
-   * Creates GSI1 key for email lookup
-   */
-  createEmailKey(email: string): {
-    GSI1PK: AttributeValue;
-    GSI1SK: AttributeValue;
-  } {
-    return {
-      GSI1PK: { S: `${DynamoDBUserMapper.GSI1_PREFIX}${email}` },
-      GSI1SK: { S: `USER#${email}` },
-    };
-  }
-
-  /**
    * Maps query DTO to DynamoDB query parameters
    */
   mapQueryToParams(query: UserQueryDto): {
@@ -176,15 +138,6 @@ export class DynamoDBUserMapper
       };
       expressionAttributeValues[':sk'] = {
         S: `${DynamoDBUserMapper.SK_PREFIX}${query.userId}`,
-      };
-    }
-
-    // Email GSI query
-    if (query.email) {
-      params.IndexName = 'GSI1';
-      params.KeyConditionExpression = 'GSI1PK = :gsi1pk';
-      expressionAttributeValues[':gsi1pk'] = {
-        S: `${DynamoDBUserMapper.GSI1_PREFIX}${query.email}`,
       };
     }
 
@@ -219,7 +172,7 @@ export class DynamoDBUserMapper
   }
 
   /**
-   * Validates DynamoDB record structure
+   * Validates a record before processing
    */
   validateRecord(record: UserRecordPlainDto): {
     isValid: boolean;
@@ -227,32 +180,31 @@ export class DynamoDBUserMapper
   } {
     const errors: string[] = [];
 
-    if (!record.PK || !record.PK.startsWith(DynamoDBUserMapper.PK_PREFIX)) {
-      errors.push('Invalid PK format');
+    // Required fields validation
+    if (!record.PK) {
+      errors.push('Missing PK');
     }
-
-    if (!record.SK || !record.SK.startsWith(DynamoDBUserMapper.SK_PREFIX)) {
-      errors.push('Invalid SK format');
+    if (!record.SK) {
+      errors.push('Missing SK');
     }
-
     if (!record.userId) {
       errors.push('Missing userId');
     }
-
     if (!record.username) {
       errors.push('Missing username');
     }
 
-    // Email is optional since we handle invalid/missing emails in mapToDomain
-    // if (!record.email) {
-    //   errors.push('Missing email');
-    // }
+    // Groups validation
+    if (!Array.isArray(record.groups)) {
+      errors.push('Groups must be an array');
+    }
 
-    if (
-      !record.entityType ||
-      record.entityType !== DynamoDBUserMapper.ENTITY_TYPE
-    ) {
-      errors.push('Invalid entityType');
+    // Date validation
+    if (!record.createdAt) {
+      errors.push('Missing createdAt');
+    }
+    if (!record.lastActivityAt) {
+      errors.push('Missing lastActivityAt');
     }
 
     return {
@@ -262,24 +214,18 @@ export class DynamoDBUserMapper
   }
 
   /**
-   * Gets table schema information
+   * Gets the table schema information
    */
   getTableSchema(): {
     tableName: string;
     partitionKey: string;
     sortKey: string;
     ttlAttribute: string;
-    gsi1: { partitionKey: string; sortKey: string };
   } {
     return {
-      tableName:
-        process.env.WEBSOCKET_CONNECTIONS_TABLE || 'app-connections-table',
+      tableName: 'WebSocketMessages', // Using messages table for user data
       partitionKey: 'PK',
       sortKey: 'SK',
-      gsi1: {
-        partitionKey: 'GSI1PK',
-        sortKey: 'GSI1SK',
-      },
       ttlAttribute: 'ttl',
     };
   }

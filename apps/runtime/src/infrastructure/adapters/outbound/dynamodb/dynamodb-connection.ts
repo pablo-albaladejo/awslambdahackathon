@@ -9,12 +9,19 @@ import {
 import { logger } from '@awslambdahackathon/utils/lambda';
 import { Connection, ConnectionStatus } from '@domain/entities/connection';
 import { User } from '@domain/entities/user';
-import {
-  AuthenticatedConnectionData,
-  ConnectionRepository,
-} from '@domain/repositories/connection';
+import { ConnectionRepository } from '@domain/repositories/connection';
 import { ConnectionId, SessionId, UserId } from '@domain/value-objects';
 import { DynamoDBConfig } from '@infrastructure/config/database-config';
+
+export interface AuthenticatedConnectionData {
+  connectionId: string;
+  userId: string;
+  username: string;
+  groups: string[];
+  isAuthenticated: boolean;
+  authenticatedAt: number;
+  ttl: number;
+}
 
 export class DynamoDBConnectionRepository implements ConnectionRepository {
   private readonly ddbClient: DynamoDBDocumentClient;
@@ -23,6 +30,9 @@ export class DynamoDBConnectionRepository implements ConnectionRepository {
   constructor(ddbClient: DynamoDBDocumentClient, config: DynamoDBConfig) {
     this.ddbClient = ddbClient;
     this.tableName = config.tableName;
+  }
+  cleanup(): Promise<void> {
+    throw new Error('Method not implemented.');
   }
 
   async findById(id: ConnectionId): Promise<Connection | null> {
@@ -281,7 +291,6 @@ export class DynamoDBConnectionRepository implements ConnectionRepository {
             connectionId: `AUTH#${connectionId.getValue()}`,
             userId: user.getId().getValue(),
             username: user.getUsername(),
-            email: user.getEmail(),
             groups: user.getGroups(),
             isAuthenticated: true,
             authenticatedAt: now,
@@ -319,7 +328,6 @@ export class DynamoDBConnectionRepository implements ConnectionRepository {
         connectionId: result.Item.connectionId,
         userId: result.Item.userId,
         username: result.Item.username,
-        email: result.Item.email,
         groups: result.Item.groups || [],
         isAuthenticated: result.Item.isAuthenticated,
         authenticatedAt: result.Item.authenticatedAt,
@@ -378,7 +386,6 @@ export class DynamoDBConnectionRepository implements ConnectionRepository {
         connectionId: item.connectionId,
         userId: item.userId,
         username: item.username,
-        email: item.email,
         groups: item.groups || [],
         isAuthenticated: item.isAuthenticated,
         authenticatedAt: item.authenticatedAt,

@@ -198,15 +198,18 @@ const handleAuthMessage = async (
 
       await storeAuthenticatedConnection(connectionId, authResult.user);
 
-      await createWebSocketService(event).sendAuthenticationResponse(
+      await createWebSocketService(event).sendMessage(
         ConnectionId.create(connectionId),
         {
-          success: true,
-          user: {
-            id: safeUserId,
-            username: authResult.user.getUsername(),
-            email: authResult.user.getEmail?.() || '',
-            groups: authResult.user.getGroups?.() || [],
+          type: 'auth_response',
+          timestamp: new Date(),
+          data: {
+            success: true,
+            user: {
+              id: safeUserId,
+              username: authResult.user.getUsername(),
+              groups: authResult.user.getGroups?.() || [],
+            },
           },
         }
       );
@@ -236,11 +239,15 @@ const handleAuthMessage = async (
         correlationId,
       });
 
-      await createWebSocketService(event).sendAuthenticationResponse(
+      await createWebSocketService(event).sendMessage(
         ConnectionId.create(connectionId),
         {
-          success: false,
-          error: authResult.error || 'Authentication failed',
+          type: 'auth_response',
+          timestamp: new Date(),
+          data: {
+            success: false,
+            error: authResult.error || 'Authentication failed',
+          },
         }
       );
 
@@ -263,11 +270,15 @@ const handleAuthMessage = async (
       correlationId,
     });
 
-    await createWebSocketService(event).sendAuthenticationResponse(
+    await createWebSocketService(event).sendMessage(
       ConnectionId.create(connectionId),
       {
-        success: false,
-        error: 'Internal authentication error',
+        type: 'auth_response',
+        timestamp: new Date(),
+        data: {
+          success: false,
+          error: 'Internal authentication error',
+        },
       }
     );
 
@@ -341,16 +352,20 @@ const handleChatMessage = async (
     throw new Error(result.error || 'Failed to send chat message');
   }
 
-  await createWebSocketService(event).sendChatMessageResponse(
+  await createWebSocketService(event).sendMessage(
     ConnectionId.create(connectionId),
     {
-      messageId: crypto.randomUUID(),
-      content: result.message?.getContent() ?? '',
-      userId: user.getId().getValue(),
-      username: user.getUsername(),
+      type: 'chat_message',
       timestamp: new Date(),
-      sessionId: result.message?.getSessionId().getValue() ?? '',
-      isEcho: true,
+      data: {
+        messageId: crypto.randomUUID(),
+        content: result.message?.getContent() ?? '',
+        userId: user.getId().getValue(),
+        username: user.getUsername(),
+        timestamp: new Date(),
+        sessionId: result.message?.getSessionId().getValue() ?? '',
+        isEcho: true,
+      },
     }
   );
 

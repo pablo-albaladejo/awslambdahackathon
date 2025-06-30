@@ -255,11 +255,14 @@ export class ApplicationErrorHandlingService implements ErrorHandlingService {
         ConnectionId.create(connectionId),
         {
           type: 'error',
-          content: errorMessage,
-          metadata: {
-            errorType: error.type,
-            errorCode: error.code,
-            timestamp: error.timestamp.toISOString(),
+          timestamp: new Date(),
+          data: {
+            code: error.code,
+            message: errorMessage,
+            details: {
+              errorType: error.type,
+              timestamp: error.timestamp.toISOString(),
+            },
           },
         }
       );

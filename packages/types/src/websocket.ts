@@ -36,7 +36,6 @@ export const AuthResponseSchema = z.object({
   user: z
     .object({
       id: IdSchema,
-      email: z.string().email(),
       username: z.string().min(1),
       groups: z.array(z.string()),
     })
@@ -201,7 +200,6 @@ export const WebSocketAuthEventDtoSchema = WebSocketEventDtoSchema.extend({
       .object({
         id: z.string(),
         username: z.string(),
-        email: z.string(),
         groups: z.array(z.string()),
       })
       .optional(),

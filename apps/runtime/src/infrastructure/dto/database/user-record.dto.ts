@@ -8,14 +8,11 @@ export interface UserRecordDto {
   SK: AttributeValue;
   userId: AttributeValue;
   username: AttributeValue;
-  email: AttributeValue;
   groups: AttributeValue;
   isActive: AttributeValue;
   createdAt: AttributeValue;
   lastActivityAt: AttributeValue;
   entityType: AttributeValue;
-  GSI1PK: AttributeValue;
-  GSI1SK: AttributeValue;
   ttl: AttributeValue;
 }
 
@@ -27,14 +24,11 @@ export interface UserRecordPlainDto {
   SK: string;
   userId: string;
   username: string;
-  email: string;
   groups: string[];
   isActive: boolean;
   createdAt: string;
   lastActivityAt: string;
   entityType: string;
-  GSI1PK: string;
-  GSI1SK: string;
   ttl: number;
 }
 
@@ -44,9 +38,7 @@ export interface UserRecordPlainDto {
 export interface UserQueryDto {
   PK?: string;
   SK?: string;
-  GSI1PK?: string;
   userId?: string;
-  email?: string;
   username?: string;
   isActive?: boolean;
   limit?: number;

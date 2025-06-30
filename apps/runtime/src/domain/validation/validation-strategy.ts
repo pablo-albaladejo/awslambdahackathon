@@ -8,8 +8,8 @@ import {
 } from './validation-result';
 
 export interface ValidationRule<T> {
-  validate(value: T, context?: ValidationContext): ValidationResult;
-  getErrorMessage(): string;
+  validate(value: T): FieldValidationResult;
+  getFieldName(): string | symbol;
 }
 
 export interface ValidationResult {
@@ -47,24 +47,38 @@ export class BaseValidationStrategy<T extends Record<string, unknown>>
     const warnings: string[] = [];
     const fieldResults: FieldValidationResult[] = [];
 
+    // Add context information to errors if available
+    const contextPrefix = context?.entityName ? `${context.entityName}: ` : '';
+
     // Run all rules
     for (const rule of this.rules) {
-      const result = rule.validate(data, context);
+      const result = rule.validate(data);
       if (!result.isValid) {
-        errors.push(...result.errors);
+        const contextualErrors = result.errors.map(
+          error => `${contextPrefix}${error}`
+        );
+        errors.push(...contextualErrors);
       }
       if (result.warnings) {
-        warnings.push(...result.warnings);
+        const contextualWarnings = result.warnings.map(
+          warning => `${contextPrefix}${warning}`
+        );
+        warnings.push(...contextualWarnings);
       }
     }
 
     // Run field-specific validations
     for (const fieldName of Object.keys(data) as Array<keyof T>) {
-      const fieldResult = this.validateField(fieldName, data[fieldName], {
+      const fieldContext: ValidationContext = {
         ...context,
         fieldName: String(fieldName),
         parentValue: data,
-      });
+      };
+      const fieldResult = this.validateField(
+        fieldName,
+        data[fieldName],
+        fieldContext
+      );
       fieldResults.push(fieldResult);
       if (!fieldResult.isValid) {
         errors.push(...fieldResult.errors);
@@ -90,17 +104,31 @@ export class BaseValidationStrategy<T extends Record<string, unknown>>
     const errors: string[] = [];
     const warnings: string[] = [];
 
+    // Create context-aware error prefix
+    const contextPrefix = context?.entityName ? `${context.entityName}.` : '';
+    const fieldPrefix = `${contextPrefix}${String(fieldName)}`;
+
     // Run field-specific rules
     for (const rule of this.rules) {
-      const result = rule.validate(value as T, {
-        ...context,
-        fieldName: String(fieldName),
-      });
-      if (!result.isValid) {
-        errors.push(...result.errors);
-      }
-      if (result.warnings) {
-        warnings.push(...result.warnings);
+      // Only validate rules that apply to this field
+      if (rule.getFieldName() === fieldName) {
+        const result = rule.validate(value as T);
+        if (!result.isValid) {
+          const contextualErrors = result.errors.map(error =>
+            error.includes(String(fieldName))
+              ? error
+              : `${fieldPrefix}: ${error}`
+          );
+          errors.push(...contextualErrors);
+        }
+        if (result.warnings) {
+          const contextualWarnings = result.warnings.map(warning =>
+            warning.includes(String(fieldName))
+              ? warning
+              : `${fieldPrefix}: ${warning}`
+          );
+          warnings.push(...contextualWarnings);
+        }
       }
     }
 
@@ -130,10 +158,15 @@ export class BaseValidationStrategy<T extends Record<string, unknown>>
   validateAndThrow(data: T, context?: ValidationContext): void {
     const result = this.validate(data, context);
     if (!result.isValid) {
+      const entityName = context?.entityName || 'Entity';
       throw new ValidationError(
-        `Validation failed: ${result.errors.join(', ')}`,
+        `${entityName} validation failed: ${result.errors.join(', ')}`,
         undefined,
-        { fieldResults: result.fieldResults, warnings: result.warnings }
+        {
+          fieldResults: result.fieldResults,
+          warnings: result.warnings,
+          context: context,
+        }
       );
     }
   }
@@ -141,157 +174,145 @@ export class BaseValidationStrategy<T extends Record<string, unknown>>
 
 // Common validation rules
 export class RequiredRule<T> implements ValidationRule<T> {
-  constructor(private fieldName: keyof T) {}
+  constructor(private readonly fieldName: string | symbol) {}
 
-  validate(value: T): ValidationResult {
-    const fieldValue = value[this.fieldName];
-    const isValid =
-      fieldValue !== null && fieldValue !== undefined && fieldValue !== '';
+  validate(value: T): FieldValidationResult {
+    const fieldValue = this.getFieldValue(value);
+    const isEmpty =
+      fieldValue === null ||
+      fieldValue === undefined ||
+      (typeof fieldValue === 'string' && fieldValue.trim() === '');
 
     return {
-      isValid,
-      errors: isValid ? [] : [this.getErrorMessage()],
+      field: String(this.fieldName),
+      isValid: !isEmpty,
+      errors: isEmpty ? [this.getErrorMessage()] : [],
     };
   }
 
-  getErrorMessage(): string {
+  getFieldName(): string | symbol {
+    return this.fieldName;
+  }
+
+  private getFieldValue(value: T): unknown {
+    if (typeof value === 'object' && value !== null) {
+      return (value as Record<string | symbol, unknown>)[this.fieldName];
+    }
+    return value;
+  }
+
+  private getErrorMessage(): string {
     return `${String(this.fieldName)} is required`;
   }
 }
 
-export class StringLengthRule<T> implements ValidationRule<T> {
+export class MinLengthRule<T> implements ValidationRule<T> {
   constructor(
-    private fieldName: keyof T,
-    private minLength: number,
-    private maxLength: number
+    private readonly fieldName: string | symbol,
+    private readonly minLength: number
   ) {}
 
-  validate(value: T): ValidationResult {
-    const fieldValue = value[this.fieldName];
-    if (typeof fieldValue !== 'string') {
-      return {
-        isValid: false,
-        errors: [`${String(this.fieldName)} must be a string`],
-      };
-    }
-
-    const length = fieldValue.length;
-    const isValid = length >= this.minLength && length <= this.maxLength;
+  validate(value: T): FieldValidationResult {
+    const fieldValue = this.getFieldValue(value);
+    const stringValue = String(fieldValue || '');
+    const isValid = stringValue.length >= this.minLength;
 
     return {
+      field: String(this.fieldName),
       isValid,
       errors: isValid ? [] : [this.getErrorMessage()],
     };
   }
 
-  getErrorMessage(): string {
-    return `${String(this.fieldName)} must be between ${this.minLength} and ${this.maxLength} characters`;
+  getFieldName(): string | symbol {
+    return this.fieldName;
+  }
+
+  private getFieldValue(value: T): unknown {
+    if (typeof value === 'object' && value !== null) {
+      return (value as Record<string | symbol, unknown>)[this.fieldName];
+    }
+    return value;
+  }
+
+  private getErrorMessage(): string {
+    return `${String(this.fieldName)} must be at least ${this.minLength} characters long`;
   }
 }
 
-export class EmailRule<T> implements ValidationRule<T> {
-  constructor(private fieldName: keyof T) {}
+export class MaxLengthRule<T> implements ValidationRule<T> {
+  constructor(
+    private readonly fieldName: string | symbol,
+    private readonly maxLength: number
+  ) {}
 
-  validate(value: T): ValidationResult {
-    const fieldValue = value[this.fieldName];
-    if (typeof fieldValue !== 'string') {
-      return {
-        isValid: false,
-        errors: [`${String(this.fieldName)} must be a string`],
-      };
-    }
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    const isValid = emailRegex.test(fieldValue);
+  validate(value: T): FieldValidationResult {
+    const fieldValue = this.getFieldValue(value);
+    const stringValue = String(fieldValue || '');
+    const isValid = stringValue.length <= this.maxLength;
 
     return {
+      field: String(this.fieldName),
       isValid,
       errors: isValid ? [] : [this.getErrorMessage()],
     };
   }
 
-  getErrorMessage(): string {
-    return `${String(this.fieldName)} must be a valid email address`;
+  getFieldName(): string | symbol {
+    return this.fieldName;
+  }
+
+  private getFieldValue(value: T): unknown {
+    if (typeof value === 'object' && value !== null) {
+      return (value as Record<string | symbol, unknown>)[this.fieldName];
+    }
+    return value;
+  }
+
+  private getErrorMessage(): string {
+    return `${String(this.fieldName)} must be no more than ${this.maxLength} characters long`;
   }
 }
 
-export class ArrayRule<T> implements ValidationRule<T> {
+export class PatternRule<T> implements ValidationRule<T> {
   constructor(
-    private fieldName: keyof T,
-    private minItems?: number,
-    private maxItems?: number
+    private readonly fieldName: string | symbol,
+    private readonly pattern: RegExp,
+    private readonly errorMessage?: string
   ) {}
 
-  validate(value: T): ValidationResult {
-    const fieldValue = value[this.fieldName];
-    if (!Array.isArray(fieldValue)) {
-      return {
-        isValid: false,
-        errors: [`${String(this.fieldName)} must be an array`],
-      };
-    }
-
-    const length = fieldValue.length;
-    let isValid = true;
-    const errors: string[] = [];
-
-    if (this.minItems !== undefined && length < this.minItems) {
-      isValid = false;
-      errors.push(
-        `${String(this.fieldName)} must have at least ${this.minItems} items`
-      );
-    }
-
-    if (this.maxItems !== undefined && length > this.maxItems) {
-      isValid = false;
-      errors.push(
-        `${String(this.fieldName)} must have at most ${this.maxItems} items`
-      );
-    }
+  validate(value: T): FieldValidationResult {
+    const fieldValue = this.getFieldValue(value);
+    const stringValue = String(fieldValue || '');
+    const isValid = this.pattern.test(stringValue);
 
     return {
-      isValid,
-      errors,
-    };
-  }
-
-  getErrorMessage(): string {
-    return `${String(this.fieldName)} array validation failed`;
-  }
-}
-
-export class DateRule<T> implements ValidationRule<T> {
-  constructor(
-    private fieldName: keyof T,
-    private allowFuture: boolean = false
-  ) {}
-
-  validate(value: T): ValidationResult {
-    const fieldValue = value[this.fieldName];
-    if (!(fieldValue instanceof Date)) {
-      return {
-        isValid: false,
-        errors: [`${String(this.fieldName)} must be a valid date`],
-      };
-    }
-
-    const now = new Date();
-    const isValid = this.allowFuture || fieldValue <= now;
-
-    return {
+      field: String(this.fieldName),
       isValid,
       errors: isValid ? [] : [this.getErrorMessage()],
     };
   }
 
-  getErrorMessage(): string {
-    return `${String(this.fieldName)} cannot be in the future`;
+  getFieldName(): string | symbol {
+    return this.fieldName;
+  }
+
+  private getFieldValue(value: T): unknown {
+    if (typeof value === 'object' && value !== null) {
+      return (value as Record<string | symbol, unknown>)[this.fieldName];
+    }
+    return value;
+  }
+
+  private getErrorMessage(): string {
+    return (
+      this.errorMessage || `${String(this.fieldName)} has an invalid format`
+    );
   }
 }
 
 interface UserValidationData extends Record<string, unknown> {
   username: string;
-  email: string;
   groups?: string[];
   createdAt?: Date;
   lastActivityAt?: Date;
@@ -323,16 +344,16 @@ export class ValidationFactory {
   static createUserValidationStrategy(): BaseValidationStrategy<UserValidationData> {
     const strategy = new BaseValidationStrategy<UserValidationData>();
     strategy.addRule(new RequiredRule('username'));
-    strategy.addRule(new StringLengthRule('username', 3, 50));
-    strategy.addRule(new RequiredRule('email'));
-    strategy.addRule(new EmailRule('email'));
+    strategy.addRule(new MinLengthRule('username', 3));
+    strategy.addRule(new MaxLengthRule('username', 50));
     return strategy;
   }
 
   static createMessageValidationStrategy(): BaseValidationStrategy<MessageValidationData> {
     const strategy = new BaseValidationStrategy<MessageValidationData>();
     strategy.addRule(new RequiredRule('content'));
-    strategy.addRule(new StringLengthRule('content', 1, 1000));
+    strategy.addRule(new MinLengthRule('content', 1));
+    strategy.addRule(new MaxLengthRule('content', 1000));
     strategy.addRule(new RequiredRule('userId'));
     strategy.addRule(new RequiredRule('sessionId'));
     return strategy;
@@ -343,7 +364,13 @@ export class ValidationFactory {
     strategy.addRule(new RequiredRule('id'));
     strategy.addRule(new RequiredRule('status'));
     strategy.addRule(new RequiredRule('connectedAt'));
-    strategy.addRule(new DateRule('connectedAt', false));
+    strategy.addRule(
+      new PatternRule(
+        'connectedAt',
+        /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?$/,
+        'Invalid date format'
+      )
+    );
     return strategy;
   }
 }

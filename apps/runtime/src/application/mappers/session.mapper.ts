@@ -25,6 +25,7 @@ export class SessionMapper implements BidirectionalMapper<Session, SessionDto> {
       expiresAt: new Date(dto.expiresAt),
       lastActivityAt: new Date(dto.lastActivityAt),
       metadata: dto.metadata,
+      username: dto.username,
     });
   }
 
@@ -35,6 +36,7 @@ export class SessionMapper implements BidirectionalMapper<Session, SessionDto> {
     return {
       id: entity.getId().getValue(),
       userId: entity.getUserId().getValue(),
+      username: entity.getUsername(),
       createdAt: entity.getCreatedAt().toISOString(),
       expiresAt: entity.getExpiresAt().toISOString(),
       lastActivityAt: entity.getLastActivityAt().toISOString(),
@@ -67,7 +69,7 @@ export class SessionMapper implements BidirectionalMapper<Session, SessionDto> {
     );
     const userId = UserId.create(dto.userId);
 
-    return Session.create(userId, durationInMinutes);
+    return Session.createWithUsername(userId, dto.username, durationInMinutes);
   }
 
   /**
@@ -95,6 +97,11 @@ export class SessionMapper implements BidirectionalMapper<Session, SessionDto> {
       } else {
         updatedSession = updatedSession.deactivate();
       }
+    }
+
+    // Update username if provided
+    if (dto.username !== undefined) {
+      updatedSession = updatedSession.updateUsername(dto.username);
     }
 
     if (dto.metadata !== undefined) {

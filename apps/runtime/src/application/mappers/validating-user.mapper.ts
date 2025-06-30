@@ -12,7 +12,6 @@ import { BaseValidator } from '@/shared/validators/base.validator';
 const UserDtoSchema = z.object({
   id: z.string().min(1, 'User ID is required'),
   username: z.string().min(3, 'Username must be at least 3 characters'),
-  email: z.string().email('Invalid email format'),
   groups: z.array(
     z.enum(['admin', 'user', 'guest', 'moderator', 'banned'] as const)
   ),
@@ -24,7 +23,6 @@ const UserDtoSchema = z.object({
 const CreateUserDtoSchema = z.object({
   id: z.string().min(1).optional(),
   username: z.string().min(3, 'Username must be at least 3 characters'),
-  email: z.string().email('Invalid email format'),
   groups: z
     .array(z.enum(['admin', 'user', 'guest', 'moderator', 'banned'] as const))
     .optional(),
@@ -52,7 +50,6 @@ export class ValidatingUserMapper
     return User.fromData({
       id: dto.id,
       username: dto.username,
-      email: dto.email,
       groups: dto.groups,
       isActive: dto.isActive,
       createdAt: new Date(dto.createdAt),
@@ -78,7 +75,6 @@ export class ValidatingUserMapper
       const errorUser = User.fromData({
         id: 'error',
         username: 'error',
-        email: 'error@error.com',
         groups: [],
         isActive: false,
         createdAt: new Date(),
@@ -105,7 +101,6 @@ export class ValidatingUserMapper
       const user = User.fromData({
         id: dto.id,
         username: dto.username,
-        email: dto.email,
         groups: dto.groups,
         isActive: dto.isActive,
         createdAt: new Date(dto.createdAt),
@@ -128,7 +123,6 @@ export class ValidatingUserMapper
       const errorUser = User.fromData({
         id: 'error',
         username: 'error',
-        email: 'error@error.com',
         groups: [],
         isActive: false,
         createdAt: new Date(),
@@ -199,7 +193,6 @@ export class ValidatingUserMapper
       const errorUser = User.fromData({
         id: 'error',
         username: 'error',
-        email: 'error@error.com',
         groups: [],
         isActive: false,
         createdAt: new Date(),
@@ -224,7 +217,6 @@ export class ValidatingUserMapper
       const user = User.create(
         dto.id || crypto.randomUUID(),
         dto.username,
-        dto.email,
         dto.groups
       );
 
@@ -243,7 +235,6 @@ export class ValidatingUserMapper
       const errorUser = User.fromData({
         id: 'error',
         username: 'error',
-        email: 'error@error.com',
         groups: [],
         isActive: false,
         createdAt: new Date(),

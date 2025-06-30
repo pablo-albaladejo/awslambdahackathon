@@ -1,15 +1,17 @@
 import { User } from '@domain/entities/user';
-import { Specification } from '@domain/repositories/specification';
-import { ConnectionId } from '@domain/value-objects';
-import { UserId } from '@domain/value-objects/user-id';
+import { UserId } from '@domain/value-objects';
+
+import { Specification } from './specification';
 
 export interface UserRepository {
-  findById(id: UserId | string): Promise<User | null>;
+  findById(id: UserId): Promise<User | null>;
   findByUsername(username: string): Promise<User | null>;
-  findByEmail(email: string): Promise<User | null>;
-  findByConnectionId(connectionId: ConnectionId | string): Promise<User | null>;
   findBySpecification(specification: Specification<User>): Promise<User[]>;
   save(user: User): Promise<void>;
-  updateLastActivity(userId: UserId | string): Promise<void>;
-  delete(userId: UserId | string): Promise<void>;
+  delete(id: UserId): Promise<void>;
+  exists(id: UserId): Promise<boolean>;
+  findAll(): Promise<User[]>;
+  update(user: User): Promise<void>;
+  count(): Promise<number>;
+  updateLastActivity(id: UserId): Promise<void>;
 }

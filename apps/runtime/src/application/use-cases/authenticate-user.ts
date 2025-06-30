@@ -1,5 +1,6 @@
 import { BaseResult, BaseUseCase } from '@application/use-cases/base-use-case';
 import { Logger } from '@awslambdahackathon/types';
+import { User } from '@domain/entities/user';
 import { PerformanceMonitoringService } from '@domain/services/performance-monitoring-service';
 import { AuthenticationService } from '@infrastructure/services/authentication-service';
 
@@ -8,7 +9,7 @@ export interface AuthenticateUserCommand {
 }
 
 export interface AuthenticateUserResult extends BaseResult {
-  user?: any;
+  user?: User;
 }
 
 export class AuthenticateUserUseCase extends BaseUseCase<

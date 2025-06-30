@@ -170,6 +170,7 @@ export class DynamoDBSessionRepository implements SessionRepository {
             sk: `SESSION#${session.getId().getValue()}`,
             sessionId: session.getId().getValue(),
             userId: session.getUserId().getValue(),
+            username: session.getUsername(),
             status: session.getStatus(),
             createdAt: session.getCreatedAt().toISOString(),
             lastActivityAt: session.getLastActivityAt()?.toISOString(),
@@ -454,6 +455,12 @@ export class DynamoDBSessionRepository implements SessionRepository {
       throw new Error(`Expected string, got ${typeof value}`);
     };
 
+    const safeOptionalString = (value: unknown): string => {
+      if (typeof value === 'string') return value;
+      if (value === undefined || value === null) return '';
+      throw new Error(`Expected string or undefined, got ${typeof value}`);
+    };
+
     const safeSessionStatus = (value: unknown): SessionStatus => {
       if (
         typeof value === 'string' &&
@@ -478,6 +485,7 @@ export class DynamoDBSessionRepository implements SessionRepository {
         typeof item.maxDurationInMinutes === 'number'
           ? item.maxDurationInMinutes
           : undefined,
+      username: safeOptionalString(item.username),
     });
   }
 }

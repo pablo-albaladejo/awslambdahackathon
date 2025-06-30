@@ -1,7 +1,7 @@
 import { logger } from '@awslambdahackathon/utils/lambda';
 import { container } from '@config/container';
 import { User, UserGroup } from '@domain/entities/user';
-import { ConnectionManagementService as DomainConnectionManagementService } from '@domain/services/connection-management-service';
+import { AuthenticationService } from '@domain/services/authentication-service';
 import {
   AuthorizationResult,
   UserAuthorizationService as DomainUserAuthorizationService,
@@ -15,51 +15,33 @@ export class UserAuthorizationService
     connectionId: ConnectionId,
     requiredGroup: string
   ): Promise<boolean> {
-    try {
-      const user = await this.getUserFromConnection(connectionId);
-      return user?.hasGroup(requiredGroup as UserGroup) ?? false;
-    } catch (error) {
-      logger.error('Error checking user group', {
-        connectionId: connectionId.getValue(),
-        requiredGroup,
-        error: error instanceof Error ? error.message : String(error),
-      });
+    const user = await this.getUserFromConnection(connectionId);
+    if (!user) {
       return false;
     }
+    return user.hasGroup(requiredGroup as UserGroup);
   }
 
   async hasAnyUserGroup(
     connectionId: ConnectionId,
     requiredGroups: string[]
   ): Promise<boolean> {
-    try {
-      const user = await this.getUserFromConnection(connectionId);
-      return user?.hasAnyGroup(requiredGroups as UserGroup[]) ?? false;
-    } catch (error) {
-      logger.error('Error checking user groups (any)', {
-        connectionId: connectionId.getValue(),
-        requiredGroups,
-        error: error instanceof Error ? error.message : String(error),
-      });
+    const user = await this.getUserFromConnection(connectionId);
+    if (!user) {
       return false;
     }
+    return user.hasAnyGroup(requiredGroups as UserGroup[]);
   }
 
   async hasAllUserGroups(
     connectionId: ConnectionId,
     requiredGroups: string[]
   ): Promise<boolean> {
-    try {
-      const user = await this.getUserFromConnection(connectionId);
-      return user?.hasAllGroups(requiredGroups as UserGroup[]) ?? false;
-    } catch (error) {
-      logger.error('Error checking user groups (all)', {
-        connectionId: connectionId.getValue(),
-        requiredGroups,
-        error: error instanceof Error ? error.message : String(error),
-      });
+    const user = await this.getUserFromConnection(connectionId);
+    if (!user) {
       return false;
     }
+    return user.hasAllGroups(requiredGroups as UserGroup[]);
   }
 
   async canUserSendMessage(
@@ -80,6 +62,7 @@ export class UserAuthorizationService
       return {
         isAuthorized: canSend,
         reason: canSend ? undefined : 'User cannot send messages',
+        requiredGroups: ['user'],
         userGroups: user.getGroups(),
       };
     } catch (error) {
@@ -253,11 +236,10 @@ export class UserAuthorizationService
   private async getUserFromConnection(
     connectionId: ConnectionId
   ): Promise<User | null> {
-    const connectionManagementService =
-      container.get<DomainConnectionManagementService>(
-        'connectionManagementService'
-      );
-    return connectionManagementService.getUserFromConnection(connectionId);
+    const authenticationService = container.get<AuthenticationService>(
+      'AuthenticationService'
+    );
+    return authenticationService.getUserFromConnection(connectionId);
   }
 
   hasPermission(user: User | null, requiredGroup: UserGroup): boolean {

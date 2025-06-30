@@ -8,6 +8,7 @@ export interface SessionRecordDto {
   SK: AttributeValue;
   sessionId: AttributeValue;
   userId: AttributeValue;
+  username: AttributeValue;
   createdAt: AttributeValue;
   expiresAt: AttributeValue;
   lastActivityAt: AttributeValue;
@@ -28,6 +29,7 @@ export interface SessionRecordPlainDto {
   SK: string;
   sessionId: string;
   userId: string;
+  username: string;
   createdAt: string;
   expiresAt: string;
   lastActivityAt: string;

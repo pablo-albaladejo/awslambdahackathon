@@ -10,9 +10,6 @@ export interface UserDto {
   /** Username */
   username: string;
 
-  /** Email address */
-  email: string;
-
   /** User groups/roles */
   groups: UserGroup[];
 
@@ -33,9 +30,6 @@ export interface UserUpdateDto {
   /** Username (optional for updates) */
   username?: string;
 
-  /** Email address (optional for updates) */
-  email?: string;
-
   /** User groups/roles (optional for updates) */
   groups?: UserGroup[];
 
@@ -55,9 +49,6 @@ export interface CreateUserDto {
 
   /** Username */
   username: string;
-
-  /** Email address */
-  email: string;
 
   /** User groups/roles (defaults to ['user']) */
   groups?: UserGroup[];

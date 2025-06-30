@@ -10,7 +10,6 @@ export type UserGroup = 'admin' | 'user' | 'guest' | 'moderator' | 'banned';
 export interface UserProps {
   id: UserId;
   username: string;
-  email: string;
   groups: UserGroup[];
   createdAt: Date;
   lastActivityAt: Date;
@@ -20,7 +19,6 @@ export interface UserProps {
 export interface UserJSON {
   id: string;
   username: string;
-  email: string;
   groups: UserGroup[];
   createdAt: Date;
   lastActivityAt: Date;
@@ -30,7 +28,6 @@ export interface UserJSON {
 export class User {
   private readonly id: UserId;
   private readonly username: string;
-  private readonly email: string;
   private readonly groups: UserGroup[];
   private readonly createdAt: Date;
   private lastActivityAt: Date;
@@ -38,13 +35,11 @@ export class User {
 
   constructor(props: UserProps) {
     this.validateGroups(props.groups);
-    this.validateEmail(props.email);
     this.validateUsername(props.username);
     this.validateLastActivityDate(props.lastActivityAt, props.createdAt);
 
     this.id = props.id;
     this.username = props.username;
-    this.email = props.email;
     this.groups = props.groups;
     this.createdAt = props.createdAt;
     this.lastActivityAt = props.lastActivityAt;
@@ -57,16 +52,6 @@ export class User {
         'User must belong to at least one group',
         'VALIDATION_ERROR',
         { groups }
-      );
-    }
-  }
-
-  private validateEmail(email: string): void {
-    if (!email || !email.includes('@')) {
-      throw new DomainError(
-        'User must have a valid email address',
-        'VALIDATION_ERROR',
-        { email }
       );
     }
   }
@@ -104,10 +89,6 @@ export class User {
 
   public getUsername(): string {
     return this.username;
-  }
-
-  public getEmail(): string {
-    return this.email;
   }
 
   public getGroups(): UserGroup[] {
@@ -177,7 +158,6 @@ export class User {
     return new User({
       id: this.id,
       username: this.username,
-      email: this.email,
       groups: newGroups,
       createdAt: this.createdAt,
       lastActivityAt: this.lastActivityAt,
@@ -194,7 +174,6 @@ export class User {
     return new User({
       id: this.id,
       username: this.username,
-      email: this.email,
       groups: newGroups,
       createdAt: this.createdAt,
       lastActivityAt: this.lastActivityAt,
@@ -217,7 +196,6 @@ export class User {
   private validate(): void {
     const userData: UserData = {
       username: this.username,
-      email: this.email,
       groups: this.groups,
       createdAt: this.createdAt,
       lastActivityAt: this.lastActivityAt,
@@ -232,13 +210,11 @@ export class User {
   static create(
     id: string,
     username: string,
-    email: string,
     groups: UserGroup[] = ['user']
   ): User {
     return new User({
       id: UserId.create(id),
       username,
-      email,
       groups,
       createdAt: new Date(),
       lastActivityAt: new Date(),
@@ -249,7 +225,6 @@ export class User {
   static fromData(data: {
     id: string;
     username: string;
-    email: string;
     groups?: UserGroup[];
     createdAt?: Date;
     lastActivityAt?: Date;
@@ -258,7 +233,6 @@ export class User {
     return new User({
       id: UserId.create(data.id),
       username: data.username,
-      email: data.email,
       groups: data.groups || ['user'],
       createdAt: data.createdAt || new Date(),
       lastActivityAt: data.lastActivityAt || new Date(),

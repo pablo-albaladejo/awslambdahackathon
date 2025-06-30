@@ -1,40 +1,21 @@
-import { Connection, ConnectionStatus } from '@domain/entities';
-import { User } from '@domain/entities/user';
+import { Connection, ConnectionStatus } from '@domain/entities/connection';
 import { ConnectionId, SessionId, UserId } from '@domain/value-objects';
 
-export interface AuthenticatedConnectionData {
-  connectionId: string;
-  userId: string;
-  username: string;
-  email: string;
-  groups: string[];
-  isAuthenticated: boolean;
-  authenticatedAt: number;
-  ttl: number;
+export interface StoreConnectionCommand {
+  connectionId: ConnectionId;
+  userId?: UserId;
+  sessionId?: SessionId;
 }
 
 export interface ConnectionRepository {
   findById(id: ConnectionId): Promise<Connection | null>;
   findByUserId(userId: UserId): Promise<Connection[]>;
   findBySessionId(sessionId: SessionId): Promise<Connection[]>;
-  findByStatus(status: ConnectionStatus): Promise<Connection[]>;
   save(connection: Connection): Promise<void>;
   delete(id: ConnectionId): Promise<void>;
-  exists(id: ConnectionId): Promise<boolean>;
-  updateActivity(id: ConnectionId): Promise<void>;
   findExpiredConnections(): Promise<Connection[]>;
+  updateActivity(connectionId: ConnectionId): Promise<void>;
   deleteExpiredConnections(): Promise<void>;
   countByStatus(status: ConnectionStatus): Promise<number>;
-
-  // Authenticated connection methods
-  storeAuthenticatedConnection(
-    connectionId: ConnectionId,
-    user: User,
-    ttl: number
-  ): Promise<void>;
-  findAuthenticatedConnection(
-    connectionId: ConnectionId
-  ): Promise<AuthenticatedConnectionData | null>;
-  removeAuthenticatedConnection(connectionId: ConnectionId): Promise<void>;
-  findExpiredAuthenticatedConnections(): Promise<AuthenticatedConnectionData[]>;
+  cleanup(): Promise<void>;
 }

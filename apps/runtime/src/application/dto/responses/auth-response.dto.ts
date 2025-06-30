@@ -14,9 +14,6 @@ export interface AuthUserDto {
   /** Username */
   username: string;
 
-  /** Email address */
-  email: string;
-
   /** User groups/roles */
   groups: string[];
 

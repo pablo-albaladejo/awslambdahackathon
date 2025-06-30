@@ -1,305 +1,239 @@
-import {
-  DeleteCommand,
-  DynamoDBDocumentClient,
-  GetCommand,
-  PutCommand,
-  QueryCommand,
-  ScanCommand,
-  UpdateCommand,
-} from '@aws-sdk/lib-dynamodb';
 import { logger } from '@awslambdahackathon/utils/lambda';
+import { Session, SessionStatus } from '@domain/entities/session';
 import { User } from '@domain/entities/user';
+import { SessionRepository } from '@domain/repositories/session';
 import { Specification } from '@domain/repositories/specification';
 import { UserRepository } from '@domain/repositories/user';
-import { ConnectionId, UserId } from '@domain/value-objects';
+import { UserId } from '@domain/value-objects';
 import { BaseAdapter } from '@infrastructure/adapters/base/base-adapter';
-import { UserRecordPlainDto } from '@infrastructure/dto/database/user-record.dto';
-import { DynamoDBUserMapper } from '@infrastructure/mappers/database/dynamodb-user.mapper';
 
 export class DynamoDBUserRepository
   extends BaseAdapter
   implements UserRepository
 {
-  private static readonly SERVICE_NAME = 'DynamoDB';
-  private static readonly TABLE_NAME = process.env.WEBSOCKET_CONNECTIONS_TABLE!;
+  private static readonly SERVICE_NAME = 'SessionBasedUserRepository';
 
-  constructor(
-    private readonly client: DynamoDBDocumentClient,
-    private readonly mapper: DynamoDBUserMapper
-  ) {
+  constructor(private readonly sessionRepository: SessionRepository) {
     super();
+    logger.info('Initializing session-based UserRepository');
   }
 
   async findById(id: UserId): Promise<User | null> {
-    return this.executeWithErrorHandling(
-      'findById',
-      DynamoDBUserRepository.SERVICE_NAME,
-      async () => {
-        const result = await this.client.send(
-          new GetCommand({
-            TableName: DynamoDBUserRepository.TABLE_NAME,
-            Key: {
-              PK: `USER#${id.getValue()}`,
-              SK: `PROFILE#${id.getValue()}`,
-            },
-          })
-        );
-
-        if (!result.Item) {
-          return null;
-        }
-
-        return this.mapper.mapToDomain(result.Item as UserRecordPlainDto);
-      },
-      { userId: id.getValue() }
-    );
-  }
-
-  async findByConnectionId(
-    connectionId: ConnectionId | string
-  ): Promise<User | null> {
     try {
-      const connId =
-        typeof connectionId === 'string'
-          ? connectionId
-          : connectionId.getValue();
-      const result = await this.client.send(
-        new QueryCommand({
-          TableName: DynamoDBUserRepository.TABLE_NAME,
-          IndexName: 'connectionId-index',
-          KeyConditionExpression: 'connectionId = :connectionId',
-          ExpressionAttributeValues: {
-            ':connectionId': connId,
-          },
-        })
-      );
+      logger.info('Finding user by ID via active session', {
+        userId: id.getValue(),
+      });
 
-      if (!result.Items || result.Items.length === 0) {
+      const session = await this.sessionRepository.findActiveSessionByUser(id);
+      if (!session || !session.isActive() || session.isExpired()) {
+        logger.warn('No active session found for user', {
+          userId: id.getValue(),
+        });
         return null;
       }
 
-      const userItem = result.Items[0];
+      // Create User from session data
+      const userInfo = session.getUserInfo();
       return User.fromData({
-        id: userItem.userId,
-        username: userItem.username,
-        email: userItem.email,
-        groups: userItem.groups || [],
-        createdAt: new Date(userItem.createdAt),
-        lastActivityAt: new Date(userItem.lastActivityAt),
-        isActive: userItem.isActive !== false,
+        id: id.getValue(),
+        username: userInfo.username,
+        groups: ['user'],
+        createdAt: session.getCreatedAt(),
+        lastActivityAt: session.getLastActivityAt(),
+        isActive: true,
       });
     } catch (error) {
-      logger.error('Error finding user by connection ID', {
+      logger.error('Error finding user by ID', {
+        userId: id.getValue(),
         error: error instanceof Error ? error.message : String(error),
       });
-      throw new Error('Failed to find user by connection ID');
+      return null;
     }
   }
 
-  async findByEmail(email: string): Promise<User | null> {
-    return this.executeWithErrorHandling(
-      'findByEmail',
-      DynamoDBUserRepository.SERVICE_NAME,
-      async () => {
-        const result = await this.client.send(
-          new QueryCommand({
-            TableName: DynamoDBUserRepository.TABLE_NAME,
-            IndexName: 'GSI1',
-            KeyConditionExpression: 'GSI1PK = :gsi1pk',
-            ExpressionAttributeValues: {
-              ':gsi1pk': `EMAIL#${email}`,
-            },
-          })
-        );
+  async findByUsername(username: string): Promise<User | null> {
+    try {
+      logger.info('Finding user by username via sessions', { username });
 
-        if (!result.Items || result.Items.length === 0) {
-          return null;
+      // Find all active sessions and check usernames
+      // This is not ideal, but we don't have a username index
+      const allSessions = await this.sessionRepository.findByStatus(
+        SessionStatus.ACTIVE
+      );
+
+      for (const session of allSessions) {
+        if (
+          session.getUsername() === username &&
+          session.isActive() &&
+          !session.isExpired()
+        ) {
+          const userInfo = session.getUserInfo();
+          return User.fromData({
+            id: session.getUserId().getValue(),
+            username: userInfo.username,
+            groups: ['user'],
+            createdAt: session.getCreatedAt(),
+            lastActivityAt: session.getLastActivityAt(),
+            isActive: true,
+          });
         }
+      }
 
-        return this.mapper.mapToDomain(result.Items[0] as UserRecordPlainDto);
-      },
-      { email }
-    );
+      logger.warn('No active session found for username', { username });
+      return null;
+    } catch (error) {
+      logger.error('Error finding user by username', {
+        username,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
   }
 
-  async findByUsername(username: string): Promise<User | null> {
-    return this.executeWithErrorHandling(
-      'findByUsername',
-      DynamoDBUserRepository.SERVICE_NAME,
-      async () => {
-        const result = await this.client.send(
-          new ScanCommand({
-            TableName: DynamoDBUserRepository.TABLE_NAME,
-            FilterExpression: 'username = :username',
-            ExpressionAttributeValues: {
-              ':username': username,
-            },
-          })
+  async save(user: User): Promise<void> {
+    try {
+      logger.info('Saving user via session', {
+        userId: user.getId().getValue(),
+      });
+
+      // Find existing session for this user
+      let session = await this.sessionRepository.findActiveSessionByUser(
+        user.getId()
+      );
+
+      if (!session || !session.isActive() || session.isExpired()) {
+        // Create new session with user info
+        session = Session.createWithUsername(
+          user.getId(),
+          user.getUsername(), // Use username
+          60, // 1 hour
+          60 // 1 hour max
         );
+      } else {
+        // Update existing session
+        session = session.updateUsername(user.getUsername());
+      }
 
-        if (!result.Items || result.Items.length === 0) {
-          return null;
+      await this.sessionRepository.save(session);
+      logger.info('User saved via session', {
+        userId: user.getId().getValue(),
+      });
+    } catch (error) {
+      logger.error('Error saving user', {
+        userId: user.getId().getValue(),
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw new Error('Failed to save user');
+    }
+  }
+
+  async delete(id: UserId): Promise<void> {
+    try {
+      logger.info('Deleting user via session deactivation', {
+        userId: id.getValue(),
+      });
+
+      const session = await this.sessionRepository.findActiveSessionByUser(id);
+      if (session) {
+        const deactivatedSession = session.deactivate();
+        await this.sessionRepository.save(deactivatedSession);
+      }
+
+      logger.info('User deleted via session deactivation', {
+        userId: id.getValue(),
+      });
+    } catch (error) {
+      logger.error('Error deleting user', {
+        userId: id.getValue(),
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw new Error('Failed to delete user');
+    }
+  }
+
+  async exists(id: UserId): Promise<boolean> {
+    try {
+      const session = await this.sessionRepository.findActiveSessionByUser(id);
+      return session ? session.isActive() && !session.isExpired() : false;
+    } catch (error) {
+      logger.error('Error checking if user exists', {
+        userId: id.getValue(),
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return false;
+    }
+  }
+
+  async findAll(): Promise<User[]> {
+    try {
+      logger.info('Finding all users via active sessions');
+
+      const activeSessions = await this.sessionRepository.findByStatus(
+        SessionStatus.ACTIVE
+      );
+      const users: User[] = [];
+
+      for (const session of activeSessions) {
+        if (session.isActive() && !session.isExpired()) {
+          const userInfo = session.getUserInfo();
+          const user = User.fromData({
+            id: session.getUserId().getValue(),
+            username: userInfo.username,
+            groups: ['user'],
+            createdAt: session.getCreatedAt(),
+            lastActivityAt: session.getLastActivityAt(),
+            isActive: true,
+          });
+          users.push(user);
         }
+      }
 
-        return this.mapper.mapToDomain(result.Items[0] as UserRecordPlainDto);
-      },
-      { username }
-    );
+      return users;
+    } catch (error) {
+      logger.error('Error finding all users', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return [];
+    }
+  }
+
+  async update(user: User): Promise<void> {
+    return this.save(user);
+  }
+
+  async count(): Promise<number> {
+    try {
+      const activeSessions = await this.sessionRepository.findByStatus(
+        SessionStatus.ACTIVE
+      );
+      return activeSessions.filter(s => s.isActive() && !s.isExpired()).length;
+    } catch (error) {
+      logger.error('Error counting users', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return 0;
+    }
   }
 
   async findBySpecification(
     specification: Specification<User>
   ): Promise<User[]> {
-    return this.executeWithErrorHandling(
-      'findBySpecification',
-      DynamoDBUserRepository.SERVICE_NAME,
-      async () => {
-        const result = await this.client.send(
-          new ScanCommand({
-            TableName: DynamoDBUserRepository.TABLE_NAME,
-          })
-        );
-
-        if (!result.Items) {
-          return [];
-        }
-
-        const users = result.Items.map((item: Record<string, unknown>) =>
-          this.mapper.mapToDomain(item as unknown as UserRecordPlainDto)
-        );
-        return users.filter(user => specification.isSatisfiedBy(user));
-      }
-    );
-  }
-
-  async save(user: User): Promise<void> {
-    return this.executeWithErrorHandling(
-      'save',
-      DynamoDBUserRepository.SERVICE_NAME,
-      async () => {
-        const record = this.mapper.mapToDto(user);
-        await this.client.send(
-          new PutCommand({
-            TableName: DynamoDBUserRepository.TABLE_NAME,
-            Item: record,
-          })
-        );
-      },
-      { userId: user.getId().getValue() }
-    );
-  }
-
-  async delete(id: UserId): Promise<void> {
-    return this.executeWithErrorHandling(
-      'delete',
-      DynamoDBUserRepository.SERVICE_NAME,
-      async () => {
-        await this.client.send(
-          new DeleteCommand({
-            TableName: DynamoDBUserRepository.TABLE_NAME,
-            Key: {
-              PK: `USER#${id.getValue()}`,
-              SK: `PROFILE#${id.getValue()}`,
-            },
-          })
-        );
-      },
-      { userId: id.getValue() }
-    );
-  }
-
-  async exists(id: UserId): Promise<boolean> {
-    return this.executeWithErrorHandling(
-      'exists',
-      DynamoDBUserRepository.SERVICE_NAME,
-      async () => {
-        const result = await this.client.send(
-          new GetCommand({
-            TableName: DynamoDBUserRepository.TABLE_NAME,
-            Key: {
-              PK: `USER#${id.getValue()}`,
-              SK: `PROFILE#${id.getValue()}`,
-            },
-            ProjectionExpression: 'PK',
-          })
-        );
-
-        return !!result.Item;
-      },
-      { userId: id.getValue() }
-    );
-  }
-
-  async findByGroup(group: string): Promise<User[]> {
-    return this.executeWithErrorHandling(
-      'findByGroup',
-      DynamoDBUserRepository.SERVICE_NAME,
-      async () => {
-        const result = await this.client.send(
-          new QueryCommand({
-            TableName: DynamoDBUserRepository.TABLE_NAME,
-            IndexName: 'groups-index',
-            KeyConditionExpression: 'groupName = :groupName',
-            ExpressionAttributeValues: {
-              ':groupName': group,
-            },
-          })
-        );
-
-        if (!result.Items) {
-          return [];
-        }
-
-        return result.Items.map((item: Record<string, unknown>) =>
-          this.mapper.mapToDomain(item as unknown as UserRecordPlainDto)
-        );
-      },
-      { group }
-    );
+    const allUsers = await this.findAll();
+    return allUsers.filter(user => specification.isSatisfiedBy(user));
   }
 
   async updateLastActivity(id: UserId): Promise<void> {
-    return this.executeWithErrorHandling(
-      'updateLastActivity',
-      DynamoDBUserRepository.SERVICE_NAME,
-      async () => {
-        await this.client.send(
-          new UpdateCommand({
-            TableName: DynamoDBUserRepository.TABLE_NAME,
-            Key: {
-              PK: `USER#${id.getValue()}`,
-              SK: `PROFILE#${id.getValue()}`,
-            },
-            UpdateExpression: 'SET lastActivityAt = :lastActivityAt',
-            ExpressionAttributeValues: {
-              ':lastActivityAt': new Date().toISOString(),
-            },
-          })
-        );
-      },
-      { userId: id.getValue() }
-    );
-  }
-
-  async findAll(): Promise<User[]> {
-    return this.executeWithErrorHandling(
-      'findAll',
-      DynamoDBUserRepository.SERVICE_NAME,
-      async () => {
-        const result = await this.client.send(
-          new ScanCommand({
-            TableName: DynamoDBUserRepository.TABLE_NAME,
-          })
-        );
-
-        if (!result.Items) {
-          return [];
-        }
-
-        return result.Items.map((item: Record<string, unknown>) =>
-          this.mapper.mapToDomain(item as unknown as UserRecordPlainDto)
-        );
+    try {
+      const session = await this.sessionRepository.findActiveSessionByUser(id);
+      if (session) {
+        const updatedSession = session.updateActivity();
+        await this.sessionRepository.save(updatedSession);
       }
-    );
+    } catch (error) {
+      logger.error('Error updating user last activity', {
+        userId: id.getValue(),
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 }

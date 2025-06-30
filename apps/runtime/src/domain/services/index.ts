@@ -10,6 +10,5 @@ export * from './communication-service';
 export * from './message-delivery-service';
 
 // Authorization and management services
-export * from './connection-management-service';
 export * from './token-verification-service';
 export * from './user-authorization-service';

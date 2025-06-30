@@ -18,7 +18,6 @@ export class UserMapper implements BidirectionalMapper<User, UserDto> {
     return User.fromData({
       id: dto.id,
       username: dto.username,
-      email: dto.email,
       groups: dto.groups,
       isActive: dto.isActive,
       createdAt: new Date(dto.createdAt),
@@ -33,7 +32,6 @@ export class UserMapper implements BidirectionalMapper<User, UserDto> {
     return {
       id: entity.getUserId(),
       username: entity.getUsername(),
-      email: entity.getEmail(),
       groups: entity.getGroups(),
       isActive: entity.isActive(),
       createdAt: entity.getCreatedAt().toISOString(),
@@ -59,12 +57,7 @@ export class UserMapper implements BidirectionalMapper<User, UserDto> {
    * Maps CreateUserDto to User entity
    */
   fromCreateDto(dto: CreateUserDto): User {
-    return User.create(
-      dto.id || crypto.randomUUID(),
-      dto.username,
-      dto.email,
-      dto.groups
-    );
+    return User.create(dto.id || crypto.randomUUID(), dto.username, dto.groups);
   }
 
   /**

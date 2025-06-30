@@ -8,6 +8,9 @@ export interface SessionDto {
   /** User ID associated with the session */
   userId: string;
 
+  /** Username from JWT token */
+  username: string;
+
   /** Session creation timestamp */
   createdAt: string;
 
@@ -34,6 +37,9 @@ export interface CreateSessionDto {
   /** User ID associated with the session */
   userId: string;
 
+  /** Username from JWT token */
+  username: string;
+
   /** Session expiration timestamp */
   expiresAt: string;
 
@@ -53,6 +59,9 @@ export interface UpdateSessionDto {
 
   /** Whether the session is active (optional for updates) */
   isActive?: boolean;
+
+  /** Username (optional for updates) */
+  username?: string;
 
   /** Optional metadata (optional for updates) */
   metadata?: Record<string, unknown>;

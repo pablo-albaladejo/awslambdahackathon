@@ -150,7 +150,7 @@ export const validateWebSocketRequiredEnvironmentVariables = (): void => {
   );
 
   if (missingEnvVars.length > 0) {
-    const errorMessage = `Las siguientes variables de entorno de WebSocket son requeridas pero no están definidas: ${missingEnvVars.join(', ')}`;
+    const errorMessage = `The following WebSocket environment variables are required but not defined: ${missingEnvVars.join(', ')}`;
     logger.error(errorMessage);
     throw new Error(errorMessage);
   }

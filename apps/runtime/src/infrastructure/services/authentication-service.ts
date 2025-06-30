@@ -12,13 +12,12 @@ import {
   AuthenticationService as DomainAuthenticationService,
   StoreAuthConnectionCommand,
 } from '@domain/services/authentication-service';
-import { ConnectionId } from '@domain/value-objects';
+import { ConnectionId, UserId } from '@domain/value-objects';
 import { CognitoJwtVerifier } from 'aws-jwt-verify';
 
 export interface AuthenticatedUser {
   userId: string;
   username: string;
-  email: string;
   groups?: string[];
 }
 
@@ -287,7 +286,7 @@ export class AuthenticationService implements DomainAuthenticationService {
     requiredGroup: UserGroup
   ): Promise<boolean> {
     try {
-      const user = await this.userRepository.findById(userId);
+      const user = await this.userRepository.findById(UserId.create(userId));
 
       if (!user) {
         throw new DomainError('User not found', 'AUTHORIZATION_ERROR');
@@ -318,7 +317,7 @@ export class AuthenticationService implements DomainAuthenticationService {
     requiredGroups: UserGroup[]
   ): Promise<boolean> {
     try {
-      const user = await this.userRepository.findById(userId);
+      const user = await this.userRepository.findById(UserId.create(userId));
 
       if (!user) {
         throw new DomainError('User not found', 'AUTHORIZATION_ERROR');

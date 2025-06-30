@@ -9,6 +9,5 @@ export * from './performance-monitoring-service';
 export * from './websocket-message-service';
 
 // New focused services
-export * from './connection-management-service';
 export * from './token-verification-service';
 export * from './user-authorization-service';

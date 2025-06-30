@@ -17,7 +17,6 @@ export class UserEntityMapper {
     return {
       id: user.getId().getValue(),
       username: user.getUsername(),
-      email: user.getEmail(),
       groups: user.getGroups(),
       createdAt: user.getCreatedAt().toISOString(),
       lastActivityAt: user.getLastActivityAt().toISOString(),
@@ -116,4 +115,15 @@ export class EntityDtoMapper {
   static readonly Connection = ConnectionEntityMapper;
   static readonly Message = MessageEntityMapper;
   static readonly Session = SessionEntityMapper;
+
+  static mapUserToDto(user: User): UserDto {
+    return {
+      id: user.getId().getValue(),
+      username: user.getUsername(),
+      groups: user.getGroups(),
+      createdAt: user.getCreatedAt().toISOString(),
+      lastActivityAt: user.getLastActivityAt().toISOString(),
+      isActive: user.isActive(),
+    };
+  }
 }

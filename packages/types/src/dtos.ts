@@ -8,7 +8,6 @@
 export interface UserDto {
   id: string;
   username: string;
-  email: string;
   groups: string[];
   createdAt: string; // ISO string
   lastActivityAt: string; // ISO string

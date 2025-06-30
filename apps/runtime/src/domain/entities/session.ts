@@ -16,7 +16,9 @@ export class Session {
     private readonly lastActivityAt: Date = new Date(),
     private readonly expiresAt: Date,
     private readonly metadata: Record<string, unknown> = {},
-    private readonly maxDurationInMinutes: number = 60
+    private readonly maxDurationInMinutes: number = 60,
+    // User information from JWT token
+    private readonly username: string = ''
   ) {
     this.validate();
   }
@@ -27,6 +29,19 @@ export class Session {
 
   getUserId(): UserId {
     return this.userId;
+  }
+
+  // User information getter
+  getUsername(): string {
+    return this.username;
+  }
+
+  // Combined user info (simplified)
+  getUserInfo(): { id: string; username: string } {
+    return {
+      id: this.userId.getValue(),
+      username: this.username,
+    };
   }
 
   getStatus(): SessionStatus {
@@ -89,7 +104,8 @@ export class Session {
       new Date(),
       this.expiresAt,
       this.metadata,
-      this.maxDurationInMinutes
+      this.maxDurationInMinutes,
+      this.username
     );
   }
 
@@ -105,7 +121,8 @@ export class Session {
       new Date(),
       newExpiresAt,
       this.metadata,
-      this.maxDurationInMinutes
+      this.maxDurationInMinutes,
+      this.username
     );
   }
 
@@ -118,7 +135,8 @@ export class Session {
       this.lastActivityAt,
       this.expiresAt,
       this.metadata,
-      this.maxDurationInMinutes
+      this.maxDurationInMinutes,
+      this.username
     );
   }
 
@@ -131,7 +149,8 @@ export class Session {
       this.lastActivityAt,
       this.expiresAt,
       this.metadata,
-      this.maxDurationInMinutes
+      this.maxDurationInMinutes,
+      this.username
     );
   }
 
@@ -144,7 +163,8 @@ export class Session {
       new Date(),
       this.expiresAt,
       this.metadata,
-      this.maxDurationInMinutes
+      this.maxDurationInMinutes,
+      this.username
     );
   }
 
@@ -158,7 +178,8 @@ export class Session {
       this.lastActivityAt,
       this.expiresAt,
       newMetadata,
-      this.maxDurationInMinutes
+      this.maxDurationInMinutes,
+      this.username
     );
   }
 
@@ -173,7 +194,8 @@ export class Session {
       this.lastActivityAt,
       this.expiresAt,
       newMetadata,
-      this.maxDurationInMinutes
+      this.maxDurationInMinutes,
+      this.username
     );
   }
 
@@ -233,7 +255,44 @@ export class Session {
       now,
       expiresAt,
       {},
-      maxDurationInMinutes
+      maxDurationInMinutes,
+      ''
+    );
+  }
+
+  static createWithUsername(
+    userId: UserId,
+    username: string,
+    durationInMinutes: number = 60,
+    maxDurationInMinutes: number = 60
+  ): Session {
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + durationInMinutes * 60 * 1000);
+
+    return new Session(
+      SessionId.generate(),
+      userId,
+      SessionStatus.ACTIVE,
+      now,
+      now,
+      expiresAt,
+      {},
+      maxDurationInMinutes,
+      username
+    );
+  }
+
+  updateUsername(username: string): Session {
+    return new Session(
+      this.id,
+      this.userId,
+      this.status,
+      this.createdAt,
+      this.lastActivityAt,
+      this.expiresAt,
+      this.metadata,
+      this.maxDurationInMinutes,
+      username
     );
   }
 
@@ -246,6 +305,7 @@ export class Session {
     expiresAt: Date;
     metadata?: Record<string, unknown>;
     maxDurationInMinutes?: number;
+    username: string;
   }): Session {
     return new Session(
       SessionId.create(data.id),
@@ -255,7 +315,8 @@ export class Session {
       data.lastActivityAt || new Date(),
       data.expiresAt,
       data.metadata || {},
-      data.maxDurationInMinutes || 60
+      data.maxDurationInMinutes || 60,
+      data.username
     );
   }
 }

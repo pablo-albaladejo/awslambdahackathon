@@ -60,7 +60,6 @@ export class WebSocketEventMapper implements CompleteWebSocketEventMapper {
         user: {
           id: user.getUserId(),
           username: user.getUsername(),
-          email: user.getEmail(),
           groups: user.getGroups(),
         },
       },

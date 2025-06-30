@@ -1,5 +1,6 @@
 import { User, UserGroup } from '@domain/entities/user';
-import { Specification } from '@domain/repositories/specification';
+
+import { Specification } from '../specification';
 
 // User group constants
 const USER_GROUPS = {
@@ -7,9 +8,114 @@ const USER_GROUPS = {
   USER: 'user' as UserGroup,
 } as const;
 
-export class ActiveUserSpecification implements Specification<User> {
+/**
+ * User By Group Specification
+ * Finds users that belong to a specific group
+ */
+export class UserByGroupSpecification implements Specification<User> {
+  constructor(private readonly group: UserGroup) {}
+
+  isSatisfiedBy(user: User): boolean {
+    return user.hasGroup(this.group);
+  }
+
+  toQuery(): Record<string, unknown> {
+    return {
+      groups: { $in: [this.group] },
+    };
+  }
+}
+
+/**
+ * Active Users Specification
+ * Finds users that are currently active
+ */
+export class ActiveUsersSpecification implements Specification<User> {
   isSatisfiedBy(user: User): boolean {
     return user.isActive();
+  }
+
+  toQuery(): Record<string, unknown> {
+    return {
+      isActive: true,
+    };
+  }
+}
+
+/**
+ * Users Created After Date Specification
+ * Finds users created after a specific date
+ */
+export class UsersCreatedAfterSpecification implements Specification<User> {
+  constructor(private readonly date: Date) {}
+
+  isSatisfiedBy(user: User): boolean {
+    return user.getCreatedAt() > this.date;
+  }
+
+  toQuery(): Record<string, unknown> {
+    return {
+      createdAt: { $gt: this.date },
+    };
+  }
+}
+
+/**
+ * Recently Active Users Specification
+ * Finds users who have been active within a certain time period
+ */
+export class RecentlyActiveUsersSpecification implements Specification<User> {
+  constructor(private readonly hours: number = 24) {}
+
+  isSatisfiedBy(user: User): boolean {
+    const cutoffTime = new Date();
+    cutoffTime.setHours(cutoffTime.getHours() - this.hours);
+
+    return user.getLastActivityAt() > cutoffTime;
+  }
+
+  toQuery(): Record<string, unknown> {
+    const cutoffTime = new Date();
+    cutoffTime.setHours(cutoffTime.getHours() - this.hours);
+
+    return {
+      lastActivityAt: { $gt: cutoffTime },
+    };
+  }
+}
+
+/**
+ * Admin Users Specification
+ * Finds users with admin privileges
+ */
+export class AdminUsersSpecification implements Specification<User> {
+  isSatisfiedBy(user: User): boolean {
+    return user.hasGroup('admin');
+  }
+
+  toQuery(): Record<string, unknown> {
+    return {
+      groups: { $in: ['admin'] },
+    };
+  }
+}
+
+/**
+ * Username Pattern Specification
+ * Finds users with usernames matching a pattern
+ */
+export class UsernamePatternSpecification implements Specification<User> {
+  constructor(private readonly pattern: string) {}
+
+  isSatisfiedBy(user: User): boolean {
+    const regex = new RegExp(this.pattern, 'i');
+    return regex.test(user.getUsername());
+  }
+
+  toQuery(): Record<string, unknown> {
+    return {
+      username: { $regex: this.pattern, $options: 'i' },
+    };
   }
 }
 
@@ -52,57 +158,6 @@ export class UserInAllGroupsSpecification implements Specification<User> {
 
   isSatisfiedBy(user: User): boolean {
     return user.hasAllGroups(this.groups);
-  }
-}
-
-export class UserByGroupSpecification implements Specification<User> {
-  constructor(private readonly group: UserGroup) {}
-
-  isSatisfiedBy(user: User): boolean {
-    return user.getGroups().includes(this.group);
-  }
-
-  toQuery(): Record<string, unknown> {
-    return {
-      groups: { $contains: this.group },
-    };
-  }
-}
-
-export class RecentlyActiveUserSpecification implements Specification<User> {
-  constructor(private readonly withinDays: number = 30) {}
-
-  isSatisfiedBy(user: User): boolean {
-    const now = new Date();
-    const lastActivity = user.getLastActivityAt();
-    const daysSinceLastActivity = Math.floor(
-      (now.getTime() - lastActivity.getTime()) / (1000 * 60 * 60 * 24)
-    );
-    return daysSinceLastActivity <= this.withinDays;
-  }
-
-  toQuery(): Record<string, unknown> {
-    const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - this.withinDays);
-    return {
-      lastActivityAt: { $gt: cutoffDate.toISOString() },
-    };
-  }
-}
-
-export class UserByEmailDomainSpecification implements Specification<User> {
-  constructor(private readonly domain: string) {}
-
-  isSatisfiedBy(user: User): boolean {
-    const email = user.getEmail();
-    const domainPattern = `@${this.domain}`;
-    return email.endsWith(domainPattern);
-  }
-
-  toQuery(): Record<string, unknown> {
-    return {
-      email: { $regex: `@${this.domain}$` },
-    };
   }
 }
 
