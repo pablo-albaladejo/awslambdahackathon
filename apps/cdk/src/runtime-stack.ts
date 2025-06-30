@@ -15,7 +15,6 @@ interface RuntimeStackProps extends cdk.StackProps {
 }
 
 export class RuntimeStack extends cdk.Stack {
-  public readonly mcpHostFunction: cdk.aws_lambda.IFunction;
   public readonly websocketConnectionFunction: cdk.aws_lambda.IFunction;
   public readonly websocketConversationFunction: cdk.aws_lambda.IFunction;
   public readonly websocketApi: cdk.aws_apigatewayv2.WebSocketApi;
@@ -72,16 +71,6 @@ export class RuntimeStack extends cdk.Stack {
       WEBSOCKET_MESSAGES_TABLE: websocketMessagesTable.table.tableName,
     };
 
-    // MCP Host Lambda function
-    const mcpHostLambda = new NodeLambda(this, 'McpHostFunction', {
-      environment: props.environment,
-      appName: appName,
-      entry: path.join(__dirname, '../../../apps/runtime/src/mcp/mcp-host.ts'),
-      description: 'MCP Host endpoint handler',
-      environmentVariables: commonEnvVars,
-    });
-    this.mcpHostFunction = mcpHostLambda.function;
-
     // WebSocket Connection Lambda function
     const websocketConnectionLambda = new NodeLambda(
       this,
@@ -132,9 +121,6 @@ export class RuntimeStack extends cdk.Stack {
       this.websocketConnectionFunction
     );
 
-    // Grant DynamoDB permissions to MCP Host function for authentication
-    websocketConnectionsTable.table.grantReadWriteData(this.mcpHostFunction);
-
     // Grant CloudWatch permissions to all Lambda functions for custom metrics
     const cloudWatchPolicy = new cdk.aws_iam.PolicyStatement({
       effect: cdk.aws_iam.Effect.ALLOW,
@@ -142,7 +128,6 @@ export class RuntimeStack extends cdk.Stack {
       resources: ['*'],
     });
 
-    this.mcpHostFunction.addToRolePolicy(cloudWatchPolicy);
     this.websocketConnectionFunction.addToRolePolicy(cloudWatchPolicy);
     this.websocketConversationFunction.addToRolePolicy(cloudWatchPolicy);
 
@@ -150,7 +135,6 @@ export class RuntimeStack extends cdk.Stack {
     const restApi = new RestApi(this, 'RestApi', {
       environment: props.environment,
       appName,
-      mcpHostFunction: this.mcpHostFunction,
     });
     this.restApi = restApi.restApi;
     new cdk.CfnOutput(this, 'ApiUrl', {
@@ -180,10 +164,9 @@ export class RuntimeStack extends cdk.Stack {
     // CloudWatch Alarms and Monitoring
     this.cloudWatchAlarms = new CloudWatchAlarms(this, 'CloudWatchAlarms', {
       environment: props.environment,
-      appName: appName,
+      appName,
       namespace: appName,
       lambdaFunctions: [
-        this.mcpHostFunction,
         this.websocketConnectionFunction,
         this.websocketConversationFunction,
       ],

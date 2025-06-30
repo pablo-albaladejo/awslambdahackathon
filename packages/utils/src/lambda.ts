@@ -3,21 +3,28 @@ import { randomUUID } from 'crypto';
 import { Logger } from '@aws-lambda-powertools/logger';
 import { Metrics } from '@aws-lambda-powertools/metrics';
 import { Tracer } from '@aws-lambda-powertools/tracer';
-import type { ApiResponse, LambdaResponse } from '@awslambdahackathon/types';
+import type {
+  ApiResponse,
+  DomainError,
+  ErrorResponse,
+  LambdaResponse,
+  Logger as LoggerInterface,
+} from '@awslambdahackathon/types';
 import middy from '@middy/core';
 import cors from '@middy/http-cors';
 import httpErrorHandler from '@middy/http-error-handler';
 import httpJsonBodyParser from '@middy/http-json-body-parser';
 import validator from '@middy/validator';
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-import { z, type ZodSchema } from 'zod';
-
-// Define LogLevel type locally
-export type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
+import { type ZodSchema } from 'zod';
 
 // HTTP response utilities for Lambda functions
 const defaultHeaders = {
   'Content-Type': 'application/json',
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers':
+    'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
+  'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
 };
 
 // UUID generation utility
@@ -30,6 +37,7 @@ export const generateCorrelationId = (prefix: string = 'req'): string => {
   return `${prefix}-${Date.now()}-${randomUUID().substring(0, 8)}`;
 };
 
+// Simple response creators using types from packages/types
 export const createSuccessResponse = <T>(
   data: T,
   statusCode: number = 200
@@ -42,23 +50,11 @@ export const createSuccessResponse = <T>(
   } as ApiResponse<T>),
 });
 
-// AppError interface for consistent error handling
-export interface AppError {
-  type: string;
-  message: string;
-  code: string;
-  statusCode: number;
-  details?: Record<string, unknown>;
-  retryable: boolean;
-}
-
-// Updated createErrorResponse to accept AppError objects
 export const createErrorResponse = (
-  error: AppError | string,
+  error: DomainError | string,
   statusCode?: number
 ): LambdaResponse => {
   if (typeof error === 'string') {
-    // Backward compatibility for string errors
     return {
       statusCode: statusCode || 500,
       headers: defaultHeaders,
@@ -69,176 +65,287 @@ export const createErrorResponse = (
     };
   }
 
-  // Handle AppError objects
   return {
-    statusCode: error.statusCode,
-    headers: {
-      ...defaultHeaders,
-      'X-Request-ID': 'unknown', // Will be overridden by handlers
-    },
+    statusCode: statusCode || 500,
+    headers: defaultHeaders,
     body: JSON.stringify({
-      success: false,
-      error: error.message, // Use message as string for ApiResponse compatibility
-      errorDetails: {
-        type: error.type,
+      error: {
         code: error.code,
-        ...(process.env.NODE_ENV === 'development' && {
-          details: error.details,
-        }),
+        message: error.message,
+        details: error.details,
+        correlationId: error.correlationId,
+        timestamp: new Date().toISOString(),
       },
-    }),
+    } as ErrorResponse),
   };
 };
 
-// --- AWS Lambda Powertools: Logging, Metrics, Tracing ---
-// Set these environment variables in your Lambda for Powertools:
-// LOG_LEVEL=info
-// POWERTOOLS_SERVICE_NAME=websocket-api
-// POWERTOOLS_METRICS_NAMESPACE=AWSLambdaHackathon
-
+// --- AWS Lambda Powertools instances ---
 export const logger = new Logger();
 export const tracer = new Tracer();
 export const metrics = new Metrics();
 
-// Lambda Powertools utilities
-export { Logger } from '@aws-lambda-powertools/logger';
-export { Metrics } from '@aws-lambda-powertools/metrics';
-export { Tracer } from '@aws-lambda-powertools/tracer';
+/**
+ * Logger adapter that implements the Logger interface from types
+ * but uses AWS Lambda Powertools logger under the hood
+ */
+export class PowertoolsLoggerAdapter implements LoggerInterface {
+  constructor(private readonly powertoolsLogger: Logger) {}
 
-// Middy utilities
-export { default as middy } from '@middy/core';
-export { default as cors } from '@middy/http-cors';
-export { default as httpErrorHandler } from '@middy/http-error-handler';
-export { default as httpJsonBodyParser } from '@middy/http-json-body-parser';
-export { default as validator } from '@middy/validator';
+  info(message: string, meta?: Record<string, unknown>): void {
+    if (meta) {
+      this.powertoolsLogger.info(message, meta);
+    } else {
+      this.powertoolsLogger.info(message);
+    }
+  }
 
-// Custom middleware for automatic request/response logging
-export const requestResponseLogger = () => {
-  return {
-    before: async (
-      request: middy.Request<APIGatewayProxyEvent, APIGatewayProxyResult, Error>
-    ): Promise<void> => {
-      logger.info('Incoming request', {
-        method: request.event.httpMethod,
-        path: request.event.path,
-        queryParams: request.event.queryStringParameters,
-        headers: request.event.headers,
-        body: request.event.body,
-        requestId: request.event.requestContext?.requestId,
+  warn(message: string, meta?: Record<string, unknown>): void {
+    if (meta) {
+      this.powertoolsLogger.warn(message, meta);
+    } else {
+      this.powertoolsLogger.warn(message);
+    }
+  }
+
+  error(message: string, meta?: Record<string, unknown>): void {
+    if (meta) {
+      this.powertoolsLogger.error(message, meta);
+    } else {
+      this.powertoolsLogger.error(message);
+    }
+  }
+
+  debug(message: string, meta?: Record<string, unknown>): void {
+    if (meta) {
+      this.powertoolsLogger.debug(message, meta);
+    } else {
+      this.powertoolsLogger.debug(message);
+    }
+  }
+}
+
+// Create the adapter instance
+export const loggerAdapter = new PowertoolsLoggerAdapter(logger);
+
+/**
+ * Unified Metrics and Tracing Service using AWS Lambda Powertools
+ * Simplifies metrics collection and distributed tracing
+ */
+export class PowertoolsMetricsService {
+  constructor(
+    private readonly metrics: Metrics,
+    private readonly tracer: Tracer
+  ) {}
+
+  // Core metrics methods
+  addCountMetric(name: string, value: number = 1): void {
+    this.metrics.addMetric(name, 'Count', value);
+  }
+
+  addDurationMetric(name: string, durationMs: number): void {
+    this.metrics.addMetric(name, 'Milliseconds', durationMs);
+  }
+
+  addMemoryMetric(name: string, bytes: number): void {
+    this.metrics.addMetric(name, 'Bytes', bytes);
+  }
+
+  addMetadata(key: string, value: string): void {
+    this.metrics.addMetadata(key, value);
+  }
+
+  publishStoredMetrics(): void {
+    this.metrics.publishStoredMetrics();
+  }
+
+  // Tracing methods
+  putAnnotation(key: string, value: string | number): void {
+    this.tracer.putAnnotation(key, value);
+  }
+
+  putMetadata(key: string, value: unknown, namespace?: string): void {
+    this.tracer.putMetadata(key, value, namespace);
+  }
+
+  // High-level business metrics
+  recordWebSocketEvent(
+    event: 'connect' | 'disconnect' | 'message' | 'ping',
+    success: boolean,
+    duration?: number,
+    errorType?: string,
+    connectionId?: string
+  ): void {
+    this.addCountMetric(`websocket_${event}`, 1);
+    this.addMetadata('success', success.toString());
+    this.addMetadata('event_type', event);
+
+    if (connectionId) {
+      this.addMetadata('connection_id', connectionId);
+    }
+
+    if (duration !== undefined) {
+      this.addDurationMetric(`websocket_${event}_duration`, duration);
+    }
+
+    if (!success && errorType) {
+      this.addCountMetric(`websocket_${event}_error`, 1);
+      this.addMetadata('error_type', errorType);
+    }
+
+    this.putAnnotation('websocket_event', event);
+    this.putAnnotation('success', success.toString());
+  }
+
+  recordDatabaseOperation(
+    operation: string,
+    tableName: string,
+    success: boolean,
+    duration: number,
+    errorType?: string
+  ): void {
+    this.addCountMetric(`database_${operation}`, 1);
+    this.addDurationMetric(`database_${operation}_duration`, duration);
+    this.addMetadata('table_name', tableName);
+    this.addMetadata('success', success.toString());
+
+    if (!success && errorType) {
+      this.addCountMetric(`database_${operation}_error`, 1);
+      this.addMetadata('error_type', errorType);
+    }
+
+    this.putAnnotation('db_operation', operation);
+    this.putAnnotation('db_table', tableName);
+    this.putAnnotation('success', success.toString());
+  }
+
+  recordAuthenticationEvent(
+    success: boolean,
+    duration: number,
+    errorType?: string,
+    userId?: string
+  ): void {
+    this.addCountMetric('authentication', 1);
+    this.addDurationMetric('authentication_duration', duration);
+    this.addMetadata('success', success.toString());
+
+    if (userId) {
+      this.addMetadata('user_id', userId);
+    }
+
+    if (!success && errorType) {
+      this.addCountMetric('authentication_error', 1);
+      this.addMetadata('error_type', errorType);
+    }
+
+    this.putAnnotation('auth_success', success.toString());
+    if (userId) {
+      this.putAnnotation('user_id', userId);
+    }
+  }
+
+  recordError(
+    errorType: string,
+    operation: string,
+    errorMessage?: string,
+    additionalMetadata?: Record<string, string>
+  ): void {
+    this.addCountMetric('error_count', 1);
+    this.addMetadata('error_type', errorType);
+    this.addMetadata('operation', operation);
+
+    if (errorMessage) {
+      this.addMetadata('error_message', errorMessage);
+    }
+
+    if (additionalMetadata) {
+      Object.entries(additionalMetadata).forEach(([key, val]) => {
+        this.addMetadata(key, val);
       });
-    },
-    after: async (
-      request: middy.Request<APIGatewayProxyEvent, APIGatewayProxyResult, Error>
-    ): Promise<void> => {
-      logger.info('Outgoing response', {
-        statusCode: (request.response as APIGatewayProxyResult).statusCode,
-        body: (request.response as APIGatewayProxyResult).body,
-        requestId: request.event.requestContext?.requestId,
-      });
-    },
-    onError: async (
-      request: middy.Request<APIGatewayProxyEvent, APIGatewayProxyResult, Error>
-    ): Promise<void> => {
-      logger.error('Request failed', {
-        error: (request.error as Error)?.message,
-        stack: (request.error as Error)?.stack,
-        requestId: request.event.requestContext?.requestId,
-      });
-    },
-  };
-};
+    }
 
-// Custom middleware for WebSocket-specific logging
-export const websocketLogger = () => {
-  return {
-    before: async (
-      request: middy.Request<APIGatewayProxyEvent, APIGatewayProxyResult, Error>
-    ): Promise<void> => {
-      const event = request.event;
+    this.putAnnotation('error', 'true');
+    this.putAnnotation('error_type', errorType);
+    this.putAnnotation('operation', operation);
+  }
 
-      // Sanitize body to avoid logging sensitive data
-      const sanitizedBody = event.body
-        ? {
-            length: event.body.length,
-            hasContent: true,
-            // Only log first 100 chars for debugging, but mask potential tokens
-            preview:
-              event.body.length > 100
-                ? event.body.substring(0, 100) + '...'
-                : event.body.replace(/"token"\s*:\s*"[^"]*"/g, '"token":"***"'),
-          }
-        : null;
+  // Performance monitoring with automatic tracing
+  async withPerformanceMonitoring<T>(
+    operationName: string,
+    operation: () => Promise<T>,
+    metadata?: Record<string, string>
+  ): Promise<T> {
+    const startTime = Date.now();
+    const startMemory = process.memoryUsage().heapUsed;
 
-      logger.info('WebSocket event received', {
-        eventType: event.requestContext?.eventType,
-        connectionId: event.requestContext?.connectionId,
-        routeKey: event.requestContext?.routeKey,
-        messageId: event.requestContext?.messageId,
-        requestId: event.requestContext?.requestId,
-        body: sanitizedBody,
-      });
-    },
-    after: async (
-      request: middy.Request<APIGatewayProxyEvent, APIGatewayProxyResult, Error>
-    ): Promise<void> => {
-      const event = request.event;
-      logger.info('WebSocket response sent', {
-        statusCode: (request.response as APIGatewayProxyResult).statusCode,
-        connectionId: event.requestContext?.connectionId,
-        requestId: event.requestContext?.requestId,
-      });
-    },
-    onError: async (
-      request: middy.Request<APIGatewayProxyEvent, APIGatewayProxyResult, Error>
-    ): Promise<void> => {
-      const event = request.event;
-      logger.error('WebSocket event failed', {
-        error: (request.error as Error)?.message,
-        stack: (request.error as Error)?.stack,
-        connectionId: event.requestContext?.connectionId,
-        requestId: event.requestContext?.requestId,
-        eventType: event.requestContext?.eventType,
-      });
-    },
-  };
-};
+    const subsegment = this.tracer
+      .getSegment()
+      ?.addNewSubsegment(operationName);
 
-// Custom middleware for WebSocket message validation
-export const websocketMessageValidator = () => {
-  return {
-    before: async (
-      request: middy.Request<APIGatewayProxyEvent, APIGatewayProxyResult, Error>
-    ): Promise<void> => {
-      const event = request.event;
-
-      // Only validate message events
-      if (event.requestContext?.eventType === 'MESSAGE' && event.body) {
-        try {
-          const parsedBody = JSON.parse(event.body);
-          commonSchemas.websocketMessageBody.parse(parsedBody);
-
-          // Add parsed body to request for use in handler
-          (
-            request as middy.Request<
-              APIGatewayProxyEvent,
-              APIGatewayProxyResult,
-              Error
-            > & { parsedBody: unknown }
-          ).parsedBody = parsedBody;
-        } catch (error) {
-          logger.error('WebSocket message validation failed', {
-            error: error instanceof Error ? error.message : String(error),
-            connectionId: event.requestContext?.connectionId,
-            body: event.body,
-          });
-          throw error;
-        }
+    try {
+      if (metadata) {
+        Object.entries(metadata).forEach(([key, value]) => {
+          this.addMetadata(key, value);
+          subsegment?.addAnnotation(key, value);
+        });
       }
-    },
+
+      const result = await operation();
+
+      const duration = Date.now() - startTime;
+      const memoryUsed = process.memoryUsage().heapUsed - startMemory;
+
+      this.addDurationMetric(`${operationName}_duration`, duration);
+      this.addMemoryMetric(`${operationName}_memory`, memoryUsed);
+      this.addCountMetric(`${operationName}_success`, 1);
+
+      this.putAnnotation('operation', operationName);
+      this.putAnnotation('duration_ms', duration);
+      this.putAnnotation('success', 'true');
+
+      subsegment?.close();
+
+      return result;
+    } catch (err) {
+      const duration = Date.now() - startTime;
+      const memoryUsed = process.memoryUsage().heapUsed - startMemory;
+
+      this.addDurationMetric(`${operationName}_duration`, duration);
+      this.addMemoryMetric(`${operationName}_memory`, memoryUsed);
+      this.addCountMetric(`${operationName}_error`, 1);
+
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      const errorType = err instanceof Error ? err.constructor.name : 'Unknown';
+
+      this.recordError(errorType, operationName, errorMessage);
+
+      subsegment?.addError(err instanceof Error ? err : new Error(String(err)));
+      subsegment?.close(err instanceof Error ? err : new Error(String(err)));
+
+      throw err;
+    }
+  }
+}
+
+// Create the unified service instance
+export const powertoolsMetricsService = new PowertoolsMetricsService(
+  metrics,
+  tracer
+);
+
+// Convenience function for tracing Lambda handlers
+export const withTracing = <T extends unknown[], R>(
+  name: string,
+  fn: (...args: T) => Promise<R>
+) => {
+  return async (...args: T): Promise<R> => {
+    return powertoolsMetricsService.withPerformanceMonitoring(name, () =>
+      fn(...args)
+    );
   };
 };
 
-// Enhanced middleware factory function
+// Enhanced handler factory with automatic tracing and error handling
 export const createHandler = <
   TEvent = APIGatewayProxyEvent,
   TResult = APIGatewayProxyResult,
@@ -246,14 +353,8 @@ export const createHandler = <
   handler: (event: TEvent) => Promise<TResult>,
   schema?: ZodSchema
 ) => {
-  const middlewares = [
-    httpJsonBodyParser(),
-    cors(),
-    requestResponseLogger(), // Add automatic logging
-    httpErrorHandler(),
-  ];
+  const middlewares = [httpJsonBodyParser(), cors(), httpErrorHandler()];
 
-  // Add validator middleware if schema is provided
   if (schema) {
     middlewares.push(
       validator({
@@ -265,7 +366,7 @@ export const createHandler = <
   return middy(handler).use(middlewares);
 };
 
-// WebSocket-specific middleware factory function
+// WebSocket-specific handler factory
 export const createWebSocketHandler = <
   TEvent = APIGatewayProxyEvent,
   TResult = APIGatewayProxyResult,
@@ -273,13 +374,8 @@ export const createWebSocketHandler = <
   handler: (event: TEvent, context?: unknown) => Promise<TResult>,
   schema?: ZodSchema
 ) => {
-  const middlewares = [
-    websocketLogger(), // Add WebSocket-specific logging
-    websocketMessageValidator(), // Add WebSocket message validation
-    httpErrorHandler(),
-  ];
+  const middlewares = [httpErrorHandler()];
 
-  // Add validator middleware if schema is provided
   if (schema) {
     middlewares.push(
       validator({
@@ -289,230 +385,4 @@ export const createWebSocketHandler = <
   }
 
   return middy(handler).use(middlewares);
-};
-
-// Common Zod schemas
-export const commonSchemas = {
-  // Health check schema - validates the entire API Gateway event
-  health: z.object({
-    httpMethod: z.string().min(1).max(10),
-    path: z.string().min(1).max(2000),
-    queryStringParameters: z.record(z.string().max(1000)).optional().nullable(),
-    pathParameters: z.record(z.string().max(1000)).optional().nullable(),
-    headers: z.record(z.string().max(10000)).optional(),
-    body: z.any().optional(),
-    requestContext: z.any().optional(),
-    multiValueQueryStringParameters: z
-      .record(z.array(z.string().max(1000)).max(100))
-      .optional()
-      .nullable(),
-    multiValueHeaders: z
-      .record(z.array(z.string().max(10000)).max(100))
-      .optional(),
-    isBase64Encoded: z.boolean().optional(),
-  }),
-
-  // Generic API Gateway event schema
-  apiGatewayEvent: z.object({
-    httpMethod: z.string().min(1).max(10),
-    path: z.string().min(1).max(2000),
-    queryStringParameters: z.record(z.string().max(1000)).optional().nullable(),
-    pathParameters: z.record(z.string().max(1000)).optional().nullable(),
-    headers: z.record(z.string().max(10000)).optional(),
-    body: z.any().optional(),
-    requestContext: z.any().optional(),
-    multiValueQueryStringParameters: z
-      .record(z.array(z.string().max(1000)).max(100))
-      .optional()
-      .nullable(),
-    multiValueHeaders: z
-      .record(z.array(z.string().max(10000)).max(100))
-      .optional(),
-    isBase64Encoded: z.boolean().optional(),
-  }),
-
-  // WebSocket connection event schema
-  websocketConnection: z.object({
-    httpMethod: z.string().min(1).max(10).optional(),
-    path: z.string().min(1).max(2000).optional(),
-    headers: z.record(z.string().max(10000)).optional(),
-    requestContext: z.object({
-      requestId: z.string().min(1).max(100),
-      connectionId: z
-        .string()
-        .min(1)
-        .max(100)
-        .regex(
-          /^[a-zA-Z0-9\-_=]+$/,
-          'Connection ID contains invalid characters'
-        ),
-      eventType: z.enum(['CONNECT', 'DISCONNECT']),
-      routeKey: z.string().max(100).optional(),
-      messageId: z.string().max(100).optional(),
-      apiId: z.string().min(1).max(100),
-      stage: z.string().min(1).max(50),
-    }),
-    multiValueHeaders: z
-      .record(z.array(z.string().max(10000)).max(100))
-      .optional(),
-    isBase64Encoded: z.boolean().optional(),
-  }),
-
-  // WebSocket message event schema
-  websocketMessage: z.object({
-    httpMethod: z.string().min(1).max(10).optional(),
-    path: z.string().min(1).max(2000).optional(),
-    headers: z.record(z.string().max(10000)).optional(),
-    body: z.string().max(100000).optional(), // 100KB max body size
-    requestContext: z.object({
-      requestId: z.string().min(1).max(100),
-      connectionId: z
-        .string()
-        .min(1)
-        .max(100)
-        .regex(
-          /^[a-zA-Z0-9\-_=]+$/,
-          'Connection ID contains invalid characters'
-        ),
-      eventType: z.enum(['MESSAGE']),
-      routeKey: z.string().min(1).max(100),
-      messageId: z.string().min(1).max(100),
-      apiId: z.string().min(1).max(100),
-      stage: z.string().min(1).max(50),
-    }),
-    multiValueHeaders: z
-      .record(z.array(z.string().max(10000)).max(100))
-      .optional(),
-    isBase64Encoded: z.boolean().optional(),
-  }),
-
-  // Enhanced WebSocket message body schema with comprehensive validation
-  websocketMessageBody: z
-    .object({
-      type: z.enum(['auth', 'message', 'ping'], {
-        errorMap: () => ({
-          message: 'Message type must be one of: auth, message, ping',
-        }),
-      }),
-      data: z
-        .object({
-          action: z
-            .string()
-            .min(1)
-            .max(50)
-            .regex(/^[a-zA-Z0-9_]+$/, {
-              message:
-                'Action must contain only alphanumeric characters and underscores',
-            }),
-          message: z
-            .string()
-            .min(1, 'Message cannot be empty')
-            .max(10000, 'Message too long (max 10KB)')
-            .regex(/^[\s\S]*$/, 'Message contains invalid characters')
-            .optional(),
-          sessionId: z
-            .string()
-            .min(1, 'Session ID cannot be empty')
-            .max(100, 'Session ID too long')
-            .regex(
-              /^[a-zA-Z0-9\-_=]+$/,
-              'Session ID contains invalid characters'
-            )
-            .optional(),
-          token: z
-            .string()
-            .min(1, 'Token cannot be empty')
-            .max(10000, 'Token too long')
-            .regex(/^[a-zA-Z0-9\-_.]+$/, 'Token contains invalid characters')
-            .optional(),
-        })
-        .refine(
-          data => {
-            // Validate that auth messages have token
-            if (data.action === 'authenticate' && !data.token) {
-              return false;
-            }
-            // Validate that message actions have message content
-            if (data.action === 'sendMessage' && !data.message) {
-              return false;
-            }
-            return true;
-          },
-          {
-            message: 'Invalid data for action type',
-            path: ['data'],
-          }
-        ),
-    })
-    .refine(
-      message => {
-        // Validate message type and action combinations
-        if (message.type === 'auth' && message.data.action !== 'authenticate') {
-          return false;
-        }
-        if (
-          message.type === 'message' &&
-          message.data.action !== 'sendMessage'
-        ) {
-          return false;
-        }
-        if (message.type === 'ping' && message.data.action) {
-          return false;
-        }
-        return true;
-      },
-      {
-        message: 'Invalid message type and action combination',
-        path: ['type'],
-      }
-    ),
-
-  // Enhanced authentication message schema
-  authMessage: z.object({
-    type: z.literal('auth'),
-    data: z.object({
-      action: z.literal('authenticate'),
-      token: z
-        .string()
-        .min(1, 'Authentication token is required')
-        .max(10000, 'Token too long')
-        .regex(/^[a-zA-Z0-9\-_.]+$/, 'Token contains invalid characters'),
-      sessionId: z
-        .string()
-        .max(100, 'Session ID too long')
-        .regex(/^[a-zA-Z0-9\-_=]+$/, 'Session ID contains invalid characters')
-        .optional(),
-    }),
-  }),
-
-  // Enhanced chat message schema
-  chatMessage: z.object({
-    type: z.literal('message'),
-    data: z.object({
-      action: z.literal('sendMessage'),
-      message: z
-        .string()
-        .min(1, 'Message content is required')
-        .max(10000, 'Message too long (max 10KB)')
-        .regex(/^[\s\S]*$/, 'Message contains invalid characters'),
-      sessionId: z
-        .string()
-        .max(100, 'Session ID too long')
-        .regex(/^[a-zA-Z0-9\-_=]+$/, 'Session ID contains invalid characters')
-        .optional(),
-    }),
-  }),
-
-  // Enhanced ping message schema
-  pingMessage: z.object({
-    type: z.literal('ping'),
-    data: z.object({
-      action: z.string().optional(), // Ping doesn't require action
-      sessionId: z
-        .string()
-        .max(100, 'Session ID too long')
-        .regex(/^[a-zA-Z0-9\-_=]+$/, 'Session ID contains invalid characters')
-        .optional(),
-    }),
-  }),
 };

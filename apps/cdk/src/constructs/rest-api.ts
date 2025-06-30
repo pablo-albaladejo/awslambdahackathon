@@ -1,11 +1,9 @@
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
-import * as lambda from 'aws-cdk-lib/aws-lambda';
 import { Construct } from 'constructs';
 
 export interface RestApiProps {
   environment: string;
   appName: string;
-  mcpHostFunction: lambda.IFunction;
 }
 
 export class RestApi extends Construct {
@@ -45,13 +43,5 @@ export class RestApi extends Construct {
     this.restApi.root
       .addResource('health')
       .addMethod('GET', healthMockIntegration);
-
-    // MCP Host endpoint
-    const mcpHostIntegration = new apigateway.LambdaIntegration(
-      props.mcpHostFunction
-    );
-    this.restApi.root
-      .addResource('mcp-host')
-      .addMethod('POST', mcpHostIntegration);
   }
 }
