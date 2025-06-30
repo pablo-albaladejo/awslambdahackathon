@@ -86,7 +86,7 @@ export class AuthenticationService implements DomainAuthenticationService {
         tokenUse: payload.token_use,
       });
 
-      const user = await this.userRepository.findByUsername(payload.username);
+      let user = await this.userRepository.findByUsername(payload.username);
 
       logger.info('User lookup completed', {
         username: payload.username,
@@ -96,13 +96,29 @@ export class AuthenticationService implements DomainAuthenticationService {
       });
 
       if (!user) {
-        logger.warn('User not found in repository', {
+        logger.info('User not found, creating new user from JWT payload', {
           username: payload.username,
+          sub: payload.sub,
         });
-        return {
-          success: false,
-          error: 'User not found',
-        };
+
+        // Create new user from JWT payload
+        user = User.fromData({
+          id: payload.sub, // Use Cognito user ID as our user ID
+          username: payload.username,
+          groups: ['user' as UserGroup], // Default all users to 'user' group
+          createdAt: new Date(),
+          lastActivityAt: new Date(),
+          isActive: true,
+        });
+
+        // Save the user (this will create a session automatically in our session-based repository)
+        await this.userRepository.save(user);
+
+        logger.info('New user created successfully', {
+          userId: user.getId().getValue(),
+          username: user.getUsername(),
+          groups: user.getGroups(),
+        });
       }
 
       if (!user.isActive()) {
