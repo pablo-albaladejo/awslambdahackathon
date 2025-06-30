@@ -3,7 +3,6 @@ import {
   DynamoDBDocumentClient,
   GetCommand,
   PutCommand,
-  QueryCommand,
   ScanCommand,
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
@@ -54,12 +53,12 @@ export class DynamoDBConnectionRepository implements ConnectionRepository {
   async findByUserId(userId: UserId): Promise<Connection[]> {
     try {
       const result = await this.ddbClient.send(
-        new QueryCommand({
+        new ScanCommand({
           TableName: this.tableName,
-          IndexName: 'userId-index',
-          KeyConditionExpression: 'userId = :userId',
+          FilterExpression: 'userId = :userId AND begins_with(pk, :prefix)',
           ExpressionAttributeValues: {
             ':userId': userId.getValue(),
+            ':prefix': 'CONNECTION#',
           },
         })
       );
@@ -80,12 +79,13 @@ export class DynamoDBConnectionRepository implements ConnectionRepository {
   async findBySessionId(sessionId: SessionId): Promise<Connection[]> {
     try {
       const result = await this.ddbClient.send(
-        new QueryCommand({
+        new ScanCommand({
           TableName: this.tableName,
-          IndexName: 'sessionId-index',
-          KeyConditionExpression: 'sessionId = :sessionId',
+          FilterExpression:
+            'sessionId = :sessionId AND begins_with(pk, :prefix)',
           ExpressionAttributeValues: {
             ':sessionId': sessionId.getValue(),
+            ':prefix': 'CONNECTION#',
           },
         })
       );
@@ -106,12 +106,15 @@ export class DynamoDBConnectionRepository implements ConnectionRepository {
   async findByStatus(status: ConnectionStatus): Promise<Connection[]> {
     try {
       const result = await this.ddbClient.send(
-        new QueryCommand({
+        new ScanCommand({
           TableName: this.tableName,
-          IndexName: 'status-index',
-          KeyConditionExpression: 'status = :status',
+          FilterExpression: '#status = :status AND begins_with(pk, :prefix)',
+          ExpressionAttributeNames: {
+            '#status': 'status',
+          },
           ExpressionAttributeValues: {
             ':status': status,
+            ':prefix': 'CONNECTION#',
           },
         })
       );

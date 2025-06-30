@@ -8,6 +8,7 @@ export interface ConnectionRecordDto {
   SK: AttributeValue;
   connectionId: AttributeValue;
   userId?: AttributeValue;
+  sessionId?: AttributeValue;
   connectedAt: AttributeValue;
   lastActivityAt: AttributeValue;
   isActive: AttributeValue;
@@ -27,6 +28,7 @@ export interface ConnectionRecordPlainDto {
   SK: string;
   connectionId: string;
   userId?: string;
+  sessionId?: string;
   connectedAt: string;
   lastActivityAt: string;
   isActive: boolean;
@@ -47,6 +49,7 @@ export interface ConnectionQueryDto {
   GSI1PK?: string;
   connectionId?: string;
   userId?: string;
+  sessionId?: string;
   isActive?: boolean;
   status?: string;
   connectedAfter?: string;
