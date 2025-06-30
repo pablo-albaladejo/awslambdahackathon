@@ -256,7 +256,9 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
           JSON.parse(event.data)
         );
         if (!validation.success || !validation.data) {
+          const errorMessage = validation.error || 'Invalid message format';
           logger.error('Invalid message received:', validation.error);
+          handleError(errorMessage);
           return;
         }
         const data = validation.data;

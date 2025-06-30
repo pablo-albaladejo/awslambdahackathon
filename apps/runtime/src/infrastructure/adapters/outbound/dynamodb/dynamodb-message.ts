@@ -1,9 +1,9 @@
 import {
   DeleteCommand,
   DynamoDBDocumentClient,
-  GetCommand,
   PutCommand,
   QueryCommand,
+  ScanCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { logger } from '@awslambdahackathon/utils/lambda';
 import { Message, MessageStatus, MessageType } from '@domain/entities/message';
@@ -23,25 +23,25 @@ export class DynamoDBMessageRepository implements MessageRepository {
   async findById(id: MessageId): Promise<Message | null> {
     try {
       const result = await this.ddbClient.send(
-        new GetCommand({
+        new ScanCommand({
           TableName: this.tableName,
-          Key: {
-            pk: `MESSAGE#${id.getValue()}`,
-            sk: `MESSAGE#${id.getValue()}`,
+          FilterExpression: 'messageId = :messageId',
+          ExpressionAttributeValues: {
+            ':messageId': id.getValue(),
           },
         })
       );
 
-      if (!result.Item) {
+      if (!result.Items || result.Items.length === 0) {
         return null;
       }
 
-      return this.mapToMessage(result.Item);
+      return this.mapToMessage(result.Items[0]);
     } catch (error) {
       logger.error('Error finding message by ID', {
         error: error instanceof Error ? error.message : String(error),
       });
-      throw new Error('Failed to find message by ID');
+      throw new Error('Failed to find message');
     }
   }
 
@@ -50,7 +50,6 @@ export class DynamoDBMessageRepository implements MessageRepository {
       const result = await this.ddbClient.send(
         new QueryCommand({
           TableName: this.tableName,
-          IndexName: 'sessionId-index',
           KeyConditionExpression: 'sessionId = :sessionId',
           ExpressionAttributeValues: {
             ':sessionId': sessionId.getValue(),
@@ -102,14 +101,15 @@ export class DynamoDBMessageRepository implements MessageRepository {
   async findByType(type: MessageType): Promise<Message[]> {
     try {
       const result = await this.ddbClient.send(
-        new QueryCommand({
+        new ScanCommand({
           TableName: this.tableName,
-          IndexName: 'type-index',
-          KeyConditionExpression: 'type = :type',
+          FilterExpression: '#type = :type',
+          ExpressionAttributeNames: {
+            '#type': 'type',
+          },
           ExpressionAttributeValues: {
             ':type': type,
           },
-          ScanIndexForward: false, // Most recent first
         })
       );
 
@@ -128,19 +128,19 @@ export class DynamoDBMessageRepository implements MessageRepository {
 
   async save(message: Message): Promise<void> {
     try {
+      const timestamp = message.getCreatedAt().toISOString();
       await this.ddbClient.send(
         new PutCommand({
           TableName: this.tableName,
           Item: {
-            pk: `MESSAGE#${message.getId().getValue()}`,
-            sk: `MESSAGE#${message.getId().getValue()}`,
+            sessionId: message.getSessionId().getValue(),
+            timestamp: timestamp,
             messageId: message.getId().getValue(),
             content: message.getContent(),
             type: message.getType(),
             userId: message.getUserId().getValue(),
-            sessionId: message.getSessionId().getValue(),
             status: message.getStatus(),
-            createdAt: message.getCreatedAt().toISOString(),
+            createdAt: timestamp,
             metadata: message.getMetadata(),
             replyToMessageId: message.getReplyToMessageId()?.getValue(),
             ttl: Math.floor(Date.now() / 1000) + 24 * 60 * 60, // 24 hours
@@ -157,12 +157,17 @@ export class DynamoDBMessageRepository implements MessageRepository {
 
   async delete(id: MessageId): Promise<void> {
     try {
+      const message = await this.findById(id);
+      if (!message) {
+        throw new Error('Message not found');
+      }
+
       await this.ddbClient.send(
         new DeleteCommand({
           TableName: this.tableName,
           Key: {
-            pk: `MESSAGE#${id.getValue()}`,
-            sk: `MESSAGE#${id.getValue()}`,
+            sessionId: message.getSessionId().getValue(),
+            timestamp: message.getCreatedAt().toISOString(),
           },
         })
       );
@@ -176,17 +181,8 @@ export class DynamoDBMessageRepository implements MessageRepository {
 
   async exists(id: MessageId): Promise<boolean> {
     try {
-      const result = await this.ddbClient.send(
-        new GetCommand({
-          TableName: this.tableName,
-          Key: {
-            pk: `MESSAGE#${id.getValue()}`,
-            sk: `MESSAGE#${id.getValue()}`,
-          },
-        })
-      );
-
-      return !!result.Item;
+      const message = await this.findById(id);
+      return message !== null;
     } catch (error) {
       logger.error('Error checking if message exists', {
         error: error instanceof Error ? error.message : String(error),
@@ -233,8 +229,11 @@ export class DynamoDBMessageRepository implements MessageRepository {
         new QueryCommand({
           TableName: this.tableName,
           IndexName: 'userId-index',
-          KeyConditionExpression: 'userId = :userId',
-          FilterExpression: 'createdAt BETWEEN :startDate AND :endDate',
+          KeyConditionExpression:
+            'userId = :userId AND #timestamp BETWEEN :startDate AND :endDate',
+          ExpressionAttributeNames: {
+            '#timestamp': 'timestamp',
+          },
           ExpressionAttributeValues: {
             ':userId': userId.getValue(),
             ':startDate': startDate.toISOString(),
@@ -285,7 +284,6 @@ export class DynamoDBMessageRepository implements MessageRepository {
       const result = await this.ddbClient.send(
         new QueryCommand({
           TableName: this.tableName,
-          IndexName: 'sessionId-index',
           KeyConditionExpression: 'sessionId = :sessionId',
           ExpressionAttributeValues: {
             ':sessionId': sessionId.getValue(),
@@ -331,13 +329,13 @@ export class DynamoDBMessageRepository implements MessageRepository {
     };
 
     return Message.fromData({
-      id: safeString(item.messageId || item.id),
+      id: safeString(item.messageId),
       content: safeString(item.content),
       type: safeMessageType(item.type),
       userId: safeString(item.userId),
       sessionId: safeString(item.sessionId),
       status: safeMessageStatus(item.status),
-      createdAt: new Date(safeString(item.createdAt)),
+      createdAt: new Date(safeString(item.createdAt || item.timestamp)),
       metadata: (item.metadata as Record<string, unknown>) || {},
       replyToMessageId: item.replyToMessageId
         ? safeString(item.replyToMessageId)

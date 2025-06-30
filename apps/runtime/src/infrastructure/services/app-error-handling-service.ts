@@ -8,6 +8,7 @@ import {
   LambdaEvent,
   LambdaResponse,
 } from '@infrastructure/adapters/outbound/lambda';
+import { z } from 'zod';
 
 export enum ErrorType {
   VALIDATION_ERROR = 'VALIDATION_ERROR',
@@ -114,15 +115,28 @@ export class ApplicationErrorHandlingService implements ErrorHandlingService {
       return error;
     }
 
-    const appError = this.createError(
-      ErrorType.INTERNAL_ERROR,
-      error.message || 'An unexpected error occurred',
-      'INTERNAL_ERROR',
-      {
-        originalError: error.name,
-        stack: error.stack,
+    let errorType = ErrorType.INTERNAL_ERROR;
+    let errorCode = 'INTERNAL_ERROR';
+    let details: Record<string, unknown> | undefined = {
+      originalError: error.name,
+      stack: error.stack,
+      ...context,
+    };
+
+    if (error instanceof z.ZodError) {
+      errorType = ErrorType.VALIDATION_ERROR;
+      errorCode = 'VALIDATION_ERROR';
+      details = {
+        issues: error.errors,
         ...context,
-      },
+      };
+    }
+
+    const appError = this.createError(
+      errorType,
+      error.message || 'An unexpected error occurred',
+      errorCode,
+      details,
       context?.correlationId as string
     );
 
