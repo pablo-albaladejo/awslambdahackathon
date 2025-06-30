@@ -1,14 +1,14 @@
 # Performance Monitoring Service Usage Guide
 
-Este documento explica dónde y cómo se utiliza el `PerformanceMonitoringService` en la aplicación de WebSocket.
+This document explains where and how the `PerformanceMonitoringService` is used in the WebSocket application.
 
-## Ubicaciones donde se usa PerformanceMonitoringService
+## Locations where PerformanceMonitoringService is used
 
-### 1. **Handlers de WebSocket** (Monitoreo de Performance General)
+### 1. **WebSocket Handlers** (General Performance Monitoring)
 
 #### Conversation Handler (`apps/runtime/src/entry-points/api-gateway/websockets/conversation.ts`)
 
-**Monitoreo de:** Performance general del handler de conversación
+**Monitoring:** General performance of the conversation handler
 
 ```typescript
 // Start performance monitoring
@@ -21,14 +21,14 @@ const performanceMonitor = container
     correlationId,
   });
 
-// Completar con éxito para autenticación
+// Complete successfully for authentication
 performanceMonitor.complete(true, {
   messageType: 'auth',
   action: data.action,
   hasToken: !!data.token,
 });
 
-// Completar con éxito para mensajes de chat
+// Complete successfully for chat messages
 performanceMonitor.complete(true, {
   messageType: 'message',
   action: data.action,
@@ -36,13 +36,13 @@ performanceMonitor.complete(true, {
   sessionId: data.sessionId,
 });
 
-// Completar con éxito para ping
+// Complete successfully for ping
 performanceMonitor.complete(true, {
   messageType: 'ping',
   action: data.action,
 });
 
-// Completar con error
+// Complete with error
 performanceMonitor.complete(false, {
   messageType: type,
   action,
@@ -50,19 +50,19 @@ performanceMonitor.complete(false, {
 });
 ```
 
-**Métricas Capturadas:**
+**Captured Metrics:**
 
-- Duración de ejecución
-- Uso de memoria
-- Tipo de mensaje procesado
-- Acción realizada
-- Longitud del mensaje
-- Estado de autenticación
-- Errores específicos
+- Execution duration
+- Memory usage
+- Processed message type
+- Action performed
+- Message length
+- Authentication status
+- Specific errors
 
 #### Connection Handler (`apps/runtime/src/entry-points/api-gateway/websockets/connection.ts`)
 
-**Monitoreo de:** Performance del ciclo de vida de conexiones
+**Monitoring:** Performance of the connection lifecycle
 
 ```typescript
 // Start performance monitoring
@@ -74,19 +74,19 @@ const performanceMonitor = container
     requestId: event.requestContext.requestId,
   });
 
-// Conexión exitosa
+// Successful connection
 performanceMonitor.complete(true, {
   eventType: 'connect',
   connectionId,
 });
 
-// Desconexión exitosa
+// Successful disconnection
 performanceMonitor.complete(true, {
   eventType: 'disconnect',
   connectionId,
 });
 
-// Desconexión con warning de limpieza fallida
+// Disconnection with failed cleanup warning
 performanceMonitor.complete(true, {
   eventType: 'disconnect',
   connectionId,
@@ -94,7 +94,7 @@ performanceMonitor.complete(true, {
   error: appError.type,
 });
 
-// Error de conexión
+// Connection error
 performanceMonitor.complete(false, {
   eventType: 'connect',
   connectionId,
@@ -103,18 +103,18 @@ performanceMonitor.complete(false, {
 });
 ```
 
-**Métricas Capturadas:**
+**Captured Metrics:**
 
-- Duración de conexión/desconexión
-- Tipo de evento (connect/disconnect)
-- Errores de limpieza
-- Estado de la operación
+- Connection/disconnection duration
+- Event type (connect/disconnect)
+- Cleanup errors
+- Operation status
 
-### 2. **Servicios de Autenticación** (Monitoreo de JWT Verification)
+### 2. **Authentication Services** (JWT Verification Monitoring)
 
 #### AuthenticationService (`apps/runtime/src/services/authentication-service.ts`)
 
-**Monitoreo de:** Performance de verificación de JWT con Cognito
+**Monitoring:** Performance of JWT verification with Cognito
 
 ```typescript
 // Start performance monitoring for authentication
@@ -126,7 +126,7 @@ const performanceMonitor = container
     correlationId: this.generateCorrelationId(),
   });
 
-// Autenticación exitosa
+// Successful authentication
 performanceMonitor.complete(true, {
   userId: user.userId,
   username: user.username,
@@ -134,7 +134,7 @@ performanceMonitor.complete(true, {
   groups: user.groups,
 });
 
-// Token expirado
+// Expired token
 performanceMonitor.complete(false, {
   error: 'TOKEN_EXPIRED',
   errorType,
@@ -142,33 +142,33 @@ performanceMonitor.complete(false, {
   now,
 });
 
-// Token inválido
+// Invalid token
 performanceMonitor.complete(false, {
   error: 'INVALID_TOKEN',
   errorType,
   errorMessage: error instanceof Error ? error.message : String(error),
 });
 
-// Token faltante
+// Missing token
 performanceMonitor.complete(false, {
   error: 'MISSING_TOKEN',
   errorType,
 });
 ```
 
-**Métricas Capturadas:**
+**Captured Metrics:**
 
-- Duración de verificación JWT
-- Longitud del token
-- Información del usuario autenticado
-- Tipos de error específicos
-- Tiempo de expiración vs tiempo actual
+- JWT verification duration
+- Token length
+- Authenticated user information
+- Specific error types
+- Expiration time vs. current time
 
-### 3. **Servicios de Chat** (Monitoreo de Operaciones de Base de Datos)
+### 3. **Chat Services** (Database Operations Monitoring)
 
 #### ChatService (`apps/runtime/src/services/chat-service.ts`)
 
-**Monitoreo de:** Performance de procesamiento de mensajes y operaciones de DB
+**Monitoring:** Performance of message processing and DB operations
 
 ```typescript
 // Start performance monitoring for chat message processing
@@ -181,7 +181,7 @@ const performanceMonitor = container
     sessionId,
   });
 
-// Procesamiento exitoso
+// Successful processing
 performanceMonitor.complete(true, {
   userId: user.userId,
   sessionId: currentSessionId,
@@ -189,7 +189,7 @@ performanceMonitor.complete(true, {
   messageType: 'user_and_bot',
 });
 
-// Error en procesamiento
+// Processing error
 performanceMonitor.complete(false, {
   error: error instanceof Error ? error.message : String(error),
   connectionId,
@@ -198,44 +198,44 @@ performanceMonitor.complete(false, {
 });
 ```
 
-**Métricas Capturadas:**
+**Captured Metrics:**
 
-- Duración de procesamiento de mensajes
-- Longitud del mensaje
-- ID de sesión
-- Operaciones de base de datos (almacenamiento de mensajes de usuario y bot)
-- Errores de procesamiento
+- Message processing duration
+- Message length
+- Session ID
+- Database operations (storing user and bot messages)
+- Processing errors
 
-## Configuraciones de Monitoreo
+## Monitoring Configurations
 
-### Umbrales de Performance
+### Performance Thresholds
 
 ```typescript
 interface PerformanceThresholds {
   websocket_conversation: {
-    duration: 5000,        // 5 segundos máximo
-    memoryUsage: 100 * 1024 * 1024, // 100MB máximo
-    errorRate: 0.05,       // 5% máximo de errores
+    duration: 5000,        // 5 seconds max
+    memoryUsage: 100 * 1024 * 1024, // 100MB max
+    errorRate: 0.05,       // 5% max errors
   };
   websocket_connection: {
-    duration: 2000,        // 2 segundos máximo
-    memoryUsage: 50 * 1024 * 1024,  // 50MB máximo
-    errorRate: 0.02,       // 2% máximo de errores
+    duration: 2000,        // 2 seconds max
+    memoryUsage: 50 * 1024 * 1024,  // 50MB max
+    errorRate: 0.02,       // 2% max errors
   };
   authentication_jwt_verification: {
-    duration: 3000,        // 3 segundos máximo
-    memoryUsage: 20 * 1024 * 1024,  // 20MB máximo
-    errorRate: 0.10,       // 10% máximo de errores
+    duration: 3000,        // 3 seconds max
+    memoryUsage: 20 * 1024 * 1024,  // 20MB max
+    errorRate: 0.10,       // 10% max errors
   };
   chat_message_processing: {
-    duration: 1000,        // 1 segundo máximo
-    memoryUsage: 30 * 1024 * 1024,  // 30MB máximo
-    errorRate: 0.05,       // 5% máximo de errores
+    duration: 1000,        // 1 second max
+    memoryUsage: 30 * 1024 * 1024,  // 30MB max
+    errorRate: 0.05,       // 5% max errors
   };
 }
 ```
 
-### Métricas de Negocio
+### Business Metrics
 
 ```typescript
 interface BusinessMetrics {
@@ -275,12 +275,12 @@ interface BusinessMetrics {
 }
 ```
 
-## Integración con CloudWatch
+## Integration with CloudWatch
 
-### Métricas Personalizadas
+### Custom Metrics
 
 ```typescript
-// Métricas de duración
+// Duration metrics
 await cloudWatch
   .putMetricData({
     Namespace: 'WebSocket/Performance',
@@ -299,7 +299,7 @@ await cloudWatch
   })
   .promise();
 
-// Métricas de memoria
+// Memory metrics
 await cloudWatch
   .putMetricData({
     Namespace: 'WebSocket/Performance',
@@ -318,7 +318,7 @@ await cloudWatch
   })
   .promise();
 
-// Métricas de tasa de errores
+// Error rate metrics
 await cloudWatch
   .putMetricData({
     Namespace: 'WebSocket/Performance',
@@ -338,10 +338,10 @@ await cloudWatch
   .promise();
 ```
 
-### Alertas Automáticas
+### Automatic Alerts
 
 ```typescript
-// Alerta por duración excesiva
+// Alert for excessive duration
 const durationAlarm = new cloudwatch.Alarm(this, 'WebSocketDurationAlarm', {
   metric: new cloudwatch.Metric({
     namespace: 'WebSocket/Performance',
@@ -353,12 +353,12 @@ const durationAlarm = new cloudwatch.Alarm(this, 'WebSocketDurationAlarm', {
     statistic: 'Average',
     period: Duration.minutes(1),
   }),
-  threshold: 5000, // 5 segundos
+  threshold: 5000, // 5 seconds
   evaluationPeriods: 2,
   alarmDescription: 'WebSocket handler taking too long to respond',
 });
 
-// Alerta por uso de memoria excesivo
+// Alert for excessive memory usage
 const memoryAlarm = new cloudwatch.Alarm(this, 'WebSocketMemoryAlarm', {
   metric: new cloudwatch.Metric({
     namespace: 'WebSocket/Performance',
@@ -375,7 +375,7 @@ const memoryAlarm = new cloudwatch.Alarm(this, 'WebSocketMemoryAlarm', {
   alarmDescription: 'WebSocket handler using too much memory',
 });
 
-// Alerta por tasa de errores alta
+// Alert for high error rate
 const errorRateAlarm = new cloudwatch.Alarm(this, 'WebSocketErrorRateAlarm', {
   metric: new cloudwatch.Metric({
     namespace: 'WebSocket/Performance',
@@ -393,9 +393,9 @@ const errorRateAlarm = new cloudwatch.Alarm(this, 'WebSocketErrorRateAlarm', {
 });
 ```
 
-## Dashboards de Monitoreo
+## Monitoring Dashboards
 
-### Dashboard de Performance General
+### General Performance Dashboard
 
 ```typescript
 const performanceDashboard = new cloudwatch.Dashboard(
@@ -460,44 +460,44 @@ const performanceDashboard = new cloudwatch.Dashboard(
 );
 ```
 
-## Beneficios del Performance Monitoring
+## Benefits of Performance Monitoring
 
-### 1. **Visibilidad en Tiempo Real**
+### 1. **Real-Time Visibility**
 
-- Métricas de performance en tiempo real
-- Identificación rápida de cuellos de botella
-- Monitoreo de tendencias de performance
+- Real-time performance metrics
+- Quick identification of bottlenecks
+- Monitoring of performance trends
 
-### 2. **Alertas Proactivas**
+### 2. **Proactive Alerts**
 
-- Detección temprana de problemas
-- Alertas automáticas cuando se exceden umbrales
-- Reducción del tiempo de respuesta a incidentes
+- Early detection of problems
+- Automatic alerts when thresholds are exceeded
+- Reduction of incident response time
 
-### 3. **Optimización de Performance**
+### 3. **Performance Optimization**
 
-- Identificación de operaciones lentas
-- Análisis de patrones de uso
-- Optimización basada en datos reales
+- Identification of slow operations
+- Analysis of usage patterns
+- Optimization based on real data
 
-### 4. **Análisis de Capacidad**
+### 4. **Capacity Analysis**
 
-- Planificación de recursos
-- Predicción de necesidades de escalado
-- Optimización de costos
+- Resource planning
+- Prediction of scaling needs
+- Cost optimization
 
-### 5. **Debugging Mejorado**
+### 5. **Improved Debugging**
 
-- Contexto detallado de errores
-- Trazabilidad de requests
-- Análisis de causas raíz
+- Detailed error context
+- Request traceability
+- Root cause analysis
 
-## Próximos Pasos
+## Next Steps
 
-1. **Configuración de Alertas:** Implementar alertas de CloudWatch basadas en métricas de performance
-2. **Dashboards Personalizados:** Crear dashboards específicos para diferentes equipos
-3. **Análisis de Tendencias:** Implementar análisis de tendencias a largo plazo
-4. **Optimización Automática:** Configurar auto-scaling basado en métricas de performance
-5. **Testing de Performance:** Crear tests de performance automatizados
+1. **Alert Configuration:** Implement CloudWatch alerts based on performance metrics
+2. **Custom Dashboards:** Create specific dashboards for different teams
+3. **Trend Analysis:** Implement long-term trend analysis
+4. **Automatic Optimization:** Configure auto-scaling based on performance metrics
+5. **Performance Testing:** Create automated performance tests
 
-El `PerformanceMonitoringService` está ahora completamente integrado en todos los componentes críticos de la aplicación, proporcionando visibilidad completa del performance y facilitando la optimización continua.
+The `PerformanceMonitoringService` is now fully integrated into all critical components of the application, providing full visibility of performance and facilitating continuous optimization.

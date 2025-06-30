@@ -1,15 +1,15 @@
 # Circuit Breaker Service Usage Guide
 
-Este documento explica dónde y cómo se utiliza el `CircuitBreakerService` en la aplicación de WebSocket.
+This document explains where and how the `CircuitBreakerService` is used in the WebSocket application.
 
-## Ubicaciones donde se usa CircuitBreakerService
+## Locations where CircuitBreakerService is used
 
-### 1. **Servicio de Autenticación** (`apps/runtime/src/services/authentication-service.ts`)
+### 1. **Authentication Service** (`apps/runtime/src/services/authentication-service.ts`)
 
-**Operación Protegida:** Verificación de JWT con Cognito
+**Protected Operation:** JWT verification with Cognito
 
 ```typescript
-// Uso del circuit breaker para verificación de JWT
+// Use of the circuit breaker for JWT verification
 const payload = await circuitBreakerService.execute(
   'cognito',
   'verifyJWT',
@@ -17,35 +17,35 @@ const payload = await circuitBreakerService.execute(
     return await this.verifier.verify(token);
   },
   async () => {
-    // Comportamiento de fallback cuando Cognito no está disponible
+    // Fallback behavior when Cognito is unavailable
     logger.warn('Cognito service unavailable, using fallback authentication', {
       correlationId: this.generateCorrelationId(),
     });
     throw new Error('Authentication service temporarily unavailable');
   },
   {
-    failureThreshold: 3, // 3 fallos antes de abrir el circuito
-    recoveryTimeout: 30000, // 30 segundos de espera
-    expectedResponseTime: 2000, // 2 segundos de tiempo de respuesta esperado
-    monitoringWindow: 60000, // Ventana de monitoreo de 1 minuto
-    minimumRequestCount: 5, // Mínimo 5 requests antes de abrir el circuito
+    failureThreshold: 3, // 3 failures before opening the circuit
+    recoveryTimeout: 30000, // 30 seconds wait
+    expectedResponseTime: 2000, // 2 seconds expected response time
+    monitoringWindow: 60000, // 1 minute monitoring window
+    minimumRequestCount: 5, // Minimum 5 requests before opening the circuit
   }
 );
 ```
 
-**Configuración:**
+**Configuration:**
 
-- **Umbral de fallos:** 3 fallos consecutivos
-- **Tiempo de recuperación:** 30 segundos
-- **Tiempo de respuesta esperado:** 2 segundos
-- **Ventana de monitoreo:** 1 minuto
+- **Failure threshold:** 3 consecutive failures
+- **Recovery time:** 30 seconds
+- **Expected response time:** 2 seconds
+- **Monitoring window:** 1 minute
 
-### 2. **Servicio de WebSocket Message** (`apps/runtime/src/services/websocket-message-service.ts`)
+### 2. **WebSocket Message Service** (`apps/runtime/src/services/websocket-message-service.ts`)
 
-**Operación Protegida:** Envío de mensajes a través de API Gateway Management API
+**Protected Operation:** Sending messages via API Gateway Management API
 
 ```typescript
-// Uso del circuit breaker para envío de mensajes WebSocket
+// Use of the circuit breaker for sending WebSocket messages
 await circuitBreakerService.execute(
   'apigateway-management',
   'postToConnection',
@@ -58,7 +58,7 @@ await circuitBreakerService.execute(
     );
   },
   async () => {
-    // Comportamiento de fallback cuando API Gateway no está disponible
+    // Fallback behavior when API Gateway is unavailable
     logger.warn('API Gateway Management API unavailable, message not sent', {
       connectionId,
       messageType: message.type,
@@ -67,30 +67,30 @@ await circuitBreakerService.execute(
     throw new Error('WebSocket service temporarily unavailable');
   },
   {
-    failureThreshold: 5, // 5 fallos antes de abrir el circuito
-    recoveryTimeout: 15000, // 15 segundos de espera
-    expectedResponseTime: 1000, // 1 segundo de tiempo de respuesta esperado
-    monitoringWindow: 30000, // Ventana de monitoreo de 30 segundos
-    minimumRequestCount: 3, // Mínimo 3 requests antes de abrir el circuito
+    failureThreshold: 5, // 5 failures before opening the circuit
+    recoveryTimeout: 15000, // 15 seconds wait
+    expectedResponseTime: 1000, // 1 second expected response time
+    monitoringWindow: 30000, // 30 second monitoring window
+    minimumRequestCount: 3, // Minimum 3 requests before opening the circuit
   }
 );
 ```
 
-**Configuración:**
+**Configuration:**
 
-- **Umbral de fallos:** 5 fallos consecutivos
-- **Tiempo de recuperación:** 15 segundos
-- **Tiempo de respuesta esperado:** 1 segundo
-- **Ventana de monitoreo:** 30 segundos
+- **Failure threshold:** 5 consecutive failures
+- **Recovery time:** 15 seconds
+- **Expected response time:** 1 second
+- **Monitoring window:** 30 seconds
 
-### 3. **Servicio de Chat** (`apps/runtime/src/services/chat-service.ts`)
+### 3. **Chat Service** (`apps/runtime/src/services/chat-service.ts`)
 
-**Operaciones Protegidas:** Almacenamiento de mensajes en DynamoDB
+**Protected Operations:** Storing messages in DynamoDB
 
-#### Almacenamiento de mensaje de usuario:
+#### Storing user message:
 
 ```typescript
-// Circuit breaker para almacenamiento de mensaje de usuario
+// Circuit breaker for storing user message
 await circuitBreakerService.execute(
   'dynamodb',
   'storeUserMessage',
@@ -109,23 +109,23 @@ await circuitBreakerService.execute(
     );
   },
   async () => {
-    // Comportamiento de fallback cuando DynamoDB no está disponible
+    // Fallback behavior when DynamoDB is unavailable
     throw new Error('Database temporarily unavailable');
   },
   {
-    failureThreshold: 3, // 3 fallos antes de abrir el circuito
-    recoveryTimeout: 20000, // 20 segundos de espera
-    expectedResponseTime: 500, // 500ms de tiempo de respuesta esperado
-    monitoringWindow: 60000, // Ventana de monitoreo de 1 minuto
-    minimumRequestCount: 5, // Mínimo 5 requests antes de abrir el circuito
+    failureThreshold: 3, // 3 failures before opening the circuit
+    recoveryTimeout: 20000, // 20 seconds wait
+    expectedResponseTime: 500, // 500ms expected response time
+    monitoringWindow: 60000, // 1 minute monitoring window
+    minimumRequestCount: 5, // Minimum 5 requests before opening the circuit
   }
 );
 ```
 
-#### Almacenamiento de mensaje de bot:
+#### Storing bot message:
 
 ```typescript
-// Circuit breaker para almacenamiento de mensaje de bot
+// Circuit breaker for storing bot message
 await circuitBreakerService.execute(
   'dynamodb',
   'storeBotMessage',
@@ -144,34 +144,34 @@ await circuitBreakerService.execute(
     );
   },
   async () => {
-    // Comportamiento de fallback cuando DynamoDB no está disponible
+    // Fallback behavior when DynamoDB is unavailable
     throw new Error('Database temporarily unavailable');
   },
   {
-    failureThreshold: 3, // 3 fallos antes de abrir el circuito
-    recoveryTimeout: 20000, // 20 segundos de espera
-    expectedResponseTime: 500, // 500ms de tiempo de respuesta esperado
-    monitoringWindow: 60000, // Ventana de monitoreo de 1 minuto
-    minimumRequestCount: 5, // Mínimo 5 requests antes de abrir el circuito
+    failureThreshold: 3, // 3 failures before opening the circuit
+    recoveryTimeout: 20000, // 20 seconds wait
+    expectedResponseTime: 500, // 500ms expected response time
+    monitoringWindow: 60000, // 1 minute monitoring window
+    minimumRequestCount: 5, // Minimum 5 requests before opening the circuit
   }
 );
 ```
 
-**Configuración para DynamoDB:**
+**Configuration for DynamoDB:**
 
-- **Umbral de fallos:** 3 fallos consecutivos
-- **Tiempo de recuperación:** 20 segundos
-- **Tiempo de respuesta esperado:** 500ms
-- **Ventana de monitoreo:** 1 minuto
+- **Failure threshold:** 3 consecutive failures
+- **Recovery time:** 20 seconds
+- **Expected response time:** 500ms
+- **Monitoring window:** 1 minute
 
-### 4. **Servicio de Connection** (`apps/runtime/src/services/connection-service.ts`)
+### 4. **Connection Service** (`apps/runtime/src/services/connection-service.ts`)
 
-**Operaciones Protegidas:** Gestión de conexiones en DynamoDB
+**Protected Operations:** Managing connections in DynamoDB
 
-#### Almacenamiento de conexión:
+#### Storing connection:
 
 ```typescript
-// Circuit breaker para almacenamiento de conexión
+// Circuit breaker for storing connection
 await circuitBreakerService.execute(
   'dynamodb',
   'storeConnection',
@@ -184,23 +184,23 @@ await circuitBreakerService.execute(
     );
   },
   async () => {
-    // Comportamiento de fallback cuando DynamoDB no está disponible
+    // Fallback behavior when DynamoDB is unavailable
     throw new Error('Database temporarily unavailable');
   },
   {
-    failureThreshold: 3, // 3 fallos antes de abrir el circuito
-    recoveryTimeout: 20000, // 20 segundos de espera
-    expectedResponseTime: 500, // 500ms de tiempo de respuesta esperado
-    monitoringWindow: 60000, // Ventana de monitoreo de 1 minuto
-    minimumRequestCount: 5, // Mínimo 5 requests antes de abrir el circuito
+    failureThreshold: 3, // 3 failures before opening the circuit
+    recoveryTimeout: 20000, // 20 seconds wait
+    expectedResponseTime: 500, // 500ms expected response time
+    monitoringWindow: 60000, // 1 minute monitoring window
+    minimumRequestCount: 5, // Minimum 5 requests before opening the circuit
   }
 );
 ```
 
-#### Eliminación de conexión:
+#### Removing connection:
 
 ```typescript
-// Circuit breaker para eliminación de conexión
+// Circuit breaker for removing connection
 await circuitBreakerService.execute(
   'dynamodb',
   'removeConnection',
@@ -213,27 +213,27 @@ await circuitBreakerService.execute(
     );
   },
   async () => {
-    // Comportamiento de fallback cuando DynamoDB no está disponible
+    // Fallback behavior when DynamoDB is unavailable
     throw new Error('Database temporarily unavailable');
   },
   {
-    failureThreshold: 3, // 3 fallos antes de abrir el circuito
-    recoveryTimeout: 20000, // 20 segundos de espera
-    expectedResponseTime: 500, // 500ms de tiempo de respuesta esperado
-    monitoringWindow: 60000, // Ventana de monitoreo de 1 minuto
-    minimumRequestCount: 5, // Mínimo 5 requests antes de abrir el circuito
+    failureThreshold: 3, // 3 failures before opening the circuit
+    recoveryTimeout: 20000, // 20 seconds wait
+    expectedResponseTime: 500, // 500ms expected response time
+    monitoringWindow: 60000, // 1 minute monitoring window
+    minimumRequestCount: 5, // Minimum 5 requests before opening the circuit
   }
 );
 ```
 
-## Monitoreo de Circuit Breakers
+## Monitoring Circuit Breakers
 
-### En los Handlers de WebSocket
+### In WebSocket Handlers
 
-**Archivo:** `apps/runtime/src/entry-points/api-gateway/websockets/conversation.ts`
+**File:** `apps/runtime/src/entry-points/api-gateway/websockets/conversation.ts`
 
 ```typescript
-// Ejemplo: Obtener estadísticas del circuit breaker para monitoreo
+// Example: Get circuit breaker stats for monitoring
 const circuitBreakerStats = container
   .getCircuitBreakerService()
   .getCircuitBreakerStats('cognito', 'verifyJWT');
@@ -248,53 +248,53 @@ if (circuitBreakerStats) {
 }
 ```
 
-### Estadísticas Disponibles
+### Available Statistics
 
 ```typescript
 interface CircuitBreakerStats {
   state: CircuitState; // CLOSED, OPEN, HALF_OPEN
-  failureCount: number; // Número total de fallos
-  successCount: number; // Número total de éxitos
-  totalRequests: number; // Total de requests
-  lastFailureTime: Date | null; // Último fallo
-  lastSuccessTime: Date | null; // Último éxito
-  nextAttemptTime: Date | null; // Próximo intento (si está abierto)
-  failureRate: number; // Tasa de fallos (0-1)
+  failureCount: number; // Total number of failures
+  successCount: number; // Total number of successes
+  totalRequests: number; // Total requests
+  lastFailureTime: Date | null; // Last failure
+  lastSuccessTime: Date | null; // Last success
+  nextAttemptTime: Date | null; // Next attempt (if open)
+  failureRate: number; // Failure rate (0-1)
 }
 ```
 
-## Estados del Circuit Breaker
+## Circuit Breaker States
 
-### 1. **CLOSED** (Cerrado)
+### 1. **CLOSED**
 
-- **Estado:** Operación normal
-- **Comportamiento:** Las requests pasan normalmente
-- **Transición a OPEN:** Cuando se alcanza el umbral de fallos
+- **State:** Normal operation
+- **Behavior:** Requests pass through normally
+- **Transition to OPEN:** When the failure threshold is reached
 
-### 2. **OPEN** (Abierto)
+### 2. **OPEN**
 
-- **Estado:** Circuito abierto, fallo rápido
-- **Comportamiento:** Las requests fallan inmediatamente sin intentar la operación
-- **Transición a HALF_OPEN:** Después del tiempo de recuperación
+- **State:** Circuit open, fast fail
+- **Behavior:** Requests fail immediately without attempting the operation
+- **Transition to HALF_OPEN:** After the recovery timeout
 
-### 3. **HALF_OPEN** (Semi-abierto)
+### 3. **HALF_OPEN**
 
-- **Estado:** Probando si el servicio se recuperó
-- **Comportamiento:** Permite una request de prueba
-- **Transición a CLOSED:** Si la request de prueba es exitosa
-- **Transición a OPEN:** Si la request de prueba falla
+- **State:** Testing if the service has recovered
+- **Behavior:** Allows a single test request
+- **Transition to CLOSED:** If the test request is successful
+- **Transition to OPEN:** If the test request fails
 
-## Configuraciones por Servicio
+## Configurations per Service
 
-### Cognito (Autenticación)
+### Cognito (Authentication)
 
 ```typescript
 {
-  failureThreshold: 3,        // Sensible a fallos
-  recoveryTimeout: 30000,     // Recuperación lenta
-  expectedResponseTime: 2000, // JWT verification puede ser lenta
-  monitoringWindow: 60000,    // Ventana larga para estabilidad
-  minimumRequestCount: 5,     // Mínimo de requests para estabilidad
+  failureThreshold: 3,        // Sensitive to failures
+  recoveryTimeout: 30000,     // Slow recovery
+  expectedResponseTime: 2000, // JWT verification can be slow
+  monitoringWindow: 60000,    // Long window for stability
+  minimumRequestCount: 5,     // Minimum requests for stability
 }
 ```
 
@@ -302,57 +302,57 @@ interface CircuitBreakerStats {
 
 ```typescript
 {
-  failureThreshold: 5,        // Más tolerante a fallos
-  recoveryTimeout: 15000,     // Recuperación rápida
-  expectedResponseTime: 1000, // Respuesta rápida esperada
-  monitoringWindow: 30000,    // Ventana corta para respuesta rápida
-  minimumRequestCount: 3,     // Menos requests para estabilidad
+  failureThreshold: 5,        // More tolerant to failures
+  recoveryTimeout: 15000,     // Fast recovery
+  expectedResponseTime: 1000, // Fast response expected
+  monitoringWindow: 30000,    // Short window for fast response
+  minimumRequestCount: 3,     // Fewer requests for stability
 }
 ```
 
-### DynamoDB (Base de Datos)
+### DynamoDB (Database)
 
 ```typescript
 {
-  failureThreshold: 3,        // Sensible a fallos de DB
-  recoveryTimeout: 20000,     // Recuperación moderada
-  expectedResponseTime: 500,  // Respuesta rápida esperada
-  monitoringWindow: 60000,    // Ventana larga para estabilidad
-  minimumRequestCount: 5,     // Mínimo de requests para estabilidad
+  failureThreshold: 3,        // Sensitive to DB failures
+  recoveryTimeout: 20000,     // Moderate recovery
+  expectedResponseTime: 500,  // Fast response expected
+  monitoringWindow: 60000,    // Long window for stability
+  minimumRequestCount: 5,     // Minimum requests for stability
 }
 ```
 
-## Beneficios del Circuit Breaker
+## Benefits of the Circuit Breaker
 
-### 1. **Resiliencia**
+### 1. **Resilience**
 
-- Previene fallos en cascada
-- Aísla servicios problemáticos
-- Permite recuperación automática
+- Prevents cascading failures
+- Isolates problematic services
+- Allows for automatic recovery
 
 ### 2. **Performance**
 
-- Fallo rápido cuando los servicios están caídos
-- Reduce latencia en requests fallidas
-- Evita timeouts innecesarios
+- Fast failure when services are down
+- Reduces latency on failed requests
+- Avoids unnecessary timeouts
 
-### 3. **Monitoreo**
+### 3. **Monitoring**
 
-- Visibilidad del estado de los servicios
-- Métricas de fallos y éxitos
-- Alertas automáticas
+- Visibility into the status of services
+- Failure and success metrics
+- Automatic alerts
 
 ### 4. **Graceful Degradation**
 
-- Comportamientos de fallback
-- Experiencia de usuario mejorada
-- Continuidad del servicio
+- Fallback behaviors
+- Improved user experience
+- Service continuity
 
-## Próximos Pasos
+## Next Steps
 
-1. **Monitoreo en CloudWatch:** Configurar alertas basadas en el estado de los circuit breakers
-2. **Métricas Personalizadas:** Crear dashboards para visualizar el estado de los servicios
-3. **Configuración Dinámica:** Permitir ajuste de configuraciones sin redeploy
-4. **Testing:** Crear tests para validar el comportamiento de los circuit breakers
+1. **Monitoring in CloudWatch:** Configure alerts based on the state of the circuit breakers
+2. **Custom Metrics:** Create dashboards to visualize the status of services
+3. **Dynamic Configuration:** Allow adjustment of configurations without redeployment
+4. **Testing:** Create tests to validate the behavior of the circuit breakers
 
-El `CircuitBreakerService` está ahora completamente integrado en todos los servicios que realizan llamadas externas, proporcionando resiliencia y monitoreo robusto para la aplicación de WebSocket.
+The `CircuitBreakerService` is now fully integrated into all services that make external calls, providing resilience and robust monitoring for the WebSocket application.
