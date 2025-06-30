@@ -1,32 +1,57 @@
-import { logger } from '@awslambdahackathon/utils/lambda';
-import type { ConnectionService } from '@domain/services/connection-service';
+import { Logger } from '@config/container';
+import { ConnectionService } from '@domain/services/connection-service';
+import { PerformanceMonitoringService } from '@domain/services/performance-monitoring-service';
 import { ConnectionId } from '@domain/value-objects';
 
-interface StoreConnectionResult {
-  success: boolean;
-  error?: string;
+import { BaseResult, BaseUseCase } from './base-use-case';
+
+interface StoreConnectionCommand {
+  connectionId: string;
 }
 
-export async function storeConnection(
-  connectionService: ConnectionService,
-  connectionId: string
-): Promise<StoreConnectionResult> {
-  try {
-    logger.info('Storing connection', { connectionId });
-    await connectionService.storeConnection({
-      connectionId: ConnectionId.create(connectionId),
-    });
+interface StoreConnectionResult extends BaseResult {}
 
-    return { success: true };
-  } catch (error) {
-    logger.error('Failed to store connection', {
-      error: error instanceof Error ? error.message : 'Unknown error',
-      connectionId,
-    });
+export interface StoreConnectionUseCase {
+  execute(command: StoreConnectionCommand): Promise<StoreConnectionResult>;
+}
 
-    return {
-      success: false,
-      error: 'Failed to store connection',
-    };
+export class StoreConnectionUseCaseImpl
+  extends BaseUseCase<StoreConnectionCommand, StoreConnectionResult>
+  implements StoreConnectionUseCase
+{
+  constructor(
+    private readonly connectionService: ConnectionService,
+    logger: Logger,
+    performanceMonitor?: PerformanceMonitoringService
+  ) {
+    super(logger, performanceMonitor);
+  }
+
+  async execute(
+    command: StoreConnectionCommand
+  ): Promise<StoreConnectionResult> {
+    try {
+      this.logger.info('Storing connection', {
+        connectionId: command.connectionId,
+      });
+
+      if (!command.connectionId) {
+        throw new Error('Connection ID is required');
+      }
+
+      await this.connectionService.storeConnection({
+        connectionId: ConnectionId.create(command.connectionId),
+      });
+
+      this.logger.info('Connection stored successfully', {
+        connectionId: command.connectionId,
+      });
+
+      return { success: true };
+    } catch (error) {
+      return this.handleError(error, {
+        connectionId: command.connectionId,
+      });
+    }
   }
 }

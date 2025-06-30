@@ -1,3 +1,31 @@
+import {
+  AuthenticateUserUseCase,
+  AuthenticateUserUseCaseImpl,
+} from '@application/use-cases/authenticate-user';
+import {
+  CheckAuthenticatedConnectionUseCase,
+  CheckAuthenticatedConnectionUseCaseImpl,
+} from '@application/use-cases/check-authenticated-connection';
+import {
+  HandlePingMessageUseCase,
+  HandlePingMessageUseCaseImpl,
+} from '@application/use-cases/handle-ping-message';
+import {
+  RemoveAuthenticatedConnectionUseCase,
+  RemoveAuthenticatedConnectionUseCaseImpl,
+} from '@application/use-cases/remove-authenticated-connection';
+import {
+  RemoveConnectionUseCase,
+  RemoveConnectionUseCaseImpl,
+} from '@application/use-cases/remove-connection';
+import {
+  SendChatMessageUseCase,
+  SendChatMessageUseCaseImpl,
+} from '@application/use-cases/send-chat-message';
+import {
+  StoreConnectionUseCase,
+  StoreConnectionUseCaseImpl,
+} from '@application/use-cases/store-connection';
 import { logger } from '@awslambdahackathon/utils/lambda';
 import { ConnectionRepository } from '@domain/repositories/connection';
 import { MessageRepository } from '@domain/repositories/message';
@@ -31,6 +59,56 @@ import { CloudWatchMetricsService } from '@infrastructure/services/metrics-servi
 import { WebSocketMessageService as WebSocketMessageServiceImpl } from '@infrastructure/services/websocket-message-service';
 import type { APIGatewayProxyEvent } from 'aws-lambda';
 
+// Configuration interfaces for better dependency injection
+export interface DynamoDBConfig {
+  tableName: string;
+  region: string;
+  endpoint?: string;
+}
+
+export interface DynamoDBRepositoryConfig {
+  connectionsTable: string;
+  messagesTable: string;
+  sessionsTable: string;
+  usersTable: string;
+  region: string;
+  endpoint?: string;
+}
+
+export interface CloudWatchConfig {
+  namespace: string;
+  region: string;
+  logGroupName: string;
+}
+
+export interface CircuitBreakerConfig {
+  timeout?: number;
+  errorThresholdPercentage?: number;
+  resetTimeout?: number;
+  failureThreshold?: number;
+  recoveryTimeout?: number;
+  expectedResponseTime?: number;
+  monitoringWindow?: number;
+  minimumRequestCount?: number;
+}
+
+export interface AppConfig {
+  dynamoDB: DynamoDBRepositoryConfig;
+  cloudWatch: CloudWatchConfig;
+  circuitBreaker: CircuitBreakerConfig;
+  environment: string;
+  stage: string;
+}
+
+// Logger interface for dependency injection
+export interface Logger {
+  info(message: string, meta?: Record<string, unknown>): void;
+  warn(message: string, meta?: Record<string, unknown>): void;
+  error(message: string, meta?: Record<string, unknown>): void;
+  debug(message: string, meta?: Record<string, unknown>): void;
+}
+
+// Legacy interfaces for backward compatibility
 export interface User {
   userId: string;
   username: string;
@@ -74,17 +152,6 @@ export interface ChatResponseData {
   message: string;
   sessionId: string;
   isEcho: boolean;
-}
-
-export interface CircuitBreakerConfig {
-  timeout?: number;
-  errorThresholdPercentage?: number;
-  resetTimeout?: number;
-  failureThreshold?: number;
-  recoveryTimeout?: number;
-  expectedResponseTime?: number;
-  monitoringWindow?: number;
-  minimumRequestCount?: number;
 }
 
 export interface CircuitBreakerStats {
@@ -131,11 +198,72 @@ export class ServiceRegistry {
 
 export class ServiceFactory {
   private readonly websocketAdapterFactory: AwsWebSocketAdapterFactory;
+  private readonly config: AppConfig;
+  private readonly logger: Logger;
 
-  constructor() {
+  constructor(config: AppConfig, logger: Logger) {
+    this.config = config;
+    this.logger = logger;
     this.websocketAdapterFactory = new AwsWebSocketAdapterFactory();
   }
 
+  // Use case creation methods
+  createAuthenticateUserUseCase(): AuthenticateUserUseCase {
+    return new AuthenticateUserUseCaseImpl(
+      this.createAuthenticationService(),
+      this.logger,
+      this.createPerformanceMonitoringService()
+    );
+  }
+
+  createSendChatMessageUseCase(): SendChatMessageUseCase {
+    return new SendChatMessageUseCaseImpl(
+      this.createChatService(),
+      this.logger,
+      this.createPerformanceMonitoringService()
+    );
+  }
+
+  createStoreConnectionUseCase(): StoreConnectionUseCase {
+    return new StoreConnectionUseCaseImpl(
+      this.createConnectionService(),
+      this.logger,
+      this.createPerformanceMonitoringService()
+    );
+  }
+
+  createRemoveConnectionUseCase(): RemoveConnectionUseCase {
+    return new RemoveConnectionUseCaseImpl(
+      this.createConnectionService(),
+      this.logger,
+      this.createPerformanceMonitoringService()
+    );
+  }
+
+  createRemoveAuthenticatedConnectionUseCase(): RemoveAuthenticatedConnectionUseCase {
+    return new RemoveAuthenticatedConnectionUseCaseImpl(
+      this.createAuthenticationService(),
+      this.logger,
+      this.createPerformanceMonitoringService()
+    );
+  }
+
+  createCheckAuthenticatedConnectionUseCase(): CheckAuthenticatedConnectionUseCase {
+    return new CheckAuthenticatedConnectionUseCaseImpl(
+      this.createAuthenticationService(),
+      this.logger,
+      this.createPerformanceMonitoringService()
+    );
+  }
+
+  createHandlePingMessageUseCase(): HandlePingMessageUseCase {
+    return new HandlePingMessageUseCaseImpl(
+      this.logger,
+      this.createPerformanceMonitoringService()
+    );
+  }
+
+  // Existing service creation methods
   createConnectionService(): ConnectionServiceType {
     return new ConnectionServiceImpl();
   }
@@ -161,24 +289,45 @@ export class ServiceFactory {
   }
 
   createCircuitBreakerService(): CircuitBreakerService {
-    return new CircuitBreakerService();
+    return new CircuitBreakerService(this.config.circuitBreaker);
   }
 
-  // Repository creation methods
+  // Repository creation methods with configuration injection
   createUserRepository(): UserRepository {
-    return new DynamoDBUserRepository();
+    return new DynamoDBUserRepository({
+      tableName: this.config.dynamoDB.usersTable,
+      region: this.config.dynamoDB.region,
+      endpoint: this.config.dynamoDB.endpoint,
+    });
   }
 
   createConnectionRepository(): ConnectionRepository {
-    return new DynamoDBConnectionRepository();
+    return new DynamoDBConnectionRepository({
+      tableName: this.config.dynamoDB.connectionsTable,
+      region: this.config.dynamoDB.region,
+      endpoint: this.config.dynamoDB.endpoint,
+    });
   }
 
   createMessageRepository(): MessageRepository {
-    return new DynamoDBMessageRepository();
+    return new DynamoDBMessageRepository({
+      tableName: this.config.dynamoDB.messagesTable,
+      region: this.config.dynamoDB.region,
+      endpoint: this.config.dynamoDB.endpoint,
+    });
   }
 
   createSessionRepository(): SessionRepository {
-    return new DynamoDBSessionRepository();
+    return new DynamoDBSessionRepository({
+      tableName: this.config.dynamoDB.sessionsTable,
+      region: this.config.dynamoDB.region,
+      endpoint: this.config.dynamoDB.endpoint,
+    });
+  }
+
+  // Logger getter
+  getLogger(): Logger {
+    return this.logger;
   }
 }
 
@@ -186,22 +335,103 @@ export class Container {
   private static instance: Container;
   private registry: ServiceRegistry;
   private factory: ServiceFactory;
+  private config: AppConfig;
+  private logger: Logger;
 
-  private constructor() {
+  private constructor(config?: Partial<AppConfig>, logger?: Logger) {
+    this.config = this.createDefaultConfig(config);
+    this.logger = logger || this.createDefaultLogger();
     this.registry = new ServiceRegistry();
-    this.factory = new ServiceFactory();
+    this.factory = new ServiceFactory(this.config, this.logger);
     this.initializeServices();
   }
 
-  public static getInstance(): Container {
+  public static getInstance(
+    config?: Partial<AppConfig>,
+    logger?: Logger
+  ): Container {
     if (!Container.instance) {
-      Container.instance = new Container();
+      Container.instance = new Container(config, logger);
     }
     return Container.instance;
   }
 
+  private createDefaultConfig(overrides?: Partial<AppConfig>): AppConfig {
+    return {
+      dynamoDB: {
+        connectionsTable:
+          process.env.WEBSOCKET_CONNECTIONS_TABLE || 'websocket-connections',
+        messagesTable:
+          process.env.WEBSOCKET_MESSAGES_TABLE || 'websocket-messages',
+        sessionsTable:
+          process.env.WEBSOCKET_SESSIONS_TABLE || 'websocket-sessions',
+        usersTable: process.env.WEBSOCKET_USERS_TABLE || 'websocket-users',
+        region: process.env.AWS_REGION || 'us-east-1',
+        endpoint: process.env.DYNAMODB_ENDPOINT,
+      },
+      cloudWatch: {
+        namespace: process.env.CLOUDWATCH_NAMESPACE || 'WebSocketService',
+        region: process.env.AWS_REGION || 'us-east-1',
+        logGroupName:
+          process.env.CLOUDWATCH_LOG_GROUP || '/aws/lambda/websocket-service',
+      },
+      circuitBreaker: {
+        timeout: 5000,
+        errorThresholdPercentage: 50,
+        resetTimeout: 30000,
+        failureThreshold: 5,
+        recoveryTimeout: 60000,
+        expectedResponseTime: 1000,
+        monitoringWindow: 60000,
+        minimumRequestCount: 10,
+        ...overrides?.circuitBreaker,
+      },
+      environment: process.env.NODE_ENV || 'development',
+      stage: process.env.STAGE || 'dev',
+      ...overrides,
+    };
+  }
+
+  private createDefaultLogger(): Logger {
+    return {
+      info: (message: string, meta?: Record<string, unknown>) => {
+        if (meta) {
+          logger.info(message, meta);
+        } else {
+          logger.info(message);
+        }
+      },
+      warn: (message: string, meta?: Record<string, unknown>) => {
+        if (meta) {
+          logger.warn(message, meta);
+        } else {
+          logger.warn(message);
+        }
+      },
+      error: (message: string, meta?: Record<string, unknown>) => {
+        if (meta) {
+          logger.error(message, meta);
+        } else {
+          logger.error(message);
+        }
+      },
+      debug: (message: string, meta?: Record<string, unknown>) => {
+        if (meta) {
+          logger.debug(message, meta);
+        } else {
+          logger.debug(message);
+        }
+      },
+    };
+  }
+
   private initializeServices(): void {
-    logger.info('Initializing services in container');
+    this.logger.info('Initializing services in container', {
+      config: this.config,
+    });
+
+    // Register logger first
+    this.registry.register('logger', this.logger);
 
     // Register repositories first
     this.registry.register(
@@ -248,7 +478,37 @@ export class Container {
       this.factory.createCircuitBreakerService()
     );
 
-    logger.info('Services initialized successfully', {
+    // Register use cases
+    this.registry.register(
+      'authenticateUserUseCase',
+      this.factory.createAuthenticateUserUseCase()
+    );
+    this.registry.register(
+      'sendChatMessageUseCase',
+      this.factory.createSendChatMessageUseCase()
+    );
+    this.registry.register(
+      'storeConnectionUseCase',
+      this.factory.createStoreConnectionUseCase()
+    );
+    this.registry.register(
+      'removeConnectionUseCase',
+      this.factory.createRemoveConnectionUseCase()
+    );
+    this.registry.register(
+      'removeAuthenticatedConnectionUseCase',
+      this.factory.createRemoveAuthenticatedConnectionUseCase()
+    );
+    this.registry.register(
+      'checkAuthenticatedConnectionUseCase',
+      this.factory.createCheckAuthenticatedConnectionUseCase()
+    );
+    this.registry.register(
+      'handlePingMessageUseCase',
+      this.factory.createHandlePingMessageUseCase()
+    );
+
+    this.logger.info('Services initialized successfully', {
       services: this.registry.getAllServiceNames(),
     });
   }
@@ -274,6 +534,10 @@ export class Container {
 
   public getMetricsService(): MetricsService {
     return this.registry.get<MetricsService>('metricsService');
+  }
+
+  public getLogger(): Logger {
+    return this.registry.get<Logger>('logger');
   }
 
   public createWebSocketMessageService(
@@ -359,6 +623,50 @@ export class Container {
   // For testing and advanced scenarios
   public set(serviceName: string, service: unknown): void {
     this.registry.register(serviceName, service);
+  }
+
+  // Configuration getter
+  public getConfig(): AppConfig {
+    return this.config;
+  }
+
+  // Use case convenience methods
+  public getAuthenticateUserUseCase(): AuthenticateUserUseCase {
+    return this.registry.get<AuthenticateUserUseCase>(
+      'authenticateUserUseCase'
+    );
+  }
+
+  public getSendChatMessageUseCase(): SendChatMessageUseCase {
+    return this.registry.get<SendChatMessageUseCase>('sendChatMessageUseCase');
+  }
+
+  public getStoreConnectionUseCase(): StoreConnectionUseCase {
+    return this.registry.get<StoreConnectionUseCase>('storeConnectionUseCase');
+  }
+
+  public getRemoveConnectionUseCase(): RemoveConnectionUseCase {
+    return this.registry.get<RemoveConnectionUseCase>(
+      'removeConnectionUseCase'
+    );
+  }
+
+  public getRemoveAuthenticatedConnectionUseCase(): RemoveAuthenticatedConnectionUseCase {
+    return this.registry.get<RemoveAuthenticatedConnectionUseCase>(
+      'removeAuthenticatedConnectionUseCase'
+    );
+  }
+
+  public getCheckAuthenticatedConnectionUseCase(): CheckAuthenticatedConnectionUseCase {
+    return this.registry.get<CheckAuthenticatedConnectionUseCase>(
+      'checkAuthenticatedConnectionUseCase'
+    );
+  }
+
+  public getHandlePingMessageUseCase(): HandlePingMessageUseCase {
+    return this.registry.get<HandlePingMessageUseCase>(
+      'handlePingMessageUseCase'
+    );
   }
 }
 

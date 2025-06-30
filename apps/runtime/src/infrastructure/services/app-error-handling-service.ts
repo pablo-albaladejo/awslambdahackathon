@@ -1,5 +1,3 @@
-import { removeAuthenticatedConnection } from '@application/use-cases/remove-authenticated-connection';
-import { removeConnection } from '@application/use-cases/remove-connection';
 import { logger } from '@awslambdahackathon/utils/lambda';
 import { container, ErrorContext } from '@config/container';
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
@@ -248,15 +246,21 @@ export class ApplicationErrorHandlingService implements ErrorHandlingService {
         {
           connectionId,
           correlationId,
-          errorCode: error.code,
         }
       );
 
-      logger.debug('Error metrics recorded', {
-        connectionId,
-        errorType: error.type,
-        correlationId,
-      });
+      // Record specific error metrics based on error type
+      if (this.isCriticalError(error)) {
+        await metricsService.recordBusinessMetrics('critical_error', 1, {
+          errorType: error.type,
+          connectionId,
+        });
+      } else if (this.isWarningError(error)) {
+        await metricsService.recordBusinessMetrics('warning_error', 1, {
+          errorType: error.type,
+          connectionId,
+        });
+      }
     } catch (metricsError) {
       logger.error('Failed to record error metrics', {
         connectionId,
@@ -274,54 +278,28 @@ export class ApplicationErrorHandlingService implements ErrorHandlingService {
     connectionId: string
   ): Promise<void> {
     try {
-      // Determine if connection should be removed based on error type
-      const shouldRemoveConnection = this.shouldRemoveConnection(error);
-
-      if (shouldRemoveConnection) {
-        logger.info('Removing connection due to error', {
+      if (this.shouldRemoveConnection(error)) {
+        const reason = this.getRemovalReason(error);
+        logger.info('Cleaning up connection resources', {
           connectionId,
-          errorType: error.type,
-          reason: this.getRemovalReason(error),
-        });
-
-        // Try to remove authenticated connection first
-        try {
-          await removeAuthenticatedConnection(
-            container.getAuthenticationService(),
-            connectionId
-          );
-        } catch (authError) {
-          logger.debug(
-            'Failed to remove authenticated connection, trying regular connection',
-            {
-              connectionId,
-              authError:
-                authError instanceof Error
-                  ? authError.message
-                  : String(authError),
-            }
-          );
-
-          // Fallback to removing regular connection
-          await removeConnection(
-            container.getConnectionService(),
-            connectionId
-          );
-        }
-
-        logger.info('Connection removed successfully', {
-          connectionId,
+          reason,
           errorType: error.type,
         });
-      } else {
-        logger.debug('Connection kept active despite error', {
+
+        const removeConnectionUseCase = container.getRemoveConnectionUseCase();
+        const removeAuthenticatedConnectionUseCase =
+          container.getRemoveAuthenticatedConnectionUseCase();
+
+        await removeConnectionUseCase.execute({ connectionId });
+        await removeAuthenticatedConnectionUseCase.execute({ connectionId });
+
+        logger.info('Successfully cleaned up connection resources', {
           connectionId,
-          errorType: error.type,
-          reason: 'Non-critical error',
+          reason,
         });
       }
     } catch (cleanupError) {
-      logger.error('Failed to cleanup connection resources', {
+      logger.error('Failed to clean up connection resources', {
         connectionId,
         originalError: error.toJSON(),
         cleanupError:
@@ -338,102 +316,90 @@ export class ApplicationErrorHandlingService implements ErrorHandlingService {
     correlationId: string
   ): void {
     const errorDetails = {
+      type: error.type,
+      message: error.message,
+      code: error.code,
+      details: error.details,
+      timestamp: error.timestamp,
       connectionId,
       correlationId,
-      errorType: error.type,
-      errorCode: error.code,
-      message: error.message,
-      details: error.details,
-      timestamp: error.timestamp.toISOString(),
-      stack: error.stack,
     };
 
-    // Log with appropriate level based on error type
     if (this.isCriticalError(error)) {
-      logger.error('Critical WebSocket error occurred', errorDetails);
+      logger.error('Critical error occurred', errorDetails);
     } else if (this.isWarningError(error)) {
-      logger.warn('WebSocket warning occurred', errorDetails);
+      logger.warn('Warning error occurred', errorDetails);
     } else {
-      logger.info('WebSocket error handled', errorDetails);
+      logger.info('Error occurred', errorDetails);
     }
   }
 
   private getUserFriendlyErrorMessage(error: AppError): string {
     switch (error.type) {
-      case ErrorType.AUTHENTICATION_ERROR:
-        return 'Authentication failed. Please reconnect with valid credentials.';
-      case ErrorType.AUTHORIZATION_ERROR:
-        return 'Access denied. You do not have permission to perform this action.';
       case ErrorType.VALIDATION_ERROR:
-        return 'Invalid request format. Please check your message and try again.';
+        return 'Invalid request format or parameters';
+      case ErrorType.AUTHENTICATION_ERROR:
+        return 'Authentication failed';
+      case ErrorType.AUTHORIZATION_ERROR:
+        return 'Not authorized to perform this action';
+      case ErrorType.NOT_FOUND_ERROR:
+        return 'Requested resource not found';
+      case ErrorType.CONFLICT_ERROR:
+        return 'Operation conflicts with existing data';
       case ErrorType.RATE_LIMIT_ERROR:
-        return 'Too many requests. Please slow down and try again later.';
+        return 'Too many requests, please try again later';
       case ErrorType.CIRCUIT_BREAKER_ERROR:
-        return 'Service temporarily unavailable. Please try again in a moment.';
+        return 'Service temporarily unavailable';
       case ErrorType.DATABASE_ERROR:
       case ErrorType.EXTERNAL_SERVICE_ERROR:
-        return 'Service temporarily unavailable. Please try again.';
       case ErrorType.INTERNAL_ERROR:
-      case ErrorType.UNKNOWN_ERROR:
+        return 'Internal server error';
       default:
-        return 'An unexpected error occurred. Please try again or contact support.';
+        return 'An unexpected error occurred';
     }
   }
 
   private shouldRemoveConnection(error: AppError): boolean {
-    // Remove connection for critical errors that indicate connection issues
-    const criticalErrors = [
-      ErrorType.AUTHENTICATION_ERROR,
-      ErrorType.AUTHORIZATION_ERROR,
-      ErrorType.CIRCUIT_BREAKER_ERROR,
-      ErrorType.DATABASE_ERROR,
-      ErrorType.EXTERNAL_SERVICE_ERROR,
-    ];
-
-    return criticalErrors.includes(error.type);
+    return (
+      error.type === ErrorType.AUTHENTICATION_ERROR ||
+      error.type === ErrorType.AUTHORIZATION_ERROR ||
+      error.type === ErrorType.RATE_LIMIT_ERROR ||
+      this.isCriticalError(error)
+    );
   }
 
   private getRemovalReason(error: AppError): string {
     switch (error.type) {
       case ErrorType.AUTHENTICATION_ERROR:
-        return 'Authentication failed';
+        return 'authentication_failure';
       case ErrorType.AUTHORIZATION_ERROR:
-        return 'Authorization failed';
-      case ErrorType.CIRCUIT_BREAKER_ERROR:
-        return 'Service unavailable';
-      case ErrorType.DATABASE_ERROR:
-        return 'Database error';
-      case ErrorType.EXTERNAL_SERVICE_ERROR:
-        return 'External service error';
+        return 'authorization_failure';
+      case ErrorType.RATE_LIMIT_ERROR:
+        return 'rate_limit_exceeded';
       default:
-        return 'Critical error';
+        return 'critical_error';
     }
   }
 
   private isCriticalError(error: AppError): boolean {
-    const criticalErrors = [
-      ErrorType.AUTHENTICATION_ERROR,
-      ErrorType.AUTHORIZATION_ERROR,
-      ErrorType.CIRCUIT_BREAKER_ERROR,
-      ErrorType.DATABASE_ERROR,
-      ErrorType.EXTERNAL_SERVICE_ERROR,
-      ErrorType.INTERNAL_ERROR,
-    ];
-
-    return criticalErrors.includes(error.type);
+    return (
+      error.type === ErrorType.DATABASE_ERROR ||
+      error.type === ErrorType.EXTERNAL_SERVICE_ERROR ||
+      error.type === ErrorType.INTERNAL_ERROR ||
+      error.type === ErrorType.CIRCUIT_BREAKER_ERROR
+    );
   }
 
   private isWarningError(error: AppError): boolean {
-    const warningErrors = [
-      ErrorType.VALIDATION_ERROR,
-      ErrorType.RATE_LIMIT_ERROR,
-    ];
-
-    return warningErrors.includes(error.type);
+    return (
+      error.type === ErrorType.VALIDATION_ERROR ||
+      error.type === ErrorType.NOT_FOUND_ERROR ||
+      error.type === ErrorType.CONFLICT_ERROR
+    );
   }
 
   private generateCorrelationId(): string {
-    return `error-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    return `err_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   }
 
   private getHttpStatusCode(errorType: ErrorType): number {
@@ -451,11 +417,9 @@ export class ApplicationErrorHandlingService implements ErrorHandlingService {
       case ErrorType.RATE_LIMIT_ERROR:
         return 429;
       case ErrorType.CIRCUIT_BREAKER_ERROR:
+      case ErrorType.EXTERNAL_SERVICE_ERROR:
         return 503;
       case ErrorType.DATABASE_ERROR:
-        return 503;
-      case ErrorType.EXTERNAL_SERVICE_ERROR:
-        return 502;
       case ErrorType.INTERNAL_ERROR:
       case ErrorType.UNKNOWN_ERROR:
       default:

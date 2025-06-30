@@ -1,5 +1,6 @@
 import { logger } from '@awslambdahackathon/utils/lambda';
 import { CIRCUIT_BREAKER_CONFIG } from '@config/constants';
+import { CircuitBreakerConfig as ContainerCircuitBreakerConfig } from '@config/container';
 
 export enum CircuitState {
   CLOSED = 'CLOSED', // Normal operation
@@ -299,13 +300,17 @@ export class CircuitBreaker {
 
 export class CircuitBreakerService {
   private circuitBreakers = new Map<string, CircuitBreaker>();
-  private defaultConfig: CircuitBreakerConfig = {
-    failureThreshold: 5,
-    recoveryTimeout: 30000, // 30 seconds
-    expectedResponseTime: 5000, // 5 seconds
-    monitoringWindow: 60000, // 1 minute
-    minimumRequestCount: 10,
-  };
+  private defaultConfig: CircuitBreakerConfig;
+
+  constructor(config?: ContainerCircuitBreakerConfig) {
+    this.defaultConfig = {
+      failureThreshold: config?.failureThreshold || 5,
+      recoveryTimeout: config?.recoveryTimeout || 30000,
+      expectedResponseTime: config?.expectedResponseTime || 1000,
+      monitoringWindow: config?.monitoringWindow || 60000,
+      minimumRequestCount: config?.minimumRequestCount || 10,
+    };
+  }
 
   /**
    * Get or create a circuit breaker for a service operation

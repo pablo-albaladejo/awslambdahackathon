@@ -1,4 +1,4 @@
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import { DynamoDBClient, DynamoDBClientConfig } from '@aws-sdk/client-dynamodb';
 import {
   DeleteCommand,
   DynamoDBDocumentClient,
@@ -9,6 +9,7 @@ import {
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { logger } from '@awslambdahackathon/utils/lambda';
+import { DynamoDBConfig } from '@config/container';
 import { Connection, ConnectionStatus } from '@domain/entities/connection';
 import { User } from '@domain/entities/user';
 import {
@@ -21,10 +22,16 @@ export class DynamoDBConnectionRepository implements ConnectionRepository {
   private readonly ddbClient: DynamoDBDocumentClient;
   private readonly tableName: string;
 
-  constructor() {
-    this.ddbClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
-    this.tableName =
-      process.env.WEBSOCKET_CONNECTIONS_TABLE || 'websocket-connections';
+  constructor(config: DynamoDBConfig) {
+    const clientConfig: DynamoDBClientConfig = { region: config.region };
+    if (config.endpoint) {
+      clientConfig.endpoint = config.endpoint;
+    }
+
+    this.ddbClient = DynamoDBDocumentClient.from(
+      new DynamoDBClient(clientConfig)
+    );
+    this.tableName = config.tableName;
   }
 
   async findById(id: ConnectionId): Promise<Connection | null> {

@@ -1,33 +1,62 @@
-import { logger } from '@awslambdahackathon/utils/lambda';
-import type { AuthenticationService } from '@domain/services/authentication-service';
+import { Logger } from '@config/container';
+import { AuthenticationService } from '@domain/services/authentication-service';
+import { PerformanceMonitoringService } from '@domain/services/performance-monitoring-service';
 import { ConnectionId } from '@domain/value-objects';
 
-interface RemoveAuthenticatedConnectionResult {
-  success: boolean;
-  error?: string;
+import { BaseResult, BaseUseCase } from './base-use-case';
+
+interface RemoveAuthenticatedConnectionCommand {
+  connectionId: string;
 }
 
-export async function removeAuthenticatedConnection(
-  authenticationService: AuthenticationService,
-  connectionId: string
-): Promise<RemoveAuthenticatedConnectionResult> {
-  try {
-    logger.info('Removing authenticated connection', { connectionId });
-    await authenticationService.removeAuthenticatedConnection(
-      ConnectionId.create(connectionId)
-    );
-    logger.info('Authenticated connection removed', { connectionId });
+interface RemoveAuthenticatedConnectionResult extends BaseResult {}
 
-    return { success: true };
-  } catch (error) {
-    logger.error('Failed to remove authenticated connection', {
-      error: error instanceof Error ? error.message : 'Unknown error',
-      connectionId,
-    });
+export interface RemoveAuthenticatedConnectionUseCase {
+  execute(
+    command: RemoveAuthenticatedConnectionCommand
+  ): Promise<RemoveAuthenticatedConnectionResult>;
+}
 
-    return {
-      success: false,
-      error: 'Failed to remove authenticated connection',
-    };
+export class RemoveAuthenticatedConnectionUseCaseImpl
+  extends BaseUseCase<
+    RemoveAuthenticatedConnectionCommand,
+    RemoveAuthenticatedConnectionResult
+  >
+  implements RemoveAuthenticatedConnectionUseCase
+{
+  constructor(
+    private readonly authenticationService: AuthenticationService,
+    logger: Logger,
+    performanceMonitor?: PerformanceMonitoringService
+  ) {
+    super(logger, performanceMonitor);
+  }
+
+  async execute(
+    command: RemoveAuthenticatedConnectionCommand
+  ): Promise<RemoveAuthenticatedConnectionResult> {
+    try {
+      this.logger.info('Removing authenticated connection', {
+        connectionId: command.connectionId,
+      });
+
+      if (!command.connectionId) {
+        throw new Error('Connection ID is required');
+      }
+
+      await this.authenticationService.removeAuthenticatedConnection(
+        ConnectionId.create(command.connectionId)
+      );
+
+      this.logger.info('Authenticated connection removed successfully', {
+        connectionId: command.connectionId,
+      });
+
+      return { success: true };
+    } catch (error) {
+      return this.handleError(error, {
+        connectionId: command.connectionId,
+      });
+    }
   }
 }

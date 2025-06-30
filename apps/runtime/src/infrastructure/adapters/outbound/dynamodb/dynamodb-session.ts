@@ -1,4 +1,4 @@
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import { DynamoDBClient, DynamoDBClientConfig } from '@aws-sdk/client-dynamodb';
 import {
   DeleteCommand,
   DynamoDBDocumentClient,
@@ -9,6 +9,7 @@ import {
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { logger } from '@awslambdahackathon/utils/lambda';
+import { DynamoDBConfig } from '@config/container';
 import { Session, SessionStatus } from '@domain/entities/session';
 import { SessionRepository } from '@domain/repositories/session';
 import { SessionId, UserId } from '@domain/value-objects';
@@ -17,10 +18,16 @@ export class DynamoDBSessionRepository implements SessionRepository {
   private readonly ddbClient: DynamoDBDocumentClient;
   private readonly tableName: string;
 
-  constructor() {
-    this.ddbClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
-    this.tableName =
-      process.env.WEBSOCKET_SESSIONS_TABLE || 'websocket-sessions';
+  constructor(config: DynamoDBConfig) {
+    const clientConfig: DynamoDBClientConfig = { region: config.region };
+    if (config.endpoint) {
+      clientConfig.endpoint = config.endpoint;
+    }
+
+    this.ddbClient = DynamoDBDocumentClient.from(
+      new DynamoDBClient(clientConfig)
+    );
+    this.tableName = config.tableName;
   }
 
   async findById(id: SessionId): Promise<Session | null> {

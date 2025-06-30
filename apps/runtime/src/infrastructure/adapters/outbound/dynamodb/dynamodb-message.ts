@@ -1,4 +1,4 @@
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import { DynamoDBClient, DynamoDBClientConfig } from '@aws-sdk/client-dynamodb';
 import {
   DeleteCommand,
   DynamoDBDocumentClient,
@@ -7,6 +7,7 @@ import {
   QueryCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { logger } from '@awslambdahackathon/utils/lambda';
+import { DynamoDBConfig } from '@config/container';
 import { Message, MessageStatus, MessageType } from '@domain/entities/message';
 import { MessageRepository } from '@domain/repositories/message';
 import { MessageId, SessionId, UserId } from '@domain/value-objects';
@@ -15,10 +16,16 @@ export class DynamoDBMessageRepository implements MessageRepository {
   private readonly ddbClient: DynamoDBDocumentClient;
   private readonly tableName: string;
 
-  constructor() {
-    this.ddbClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
-    this.tableName =
-      process.env.WEBSOCKET_MESSAGES_TABLE || 'websocket-messages';
+  constructor(config: DynamoDBConfig) {
+    const clientConfig: DynamoDBClientConfig = { region: config.region };
+    if (config.endpoint) {
+      clientConfig.endpoint = config.endpoint;
+    }
+
+    this.ddbClient = DynamoDBDocumentClient.from(
+      new DynamoDBClient(clientConfig)
+    );
+    this.tableName = config.tableName;
   }
 
   async findById(id: MessageId): Promise<Message | null> {

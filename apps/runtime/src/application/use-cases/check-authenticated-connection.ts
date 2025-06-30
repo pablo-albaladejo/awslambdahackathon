@@ -1,37 +1,69 @@
-import { logger } from '@awslambdahackathon/utils/lambda';
-import type { AuthenticationService } from '@domain/services/authentication-service';
+import { Logger } from '@config/container';
+import { AuthenticationService } from '@domain/services/authentication-service';
+import { PerformanceMonitoringService } from '@domain/services/performance-monitoring-service';
 import { ConnectionId } from '@domain/value-objects';
 
-interface CheckAuthenticatedConnectionResult {
-  success: boolean;
-  isAuthenticated?: boolean;
-  error?: string;
+import { BaseResult, BaseUseCase } from './base-use-case';
+
+interface CheckAuthenticatedConnectionCommand {
+  connectionId: string;
 }
 
-export async function isConnectionAuthenticated(
-  authenticationService: AuthenticationService,
-  connectionId: string
-): Promise<CheckAuthenticatedConnectionResult> {
-  try {
-    logger.info('Checking if connection is authenticated', { connectionId });
-    const isAuthenticated =
-      await authenticationService.isConnectionAuthenticated(
-        ConnectionId.create(connectionId)
-      );
+interface CheckAuthenticatedConnectionResult extends BaseResult {
+  isAuthenticated?: boolean;
+}
 
-    return {
-      success: true,
-      isAuthenticated,
-    };
-  } catch (error) {
-    logger.error('Failed to check connection authentication', {
-      error: error instanceof Error ? error.message : 'Unknown error',
-      connectionId,
-    });
+export interface CheckAuthenticatedConnectionUseCase {
+  execute(
+    command: CheckAuthenticatedConnectionCommand
+  ): Promise<CheckAuthenticatedConnectionResult>;
+}
 
-    return {
-      success: false,
-      error: 'Failed to check authentication',
-    };
+export class CheckAuthenticatedConnectionUseCaseImpl
+  extends BaseUseCase<
+    CheckAuthenticatedConnectionCommand,
+    CheckAuthenticatedConnectionResult
+  >
+  implements CheckAuthenticatedConnectionUseCase
+{
+  constructor(
+    private readonly authenticationService: AuthenticationService,
+    logger: Logger,
+    performanceMonitor?: PerformanceMonitoringService
+  ) {
+    super(logger, performanceMonitor);
+  }
+
+  async execute(
+    command: CheckAuthenticatedConnectionCommand
+  ): Promise<CheckAuthenticatedConnectionResult> {
+    try {
+      this.logger.info('Checking if connection is authenticated', {
+        connectionId: command.connectionId,
+      });
+
+      if (!command.connectionId) {
+        throw new Error('Connection ID is required');
+      }
+
+      const isAuthenticated =
+        await this.authenticationService.isConnectionAuthenticated(
+          ConnectionId.create(command.connectionId)
+        );
+
+      this.logger.info('Connection authentication check completed', {
+        connectionId: command.connectionId,
+        isAuthenticated,
+      });
+
+      return {
+        success: true,
+        isAuthenticated,
+      };
+    } catch (error) {
+      return this.handleError(error, {
+        connectionId: command.connectionId,
+      });
+    }
   }
 }

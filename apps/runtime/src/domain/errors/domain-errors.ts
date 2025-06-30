@@ -128,3 +128,144 @@ export class CircuitBreakerError extends DomainError {
     );
   }
 }
+
+export class DomainException extends Error {
+  constructor(
+    message: string,
+    public readonly code: string,
+    public readonly details?: Record<string, unknown>
+  ) {
+    super(message);
+    this.name = 'DomainException';
+  }
+}
+
+export class UserAuthenticationFailedException extends DomainException {
+  constructor(
+    public readonly reason: string,
+    public readonly userId?: string
+  ) {
+    super(`Authentication failed: ${reason}`, 'USER_AUTHENTICATION_FAILED', {
+      reason,
+      userId,
+    });
+    this.name = 'UserAuthenticationFailedException';
+  }
+}
+
+export class UserNotFoundException extends DomainException {
+  constructor(public readonly userId: string) {
+    super(`User not found: ${userId}`, 'USER_NOT_FOUND', { userId });
+    this.name = 'UserNotFoundException';
+  }
+}
+
+export class ConnectionNotFoundException extends DomainException {
+  constructor(public readonly connectionId: string) {
+    super(`Connection not found: ${connectionId}`, 'CONNECTION_NOT_FOUND', {
+      connectionId,
+    });
+    this.name = 'ConnectionNotFoundException';
+  }
+}
+
+export class MessageValidationException extends DomainException {
+  constructor(
+    public readonly field: string,
+    public readonly value: unknown,
+    public readonly reason: string
+  ) {
+    super(
+      `Message validation failed for field '${field}': ${reason}`,
+      'MESSAGE_VALIDATION_FAILED',
+      { field, value, reason }
+    );
+    this.name = 'MessageValidationException';
+  }
+}
+
+export class SessionExpiredException extends DomainException {
+  constructor(public readonly sessionId: string) {
+    super(`Session expired: ${sessionId}`, 'SESSION_EXPIRED', { sessionId });
+    this.name = 'SessionExpiredException';
+  }
+}
+
+export class UserAuthorizationException extends DomainException {
+  constructor(
+    public readonly userId: string,
+    public readonly requiredPermission: string,
+    public readonly reason: string
+  ) {
+    super(
+      `User ${userId} not authorized for ${requiredPermission}: ${reason}`,
+      'USER_AUTHORIZATION_FAILED',
+      { userId, requiredPermission, reason }
+    );
+    this.name = 'UserAuthorizationException';
+  }
+}
+
+export class ConnectionLimitExceededException extends DomainException {
+  constructor(
+    public readonly userId: string,
+    public readonly currentConnections: number,
+    public readonly maxConnections: number
+  ) {
+    super(
+      `Connection limit exceeded for user ${userId}`,
+      'CONNECTION_LIMIT_EXCEEDED',
+      { userId, currentConnections, maxConnections }
+    );
+    this.name = 'ConnectionLimitExceededException';
+  }
+}
+
+export class MessageRateLimitExceededException extends DomainException {
+  constructor(
+    public readonly userId: string,
+    public readonly timeWindow: number
+  ) {
+    super(
+      `Message rate limit exceeded for user ${userId}`,
+      'MESSAGE_RATE_LIMIT_EXCEEDED',
+      { userId, timeWindow }
+    );
+    this.name = 'MessageRateLimitExceededException';
+  }
+}
+
+export class InvalidTokenException extends DomainException {
+  constructor(public readonly reason: string) {
+    super(`Invalid token: ${reason}`, 'INVALID_TOKEN', { reason });
+    this.name = 'InvalidTokenException';
+  }
+}
+
+export class ServiceUnavailableException extends DomainException {
+  constructor(
+    public readonly serviceName: string,
+    public readonly reason: string
+  ) {
+    super(
+      `Service ${serviceName} unavailable: ${reason}`,
+      'SERVICE_UNAVAILABLE',
+      { serviceName, reason }
+    );
+    this.name = 'ServiceUnavailableException';
+  }
+}
+
+export class CircuitBreakerOpenException extends DomainException {
+  constructor(
+    public readonly serviceName: string,
+    public readonly operation: string
+  ) {
+    super(
+      `Circuit breaker is open for ${serviceName}:${operation}`,
+      'CIRCUIT_BREAKER_OPEN',
+      { serviceName, operation }
+    );
+    this.name = 'CircuitBreakerOpenException';
+  }
+}

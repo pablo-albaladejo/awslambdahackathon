@@ -1,32 +1,57 @@
-import { logger } from '@awslambdahackathon/utils/lambda';
-import type { ConnectionService } from '@domain/services/connection-service';
+import { Logger } from '@config/container';
+import { ConnectionService } from '@domain/services/connection-service';
+import { PerformanceMonitoringService } from '@domain/services/performance-monitoring-service';
 import { ConnectionId } from '@domain/value-objects';
 
-interface RemoveConnectionResult {
-  success: boolean;
-  error?: string;
+import { BaseResult, BaseUseCase } from './base-use-case';
+
+interface RemoveConnectionCommand {
+  connectionId: string;
 }
 
-export async function removeConnection(
-  connectionService: ConnectionService,
-  connectionId: string
-): Promise<RemoveConnectionResult> {
-  try {
-    logger.info('Removing connection', { connectionId });
-    await connectionService.removeConnection({
-      connectionId: ConnectionId.create(connectionId),
-    });
+interface RemoveConnectionResult extends BaseResult {}
 
-    return { success: true };
-  } catch (error) {
-    logger.error('Failed to remove connection', {
-      error: error instanceof Error ? error.message : 'Unknown error',
-      connectionId,
-    });
+export interface RemoveConnectionUseCase {
+  execute(command: RemoveConnectionCommand): Promise<RemoveConnectionResult>;
+}
 
-    return {
-      success: false,
-      error: 'Failed to remove connection',
-    };
+export class RemoveConnectionUseCaseImpl
+  extends BaseUseCase<RemoveConnectionCommand, RemoveConnectionResult>
+  implements RemoveConnectionUseCase
+{
+  constructor(
+    private readonly connectionService: ConnectionService,
+    logger: Logger,
+    performanceMonitor?: PerformanceMonitoringService
+  ) {
+    super(logger, performanceMonitor);
+  }
+
+  async execute(
+    command: RemoveConnectionCommand
+  ): Promise<RemoveConnectionResult> {
+    try {
+      this.logger.info('Removing connection', {
+        connectionId: command.connectionId,
+      });
+
+      if (!command.connectionId) {
+        throw new Error('Connection ID is required');
+      }
+
+      await this.connectionService.removeConnection({
+        connectionId: ConnectionId.create(command.connectionId),
+      });
+
+      this.logger.info('Connection removed successfully', {
+        connectionId: command.connectionId,
+      });
+
+      return { success: true };
+    } catch (error) {
+      return this.handleError(error, {
+        connectionId: command.connectionId,
+      });
+    }
   }
 }

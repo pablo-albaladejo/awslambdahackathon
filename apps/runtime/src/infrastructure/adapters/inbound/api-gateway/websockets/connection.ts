@@ -1,6 +1,3 @@
-import { removeAuthenticatedConnection } from '@application/use-cases/remove-authenticated-connection';
-import { removeConnection } from '@application/use-cases/remove-connection';
-import { storeConnection } from '@application/use-cases/store-connection';
 import {
   createSuccessResponse,
   createWebSocketHandler,
@@ -9,8 +6,6 @@ import {
 } from '@awslambdahackathon/utils/lambda';
 import { ERROR_CONSTANTS, WEBSOCKET_CONSTANTS } from '@config/constants';
 import { container } from '@config/container';
-import { AuthenticationService } from '@domain/services/authentication-service';
-import { ConnectionService } from '@domain/services/connection-service';
 import { MetricsService } from '@domain/services/metrics-service';
 import { PerformanceMonitoringService } from '@domain/services/performance-monitoring-service';
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
@@ -22,8 +17,6 @@ import {
 
 // Dependencies interface for the connection handler
 interface ConnectionHandlerDependencies {
-  connectionService: ConnectionService;
-  authenticationService: AuthenticationService;
   errorHandlingService: ErrorHandlingService;
   performanceMonitoringService: PerformanceMonitoringService;
   metricsService: MetricsService;
@@ -37,8 +30,6 @@ export const createConnectionHandler = (
     event: APIGatewayProxyEvent
   ): Promise<APIGatewayProxyResult> => {
     const {
-      connectionService,
-      authenticationService,
       errorHandlingService,
       performanceMonitoringService,
       metricsService,
@@ -92,7 +83,8 @@ export const createConnectionHandler = (
         WEBSOCKET_CONSTANTS.EVENT_TYPES.CONNECT
       ) {
         try {
-          await storeConnection(connectionService, connectionId);
+          const storeConnectionUseCase = container.getStoreConnectionUseCase();
+          await storeConnectionUseCase.execute({ connectionId });
 
           performanceMonitor.complete(true);
 
@@ -119,11 +111,13 @@ export const createConnectionHandler = (
         WEBSOCKET_CONSTANTS.EVENT_TYPES.DISCONNECT
       ) {
         try {
-          await removeConnection(connectionService, connectionId);
-          await removeAuthenticatedConnection(
-            authenticationService,
-            connectionId
-          );
+          const removeConnectionUseCase =
+            container.getRemoveConnectionUseCase();
+          const removeAuthenticatedConnectionUseCase =
+            container.getRemoveAuthenticatedConnectionUseCase();
+
+          await removeConnectionUseCase.execute({ connectionId });
+          await removeAuthenticatedConnectionUseCase.execute({ connectionId });
 
           performanceMonitor.complete(true);
 
@@ -191,8 +185,6 @@ export const createConnectionHandler = (
 
 // Create the handler with dependencies from container (for backward compatibility)
 const connectionHandler = createConnectionHandler({
-  connectionService: container.getConnectionService(),
-  authenticationService: container.getAuthenticationService(),
   errorHandlingService: container.getErrorHandlingService(),
   performanceMonitoringService: container.getPerformanceMonitoringService(),
   metricsService: container.getMetricsService(),
