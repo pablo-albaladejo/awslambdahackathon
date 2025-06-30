@@ -289,7 +289,7 @@ export class DynamoDBMessageMapper
     gsi2: { partitionKey: string; sortKey: string };
   } {
     return {
-      tableName: process.env.DYNAMODB_TABLE_NAME || 'app-table',
+      tableName: process.env.WEBSOCKET_MESSAGES_TABLE || 'app-messages-table',
       partitionKey: 'PK',
       sortKey: 'SK',
       gsi1: {

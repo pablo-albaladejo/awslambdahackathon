@@ -19,9 +19,9 @@ export class ConnectionManagementService
 
   constructor() {
     this.connectionRepository = container.get<ConnectionRepository>(
-      'connectionRepository'
+      'ConnectionRepository'
     );
-    this.userRepository = container.get<UserRepository>('userRepository');
+    this.userRepository = container.get<UserRepository>('UserRepository');
   }
 
   async storeAuthenticatedConnection(

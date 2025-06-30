@@ -252,7 +252,8 @@ export class DynamoDBUserMapper
     gsi1: { partitionKey: string; sortKey: string };
   } {
     return {
-      tableName: process.env.DYNAMODB_TABLE_NAME || 'app-table',
+      tableName:
+        process.env.WEBSOCKET_CONNECTIONS_TABLE || 'app-connections-table',
       partitionKey: 'PK',
       sortKey: 'SK',
       gsi1: {

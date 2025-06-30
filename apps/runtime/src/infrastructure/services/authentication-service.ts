@@ -56,9 +56,9 @@ export class AuthenticationService implements DomainAuthenticationService {
     });
 
     // Get repositories from container
-    this.userRepository = container.get<UserRepository>('userRepository');
+    this.userRepository = container.get<UserRepository>('UserRepository');
     this.connectionRepository = container.get<ConnectionRepository>(
-      'connectionRepository'
+      'ConnectionRepository'
     );
   }
 

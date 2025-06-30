@@ -65,8 +65,10 @@ export class RuntimeStack extends cdk.Stack {
 
     // Common environment variables for all Lambda functions
     const commonEnvVars = {
+      // Authentication
       COGNITO_USER_POOL_ID: props.cognitoUserPoolId,
       COGNITO_CLIENT_ID: props.cognitoClientId,
+      // Database tables
       WEBSOCKET_CONNECTIONS_TABLE: websocketConnectionsTable.table.tableName,
       WEBSOCKET_MESSAGES_TABLE: websocketMessagesTable.table.tableName,
     };
@@ -152,6 +154,15 @@ export class RuntimeStack extends cdk.Stack {
     });
 
     this.websocketApi = websocketApi.websocketApi;
+
+    // Update Lambda functions with WebSocket endpoint
+    (
+      this.websocketConnectionFunction as cdk.aws_lambda.Function
+    ).addEnvironment('WEBSOCKET_ENDPOINT', websocketApi.websocketStage.url);
+    (
+      this.websocketConversationFunction as cdk.aws_lambda.Function
+    ).addEnvironment('WEBSOCKET_ENDPOINT', websocketApi.websocketStage.url);
+
     new cdk.CfnOutput(this, 'WebSocketUrl', {
       value: websocketApi.websocketStage.url,
       description: 'WebSocket URL',

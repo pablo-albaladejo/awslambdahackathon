@@ -19,11 +19,11 @@ export class ChatService implements DomainChatService {
   private readonly sessionRepository: SessionRepository;
 
   constructor() {
-    this.userRepository = container.get<UserRepository>('userRepository');
+    this.userRepository = container.get<UserRepository>('UserRepository');
     this.messageRepository =
-      container.get<MessageRepository>('messageRepository');
+      container.get<MessageRepository>('MessageRepository');
     this.sessionRepository =
-      container.get<SessionRepository>('sessionRepository');
+      container.get<SessionRepository>('SessionRepository');
   }
 
   async processMessage(

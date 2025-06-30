@@ -20,6 +20,7 @@ import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 // AWS Lambda Powertools unified service
 import { loggerAdapter } from '@awslambdahackathon/utils/lambda';
+// WebSocket Lambda configuration
 import { ConnectionRepository } from '@domain/repositories/connection';
 import { MessageRepository } from '@domain/repositories/message';
 import { SessionRepository } from '@domain/repositories/session';
@@ -47,6 +48,8 @@ import { AuthenticationService as AuthenticationServiceImpl } from '@infrastruct
 import { ChatService } from '@infrastructure/services/chat-service';
 import { CircuitBreakerService as CircuitBreakerServiceImpl } from '@infrastructure/services/circuit-breaker-service';
 import { ConnectionService } from '@infrastructure/services/connection-service';
+
+import { validateWebSocketRequiredEnvironmentVariables } from './websocket-lambda-config';
 
 export type Constructor<T = unknown> = new (...args: unknown[]) => T;
 export type Token<T = unknown> = Constructor<T> | string;
@@ -79,18 +82,21 @@ class DependencyContainer implements Container {
   };
 
   constructor() {
+    // Validate required environment variables using WebSocket-specific validation
+    validateWebSocketRequiredEnvironmentVariables();
+
     // Initialize configurations
     this.configs = {
       dynamoDB: {
-        tableName: process.env.DYNAMODB_TABLE_NAME || 'chat-app',
-        region: process.env.AWS_REGION || 'us-east-1',
+        tableName: process.env.WEBSOCKET_MESSAGES_TABLE!, // Use messages table as default for DynamoDBConfig
+        region: process.env.AWS_REGION!,
         endpoint: process.env.DYNAMODB_ENDPOINT,
       },
       webSocket: {
-        endpoint: process.env.WEBSOCKET_ENDPOINT || '',
+        endpoint: process.env.WEBSOCKET_ENDPOINT!,
       },
       cloudWatch: {
-        namespace: process.env.CLOUDWATCH_NAMESPACE || 'chat-app',
+        namespace: process.env.CLOUDWATCH_NAMESPACE!,
       },
     };
 

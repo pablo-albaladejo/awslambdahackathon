@@ -15,7 +15,7 @@ export class ConnectionService implements DomainConnectionService {
 
   constructor() {
     this.connectionRepository = container.get<ConnectionRepository>(
-      'connectionRepository'
+      'ConnectionRepository'
     );
   }
 

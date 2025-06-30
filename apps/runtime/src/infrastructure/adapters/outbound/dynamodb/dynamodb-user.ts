@@ -21,7 +21,7 @@ export class DynamoDBUserRepository
   implements UserRepository
 {
   private static readonly SERVICE_NAME = 'DynamoDB';
-  private static readonly TABLE_NAME = process.env.USERS_TABLE_NAME!;
+  private static readonly TABLE_NAME = process.env.WEBSOCKET_CONNECTIONS_TABLE!;
 
   constructor(
     private readonly client: DynamoDBDocumentClient,

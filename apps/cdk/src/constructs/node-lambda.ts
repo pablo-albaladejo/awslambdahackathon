@@ -37,8 +37,11 @@ export class NodeLambda extends Construct {
       NODE_ENV: props.environment,
       ENVIRONMENT: props.environment,
       LOG_LEVEL: props.environment === 'prod' ? 'INFO' : 'DEBUG',
+      // AWS Lambda Powertools variables
       POWERTOOLS_SERVICE_NAME: `${props.appName}-api`,
       POWERTOOLS_METRICS_NAMESPACE: props.appName,
+      // CloudWatch namespace for custom metrics
+      CLOUDWATCH_NAMESPACE: props.appName,
     };
 
     // Merge default environment variables with custom ones
