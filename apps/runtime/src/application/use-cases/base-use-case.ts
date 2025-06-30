@@ -1,5 +1,5 @@
 import { Logger } from '@config/container';
-import { DomainException } from '@domain/errors/domain-errors';
+import { DomainError } from '@domain/errors/domain-errors';
 import { PerformanceMonitoringService } from '@domain/services/performance-monitoring-service';
 
 export interface BaseResult {
@@ -14,43 +14,47 @@ export abstract class BaseUseCase<
 > {
   constructor(
     protected readonly logger: Logger,
-    protected readonly performanceMonitor?: PerformanceMonitoringService
+    protected readonly performanceMonitoringService: PerformanceMonitoringService
   ) {}
-
-  abstract execute(command: TCommand): Promise<TResult>;
 
   protected handleError(
     error: unknown,
-    context: Record<string, unknown> = {}
+    context?: Record<string, unknown>
   ): TResult {
-    if (error instanceof DomainException) {
-      this.logger.warn(
-        `Operation failed with domain exception: ${error.message}`,
-        {
-          error: error.message,
-          code: error.code,
-          details: error.details,
-          ...context,
-        }
-      );
-
+    if (error instanceof DomainError) {
+      this.logger.error('Domain error occurred', {
+        error: error.message,
+        code: error.code,
+        context,
+      });
       return {
         success: false,
         error: error.message,
         errorCode: error.code,
       } as TResult;
     }
-
-    this.logger.error('Operation failed with unexpected error', {
-      error: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : undefined,
-      ...context,
+    if (error instanceof Error) {
+      this.logger.error('Application error occurred', {
+        error: error.message,
+        stack: error.stack,
+        context,
+      });
+      return {
+        success: false,
+        error: error.message,
+        errorCode: 'INTERNAL_ERROR',
+      } as TResult;
+    }
+    this.logger.error('Unknown error occurred', {
+      error: String(error),
+      context,
     });
-
     return {
       success: false,
-      error: 'Operation failed due to an unexpected error',
+      error: 'An unknown error occurred',
       errorCode: 'INTERNAL_ERROR',
     } as TResult;
   }
+
+  abstract execute(command: TCommand): Promise<TResult>;
 }

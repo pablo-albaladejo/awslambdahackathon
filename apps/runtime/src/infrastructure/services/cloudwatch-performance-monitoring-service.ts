@@ -4,6 +4,7 @@ import {
   StandardUnit,
 } from '@aws-sdk/client-cloudwatch';
 import { logger } from '@awslambdahackathon/utils/lambda';
+import { CloudWatchConfig } from '@config/container';
 import {
   PerformanceContext,
   PerformanceData,
@@ -12,22 +13,85 @@ import {
   PerformanceStats,
   PerformanceThresholds,
 } from '@domain/services/performance-monitoring-service';
+import { Metric, PerformanceMetric } from '@domain/value-objects/metric';
 
 export class CloudWatchPerformanceMonitoringService
   implements PerformanceMonitoringService
 {
   private activeOperations: Map<string, PerformanceData> = new Map();
-  private metricsBuffer: PerformanceMetrics[] = [];
+  private metricsBuffer: Metric[] = [];
   private lastFlush: Date | null = null;
   private readonly maxBufferSize = 100;
-  private readonly cloudWatchClient: CloudWatchClient;
+  private readonly client: CloudWatchClient;
   private readonly namespace: string;
+  private currentSpan: {
+    name: string;
+    startTime: number;
+    tags?: Record<string, string>;
+  } | null = null;
 
-  constructor(namespace = 'AWSLambdaHackathon/Performance') {
-    this.cloudWatchClient = new CloudWatchClient({
-      region: process.env.AWS_REGION || 'us-east-1',
+  constructor(config: CloudWatchConfig) {
+    this.client = new CloudWatchClient({});
+    this.namespace = config.namespace;
+  }
+
+  async startSpan(name: string, tags?: Record<string, string>): Promise<void> {
+    if (this.currentSpan) {
+      logger.warn('Starting a new span while another is active', {
+        currentSpan: this.currentSpan.name,
+        newSpan: name,
+      });
+      await this.endSpan();
+    }
+
+    this.currentSpan = {
+      name,
+      startTime: Date.now(),
+      tags,
+    };
+
+    logger.debug('Started performance span', {
+      name,
+      tags,
     });
-    this.namespace = namespace;
+  }
+
+  async endSpan(error?: Error): Promise<void> {
+    if (!this.currentSpan) {
+      logger.warn('Attempting to end a non-existent span');
+      return;
+    }
+
+    const duration = Date.now() - this.currentSpan.startTime;
+    const success = !error;
+
+    const metric: Metric = {
+      name: this.currentSpan.name,
+      type: 'span',
+      tags: {
+        ...this.currentSpan.tags,
+        success: success.toString(),
+        ...(error && {
+          error: error.message,
+          errorType: error.constructor.name,
+        }),
+      },
+      duration,
+      success,
+      error: error?.message,
+      timestamp: Date.now(),
+    };
+
+    await this.recordMetric(metric);
+
+    logger.debug('Ended performance span', {
+      name: this.currentSpan.name,
+      duration,
+      success,
+      error: error?.message,
+    });
+
+    this.currentSpan = null;
   }
 
   startMonitoring(
@@ -74,22 +138,15 @@ export class CloudWatchPerformanceMonitoringService
     };
   }
 
-  recordMetrics(
-    metrics: PerformanceMetrics,
-    context: PerformanceContext
-  ): void {
-    this.metricsBuffer.push({
-      ...metrics,
-      ...context,
-    });
+  async recordMetrics(metric: Metric, namespace?: string): Promise<void> {
+    this.metricsBuffer.push(metric);
 
     if (this.metricsBuffer.length >= this.maxBufferSize) {
-      this.flushMetrics();
+      await this.flushMetrics(namespace);
     }
 
     logger.debug('Performance metrics recorded', {
-      metrics,
-      context,
+      metric,
       bufferSize: this.metricsBuffer.length,
     });
   }
@@ -101,30 +158,32 @@ export class CloudWatchPerformanceMonitoringService
     context: PerformanceContext,
     additionalDimensions?: Array<{ Name: string; Value: string }>
   ): void {
-    const metric = {
+    const contextTags: Record<string, string> = {};
+    Object.entries(context).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        contextTags[key] = String(value);
+      }
+    });
+
+    const metric: Metric = {
       name: metricName,
+      type: 'business',
       value,
       unit,
-      context,
-      dimensions: additionalDimensions?.reduce(
-        (acc, dim) => {
-          acc[dim.Name] = dim.Value;
-          return acc;
-        },
-        {} as Record<string, string>
-      ),
+      tags: {
+        ...contextTags,
+        ...additionalDimensions?.reduce(
+          (acc, dim) => {
+            acc[dim.Name] = dim.Value;
+            return acc;
+          },
+          {} as Record<string, string>
+        ),
+      },
+      timestamp: Date.now(),
     };
 
-    logger.info('Business metric recorded', metric);
-
-    // Send business metric to CloudWatch immediately
-    this.sendMetricToCloudWatch(
-      metricName,
-      value,
-      unit,
-      context,
-      additionalDimensions
-    );
+    this.recordMetrics(metric);
   }
 
   recordErrorMetric(
@@ -132,20 +191,66 @@ export class CloudWatchPerformanceMonitoringService
     errorCode: string,
     context: PerformanceContext
   ): void {
-    const errorMetric = {
-      errorType,
-      errorCode,
-      context,
-      timestamp: new Date(),
+    const contextTags: Record<string, string> = {};
+    Object.entries(context).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        contextTags[key] = String(value);
+      }
+    });
+
+    const metric: Metric = {
+      name: 'ErrorCount',
+      type: 'error',
+      value: 1,
+      unit: 'Count',
+      tags: {
+        ...contextTags,
+        errorType,
+        errorCode,
+      },
+      timestamp: Date.now(),
     };
 
-    logger.error('Error metric recorded', errorMetric);
+    this.recordMetrics(metric);
+  }
 
-    // Send error metric to CloudWatch immediately
-    this.sendMetricToCloudWatch('ErrorCount', 1, 'Count', context, [
-      { Name: 'ErrorType', Value: errorType },
-      { Name: 'ErrorCode', Value: errorCode },
-    ]);
+  private convertToMetric(
+    metrics: PerformanceMetrics,
+    context: PerformanceContext
+  ): Metric {
+    const contextTags: Record<string, string> = {};
+    Object.entries(context).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        contextTags[key] = String(value);
+      }
+    });
+
+    return {
+      name: 'PerformanceMetrics',
+      type: 'operation',
+      tags: {
+        ...contextTags,
+        success: metrics.success.toString(),
+        errorCount: metrics.errorCount.toString(),
+        ...(metrics.requestSize && {
+          requestSize: metrics.requestSize.toString(),
+        }),
+        ...(metrics.responseSize && {
+          responseSize: metrics.responseSize.toString(),
+        }),
+        ...(metrics.externalCalls && {
+          externalCalls: metrics.externalCalls.toString(),
+        }),
+        ...(metrics.databaseCalls && {
+          databaseCalls: metrics.databaseCalls.toString(),
+        }),
+      },
+      duration: metrics.duration,
+      success: metrics.success,
+      timestamp: Date.now(),
+      value: metrics.memoryUsage,
+      unit: 'Bytes',
+    };
   }
 
   checkPerformanceThresholds(
@@ -153,6 +258,112 @@ export class CloudWatchPerformanceMonitoringService
     context: PerformanceContext,
     thresholds: PerformanceThresholds
   ): void {
+    const contextTags: Record<string, string> = {};
+    Object.entries(context).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        contextTags[key] = String(value);
+      }
+    });
+
+    const metricsToRecord: Metric[] = [
+      {
+        name: 'OperationDuration',
+        type: 'duration',
+        value: metrics.duration,
+        unit: 'Milliseconds',
+        tags: contextTags,
+        timestamp: Date.now(),
+      },
+      {
+        name: 'MemoryUsage',
+        type: 'memory',
+        value: metrics.memoryUsage,
+        unit: 'Bytes',
+        tags: contextTags,
+        timestamp: Date.now(),
+      },
+      {
+        name: 'OperationSuccess',
+        type: 'success',
+        value: metrics.success ? 1 : 0,
+        unit: 'Count',
+        tags: contextTags,
+        timestamp: Date.now(),
+      },
+      {
+        name: 'OperationErrors',
+        type: 'error',
+        value: metrics.errorCount,
+        unit: 'Count',
+        tags: contextTags,
+        timestamp: Date.now(),
+      },
+      {
+        name: 'PerformanceThreshold',
+        type: 'threshold',
+        value: metrics.duration,
+        unit: 'Milliseconds',
+        tags: {
+          ...contextTags,
+          warning: thresholds.warning.toString(),
+          critical: thresholds.critical.toString(),
+          timeout: thresholds.timeout.toString(),
+          exceeded: (
+            metrics.duration > thresholds.warning ||
+            metrics.duration > thresholds.critical ||
+            metrics.duration > thresholds.timeout
+          ).toString(),
+        },
+        timestamp: Date.now(),
+      },
+    ];
+
+    if (metrics.externalCalls !== undefined) {
+      metricsToRecord.push({
+        name: 'ExternalCalls',
+        type: 'operation',
+        value: metrics.externalCalls,
+        unit: 'Count',
+        tags: contextTags,
+        timestamp: Date.now(),
+      });
+    }
+
+    if (metrics.databaseCalls !== undefined) {
+      metricsToRecord.push({
+        name: 'DatabaseCalls',
+        type: 'operation',
+        value: metrics.databaseCalls,
+        unit: 'Count',
+        tags: contextTags,
+        timestamp: Date.now(),
+      });
+    }
+
+    if (metrics.requestSize !== undefined) {
+      metricsToRecord.push({
+        name: 'RequestSize',
+        type: 'operation',
+        value: metrics.requestSize,
+        unit: 'Bytes',
+        tags: contextTags,
+        timestamp: Date.now(),
+      });
+    }
+
+    if (metrics.responseSize !== undefined) {
+      metricsToRecord.push({
+        name: 'ResponseSize',
+        type: 'operation',
+        value: metrics.responseSize,
+        unit: 'Bytes',
+        tags: contextTags,
+        timestamp: Date.now(),
+      });
+    }
+
+    metricsToRecord.forEach(metric => this.recordMetrics(metric));
+
     if (metrics.duration > thresholds.critical) {
       logger.error('Critical performance threshold exceeded', {
         duration: metrics.duration,
@@ -184,103 +395,42 @@ export class CloudWatchPerformanceMonitoringService
     };
   }
 
-  async flushMetrics(): Promise<void> {
+  async flushMetrics(namespace?: string): Promise<void> {
     if (this.metricsBuffer.length === 0) {
       logger.debug('No metrics to flush');
       return;
     }
 
     try {
-      const metricData = this.metricsBuffer.map(metrics => ({
-        MetricName: 'OperationDuration',
-        Value: metrics.duration,
-        Unit: 'Milliseconds' as const,
-        Dimensions: [
-          { Name: 'Operation', Value: String(metrics.operation || 'Unknown') },
-          { Name: 'Service', Value: String(metrics.service || 'Unknown') },
-          {
-            Name: 'Environment',
-            Value: String(metrics.environment || 'Unknown'),
-          },
-          { Name: 'Stage', Value: String(metrics.stage || 'Unknown') },
-        ],
-        Timestamp: new Date(),
-      }));
-
-      // Add memory usage metrics
-      const memoryMetrics = this.metricsBuffer.map(metrics => ({
-        MetricName: 'MemoryUsage',
-        Value: metrics.memoryUsage,
-        Unit: 'Bytes' as const,
-        Dimensions: [
-          { Name: 'Operation', Value: String(metrics.operation || 'Unknown') },
-          { Name: 'Service', Value: String(metrics.service || 'Unknown') },
-          {
-            Name: 'Environment',
-            Value: String(metrics.environment || 'Unknown'),
-          },
-          { Name: 'Stage', Value: String(metrics.stage || 'Unknown') },
-        ],
-        Timestamp: new Date(),
-      }));
-
-      // Add success rate metrics
-      const successMetrics = this.metricsBuffer.map(metrics => ({
-        MetricName: 'SuccessRate',
-        Value: metrics.success ? 1 : 0,
-        Unit: 'Count' as const,
-        Dimensions: [
-          { Name: 'Operation', Value: String(metrics.operation || 'Unknown') },
-          { Name: 'Service', Value: String(metrics.service || 'Unknown') },
-          {
-            Name: 'Environment',
-            Value: String(metrics.environment || 'Unknown'),
-          },
-          { Name: 'Stage', Value: String(metrics.stage || 'Unknown') },
-        ],
-        Timestamp: new Date(),
-      }));
-
-      // Add error count metrics
-      const errorMetrics = this.metricsBuffer.map(metrics => ({
-        MetricName: 'ErrorCount',
-        Value: metrics.errorCount,
-        Unit: 'Count' as const,
-        Dimensions: [
-          { Name: 'Operation', Value: String(metrics.operation || 'Unknown') },
-          { Name: 'Service', Value: String(metrics.service || 'Unknown') },
-          {
-            Name: 'Environment',
-            Value: String(metrics.environment || 'Unknown'),
-          },
-          { Name: 'Stage', Value: String(metrics.stage || 'Unknown') },
-        ],
-        Timestamp: new Date(),
-      }));
-
-      const allMetrics = [
-        ...metricData,
-        ...memoryMetrics,
-        ...successMetrics,
-        ...errorMetrics,
-      ];
-
       // CloudWatch allows max 20 metrics per request, so we need to batch them
       const batchSize = 20;
-      for (let i = 0; i < allMetrics.length; i += batchSize) {
-        const batch = allMetrics.slice(i, i + batchSize);
+      for (let i = 0; i < this.metricsBuffer.length; i += batchSize) {
+        const batch = this.metricsBuffer.slice(i, i + batchSize);
 
         const command = new PutMetricDataCommand({
-          Namespace: this.namespace,
-          MetricData: batch,
+          Namespace: namespace || this.namespace,
+          MetricData: batch.map(metric => ({
+            MetricName: metric.name,
+            Value: metric.value || metric.duration || 0,
+            Unit: metric.unit
+              ? (this.validateStandardUnit(metric.unit) as StandardUnit)
+              : 'None',
+            Dimensions: Object.entries(metric.tags).map(([key, value]) => ({
+              Name: key,
+              Value: String(value),
+            })),
+            Timestamp: metric.timestamp
+              ? new Date(metric.timestamp)
+              : new Date(),
+          })),
         });
 
-        await this.cloudWatchClient.send(command);
+        await this.client.send(command);
       }
 
       logger.info('Performance metrics sent to CloudWatch', {
         count: this.metricsBuffer.length,
-        batches: Math.ceil(allMetrics.length / batchSize),
+        batches: Math.ceil(this.metricsBuffer.length / batchSize),
       });
 
       this.metricsBuffer = [];
@@ -340,57 +490,6 @@ export class CloudWatchPerformanceMonitoringService
       : 'None';
   }
 
-  private async sendMetricToCloudWatch(
-    metricName: string,
-    value: number,
-    unit: string,
-    context: PerformanceContext,
-    additionalDimensions?: Array<{ Name: string; Value: string }>
-  ): Promise<void> {
-    try {
-      const dimensions = [
-        { Name: 'Operation', Value: String(context.operation || 'Unknown') },
-        { Name: 'Service', Value: String(context.service || 'Unknown') },
-        {
-          Name: 'Environment',
-          Value: String(context.environment || 'Unknown'),
-        },
-        { Name: 'Stage', Value: String(context.stage || 'Unknown') },
-        ...(additionalDimensions || []),
-      ];
-
-      const standardUnit = this.validateStandardUnit(unit);
-
-      const command = new PutMetricDataCommand({
-        Namespace: this.namespace,
-        MetricData: [
-          {
-            MetricName: metricName,
-            Value: value,
-            Unit: standardUnit,
-            Dimensions: dimensions,
-            Timestamp: new Date(),
-          },
-        ],
-      });
-
-      await this.cloudWatchClient.send(command);
-
-      logger.debug('Metric sent to CloudWatch', {
-        metricName,
-        value,
-        unit: standardUnit,
-        dimensions,
-      });
-    } catch (error) {
-      logger.error('Failed to send metric to CloudWatch', {
-        metricName,
-        value,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      });
-    }
-  }
-
   private completeOperation(
     operationId: string,
     success: boolean,
@@ -409,6 +508,33 @@ export class CloudWatchPerformanceMonitoringService
     const duration = endTime.getTime() - data.startTime.getTime();
     const memoryUsage = process.memoryUsage().heapUsed;
 
+    const contextTags: Record<string, string> = {};
+    Object.entries(data.context).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        contextTags[key] = String(value);
+      }
+    });
+
+    const metric: PerformanceMetric = {
+      name: data.operation,
+      type: 'operation',
+      tags: {
+        ...contextTags,
+        success: success.toString(),
+        ...(requestSize && { requestSize: requestSize.toString() }),
+        ...(responseSize && { responseSize: responseSize.toString() }),
+      },
+      duration,
+      memoryUsage,
+      success,
+      errorCount: success ? 0 : 1,
+      timestamp: Date.now(),
+      value: memoryUsage,
+      unit: 'Bytes',
+    };
+
+    this.recordMetrics(metric);
+
     const metrics: PerformanceMetrics = {
       duration,
       memoryUsage,
@@ -418,7 +544,11 @@ export class CloudWatchPerformanceMonitoringService
       responseSize,
     };
 
-    this.recordMetrics(metrics, data.context);
+    this.checkPerformanceThresholds(metrics, data.context, {
+      warning: 1000,
+      critical: 5000,
+      timeout: 10000,
+    });
 
     this.activeOperations.delete(operationId);
 
@@ -429,6 +559,10 @@ export class CloudWatchPerformanceMonitoringService
       success,
       memoryUsage,
     });
+  }
+
+  private async recordMetric(metric: Metric): Promise<void> {
+    await this.recordMetrics(metric);
   }
 }
 
@@ -494,18 +628,37 @@ export class PerformanceMonitor {
     const duration = Number(endTime - this.startTime) / 1000000; // Convert to milliseconds
     const memoryUsage = endMemory.heapUsed - this.startMemory.heapUsed;
 
-    const metrics: PerformanceMetrics = {
+    const contextTags: Record<string, string> = {};
+    Object.entries(this.context).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        contextTags[key] = String(value);
+      }
+    });
+
+    const metric: Metric = {
+      name: this.operation,
+      type: 'operation',
+      tags: {
+        ...contextTags,
+        success: success.toString(),
+        errorCount: this.errors.length.toString(),
+        ...(this.externalCalls && {
+          externalCalls: this.externalCalls.toString(),
+        }),
+        ...(this.databaseCalls && {
+          databaseCalls: this.databaseCalls.toString(),
+        }),
+        ...(requestSize && { requestSize: requestSize.toString() }),
+        ...(responseSize && { responseSize: responseSize.toString() }),
+      },
       duration,
-      memoryUsage,
       success,
-      errorCount: this.errors.length,
-      externalCalls: this.externalCalls,
-      databaseCalls: this.databaseCalls,
-      requestSize,
-      responseSize,
+      value: memoryUsage,
+      unit: 'Bytes',
+      timestamp: Date.now(),
     };
 
-    this.monitoringService.recordMetrics(metrics, this.context);
+    this.monitoringService.recordMetrics(metric);
 
     // Record error metrics if any errors occurred
     if (this.errors.length > 0) {

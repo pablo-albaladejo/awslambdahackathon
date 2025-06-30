@@ -27,7 +27,7 @@ export class RemoveAuthenticatedConnectionUseCaseImpl
   constructor(
     private readonly authenticationService: AuthenticationService,
     logger: Logger,
-    performanceMonitor?: PerformanceMonitoringService
+    performanceMonitor: PerformanceMonitoringService
   ) {
     super(logger, performanceMonitor);
   }
@@ -52,7 +52,9 @@ export class RemoveAuthenticatedConnectionUseCaseImpl
         connectionId: command.connectionId,
       });
 
-      return { success: true };
+      return {
+        success: true,
+      };
     } catch (error) {
       return this.handleError(error, {
         connectionId: command.connectionId,

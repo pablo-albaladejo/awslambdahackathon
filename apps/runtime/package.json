@@ -1,8 +1,7 @@
 {
-  "name": "@awslambdahackathon/services",
+  "name": "@awslambdahackathon/runtime",
   "version": "0.0.0",
-  "private": true,
-  "main": "dist/index.js",
+  "type": "module",
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
@@ -10,7 +9,8 @@
     "test": "vitest",
     "test:watch": "vitest --watch",
     "test:coverage": "vitest --coverage",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "lint": "eslint ."
   },
   "dependencies": {
     "@aws-sdk/client-apigatewaymanagementapi": "^3.0.0",
@@ -18,17 +18,26 @@
     "@aws-sdk/client-cognito-identity-provider": "^3.0.0",
     "@aws-sdk/client-dynamodb": "^3.0.0",
     "@aws-sdk/lib-dynamodb": "^3.0.0",
-    "@awslambdahackathon/types": "1.0.0",
-    "@awslambdahackathon/utils": "0.0.0",
+    "@awslambdahackathon/types": "*",
+    "@awslambdahackathon/utils": "*",
     "@middy/core": "^5.0.0",
     "@middy/http-cors": "^5.0.0",
     "@middy/http-error-handler": "^5.0.0",
     "@middy/http-json-body-parser": "^5.0.0",
     "@middy/validator": "^5.0.0",
     "aws-lambda": "^1.0.7",
-    "jsonwebtoken": "^9.0.0",
     "jose": "^4.0.0",
+    "jsonwebtoken": "^9.0.0",
     "zod": "^3.22.4"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.92",
+    "@types/node": "^20.0.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "@vitest/coverage-v8": "^1.6.1",
+    "eslint": "^8.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^1.6.1"
+  }
 }

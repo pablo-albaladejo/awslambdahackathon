@@ -5,13 +5,26 @@ import {
   GetCommand,
   PutCommand,
   QueryCommand,
+  ScanCommand,
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { logger } from '@awslambdahackathon/utils/lambda';
 import { DynamoDBConfig } from '@config/container';
-import { User } from '@domain/entities/user';
+import { User, UserGroup } from '@domain/entities/user';
+import { DomainError } from '@domain/errors/domain-errors';
+import { Specification } from '@domain/repositories/specification';
 import { UserRepository } from '@domain/repositories/user';
 import { ConnectionId, UserId } from '@domain/value-objects';
+
+interface UserRecord {
+  id: string;
+  username: string;
+  email: string;
+  groups: UserGroup[];
+  createdAt: string;
+  lastActivityAt: string;
+  isActive: boolean;
+}
 
 export class DynamoDBUserRepository implements UserRepository {
   private readonly ddbClient: DynamoDBDocumentClient;
@@ -29,14 +42,15 @@ export class DynamoDBUserRepository implements UserRepository {
     this.tableName = config.tableName;
   }
 
-  async findById(id: UserId): Promise<User | null> {
+  async findById(id: UserId | string): Promise<User | null> {
     try {
+      const userId = typeof id === 'string' ? id : id.getValue();
       const result = await this.ddbClient.send(
         new GetCommand({
           TableName: this.tableName,
           Key: {
-            pk: `USER#${id.getValue()}`,
-            sk: `USER#${id.getValue()}`,
+            pk: `USER#${userId}`,
+            sk: `USER#${userId}`,
           },
         })
       );
@@ -45,32 +59,30 @@ export class DynamoDBUserRepository implements UserRepository {
         return null;
       }
 
-      return User.fromData({
-        id: result.Item.userId,
-        username: result.Item.username,
-        email: result.Item.email,
-        groups: result.Item.groups || [],
-        createdAt: new Date(result.Item.createdAt),
-        lastActivityAt: new Date(result.Item.lastActivityAt),
-        isActive: result.Item.isActive !== false,
-      });
+      const record = result.Item as UserRecord;
+      return this.mapToUser(record);
     } catch (error) {
-      logger.error('Error finding user by ID', {
-        error: error instanceof Error ? error.message : String(error),
+      throw new DomainError('Failed to find user by ID', 'INTERNAL_ERROR', {
+        error,
       });
-      throw new Error('Failed to find user by ID');
     }
   }
 
-  async findByConnectionId(connectionId: ConnectionId): Promise<User | null> {
+  async findByConnectionId(
+    connectionId: ConnectionId | string
+  ): Promise<User | null> {
     try {
+      const connId =
+        typeof connectionId === 'string'
+          ? connectionId
+          : connectionId.getValue();
       const result = await this.ddbClient.send(
         new QueryCommand({
           TableName: this.tableName,
           IndexName: 'connectionId-index',
           KeyConditionExpression: 'connectionId = :connectionId',
           ExpressionAttributeValues: {
-            ':connectionId': connectionId.getValue(),
+            ':connectionId': connId,
           },
         })
       );
@@ -114,67 +126,104 @@ export class DynamoDBUserRepository implements UserRepository {
         return null;
       }
 
-      const userItem = result.Items[0];
-      return User.fromData({
-        id: userItem.userId,
-        username: userItem.username,
-        email: userItem.email,
-        groups: userItem.groups || [],
-        createdAt: new Date(userItem.createdAt),
-        lastActivityAt: new Date(userItem.lastActivityAt),
-        isActive: userItem.isActive !== false,
-      });
+      const record = result.Items[0] as UserRecord;
+      return this.mapToUser(record);
     } catch (error) {
-      logger.error('Error finding user by email', {
-        error: error instanceof Error ? error.message : String(error),
+      throw new DomainError('Failed to find user by email', 'INTERNAL_ERROR', {
+        error,
       });
-      throw new Error('Failed to find user by email');
+    }
+  }
+
+  async findByUsername(username: string): Promise<User | null> {
+    try {
+      const result = await this.ddbClient.send(
+        new QueryCommand({
+          TableName: this.tableName,
+          IndexName: 'username-index',
+          KeyConditionExpression: 'username = :username',
+          ExpressionAttributeValues: {
+            ':username': username,
+          },
+        })
+      );
+
+      if (!result.Items || result.Items.length === 0) {
+        return null;
+      }
+
+      const record = result.Items[0] as UserRecord;
+      return this.mapToUser(record);
+    } catch (error) {
+      throw new DomainError(
+        'Failed to find user by username',
+        'INTERNAL_ERROR',
+        { error }
+      );
+    }
+  }
+
+  async findBySpecification(
+    specification: Specification<User>
+  ): Promise<User[]> {
+    try {
+      const result = await this.ddbClient.send(
+        new ScanCommand({
+          TableName: this.tableName,
+        })
+      );
+
+      if (!result.Items) {
+        return [];
+      }
+
+      const users = result.Items.map(item =>
+        this.mapToUser(item as UserRecord)
+      );
+      return users.filter(user => specification.isSatisfiedBy(user));
+    } catch (error) {
+      throw new DomainError(
+        'Failed to find users by specification',
+        'INTERNAL_ERROR',
+        { error }
+      );
     }
   }
 
   async save(user: User): Promise<void> {
     try {
+      const record = this.mapToRecord(user);
       await this.ddbClient.send(
         new PutCommand({
           TableName: this.tableName,
           Item: {
-            pk: `USER#${user.getId().getValue()}`,
-            sk: `USER#${user.getId().getValue()}`,
-            userId: user.getId().getValue(),
-            username: user.getUsername(),
-            email: user.getEmail(),
-            groups: user.getGroups(),
-            createdAt: user.getCreatedAt().toISOString(),
-            lastActivityAt: user.getLastActivityAt().toISOString(),
-            isActive: user.isUserActive(),
-            ttl: Math.floor(Date.now() / 1000) + 24 * 60 * 60, // 24 hours
+            pk: `USER#${record.id}`,
+            sk: `USER#${record.id}`,
+            ...record,
           },
         })
       );
     } catch (error) {
-      logger.error('Error saving user', {
-        error: error instanceof Error ? error.message : String(error),
-      });
-      throw new Error('Failed to save user');
+      throw new DomainError('Failed to save user', 'INTERNAL_ERROR', { error });
     }
   }
 
-  async delete(id: UserId): Promise<void> {
+  async delete(id: UserId | string): Promise<void> {
     try {
+      const userId = typeof id === 'string' ? id : id.getValue();
       await this.ddbClient.send(
         new DeleteCommand({
           TableName: this.tableName,
           Key: {
-            pk: `USER#${id.getValue()}`,
-            sk: `USER#${id.getValue()}`,
+            pk: `USER#${userId}`,
+            sk: `USER#${userId}`,
           },
         })
       );
     } catch (error) {
-      logger.error('Error deleting user', {
-        error: error instanceof Error ? error.message : String(error),
+      throw new DomainError('Failed to delete user', 'INTERNAL_ERROR', {
+        error,
       });
-      throw new Error('Failed to delete user');
     }
   }
 
@@ -256,5 +305,30 @@ export class DynamoDBUserRepository implements UserRepository {
       });
       throw new Error('Failed to update user last activity');
     }
+  }
+
+  private mapToUser(record: UserRecord): User {
+    return User.fromData({
+      id: record.id,
+      username: record.username,
+      email: record.email,
+      groups: record.groups,
+      createdAt: new Date(record.createdAt),
+      lastActivityAt: new Date(record.lastActivityAt),
+      isActive: record.isActive,
+    });
+  }
+
+  private mapToRecord(user: User): UserRecord {
+    const data = user.toJSON();
+    return {
+      id: data.id as string,
+      username: data.username as string,
+      email: data.email as string,
+      groups: data.groups as UserGroup[],
+      createdAt: (data.createdAt as Date).toISOString(),
+      lastActivityAt: (data.lastActivityAt as Date).toISOString(),
+      isActive: data.isActive as boolean,
+    };
   }
 }

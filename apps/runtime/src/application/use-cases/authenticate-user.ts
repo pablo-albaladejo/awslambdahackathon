@@ -1,70 +1,57 @@
 import { Logger } from '@config/container';
-import {
-  InvalidTokenException,
-  UserAuthenticationFailedException,
-} from '@domain/errors/domain-errors';
-import {
-  AuthenticationResult,
-  AuthenticationService,
-} from '@domain/services/authentication-service';
+import { DomainError } from '@domain/errors/domain-errors';
 import { PerformanceMonitoringService } from '@domain/services/performance-monitoring-service';
+import { AuthenticationService } from '@infrastructure/services/authentication-service';
 
 import { BaseResult, BaseUseCase } from './base-use-case';
 
-interface AuthenticateUserCommand {
+export interface AuthenticateUserCommand {
   token: string;
 }
 
-interface AuthenticateUserResult extends BaseResult {
-  user?: AuthenticationResult['user'];
+export interface AuthenticateUserResult extends BaseResult {
+  userId?: string;
 }
 
-export interface AuthenticateUserUseCase {
-  execute(command: AuthenticateUserCommand): Promise<AuthenticateUserResult>;
-}
-
-export class AuthenticateUserUseCaseImpl
-  extends BaseUseCase<AuthenticateUserCommand, AuthenticateUserResult>
-  implements AuthenticateUserUseCase
-{
+export class AuthenticateUserUseCase extends BaseUseCase<
+  AuthenticateUserCommand,
+  AuthenticateUserResult
+> {
   constructor(
-    private readonly authenticationService: AuthenticationService,
+    private readonly authService: AuthenticationService,
     logger: Logger,
-    performanceMonitor?: PerformanceMonitoringService
+    performanceMonitoringService: PerformanceMonitoringService
   ) {
-    super(logger, performanceMonitor);
+    super(logger, performanceMonitoringService);
   }
 
   async execute(
     command: AuthenticateUserCommand
   ): Promise<AuthenticateUserResult> {
     try {
-      this.logger.info('Authenticating user', {
-        tokenLength: command.token?.length,
-      });
-
       if (!command.token) {
-        throw new InvalidTokenException('Token is required');
+        throw new DomainError('Token is required', 'VALIDATION_ERROR');
       }
 
-      const result = await this.authenticationService.authenticateUser({
+      const authResult = await this.authService.authenticateUser({
         token: command.token,
       });
 
-      if (result.success) {
+      if (!authResult.success || !authResult.user) {
         return {
-          success: true,
-          user: result.user,
+          success: false,
+          error: authResult.error || 'Authentication failed',
+          errorCode: 'AUTHENTICATION_FAILED',
         };
-      } else {
-        throw new UserAuthenticationFailedException(
-          result.error || 'Authentication failed',
-          result.user?.getUserId()
-        );
       }
+
+      return {
+        success: true,
+        userId: authResult.user.getUserId(),
+      };
     } catch (error) {
       return this.handleError(error, {
-        tokenLength: command.token?.length,
+        hasToken: !!command.token,
       });
     }
   }

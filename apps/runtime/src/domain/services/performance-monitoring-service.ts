@@ -1,19 +1,11 @@
+import { Metric } from '@domain/value-objects/metric';
+
 export interface PerformanceMonitor {
   complete(success: boolean, requestSize?: number, responseSize?: number): void;
 }
 
 export interface PerformanceContext {
-  operation: string;
-  service: string;
-  connectionId?: string;
-  userId?: string;
-  correlationId?: string;
-  stage?: string;
-  environment?: string;
-  eventType?: string;
-  tokenLength?: number;
-  messageLength?: number;
-  [key: string]: unknown;
+  [key: string]: string | number | boolean | undefined;
 }
 
 export interface PerformanceMetrics {
@@ -21,7 +13,10 @@ export interface PerformanceMetrics {
   memoryUsage: number;
   success: boolean;
   errorCount: number;
-  [key: string]: unknown;
+  externalCalls?: number;
+  databaseCalls?: number;
+  requestSize?: number;
+  responseSize?: number;
 }
 
 export interface PerformanceThresholds {
@@ -80,15 +75,40 @@ export interface PerformanceData {
   operation: string;
   startTime: Date;
   context: PerformanceContext;
-  metrics: Partial<PerformanceMetrics>;
+  metrics: PerformanceMetrics;
 }
 
 export interface PerformanceMonitoringService {
+  /**
+   * Records metrics for a monitored operation
+   * @param metric The metric to record
+   * @param namespace Optional namespace for the metric
+   */
+  recordMetrics(metric: Metric, namespace?: string): Promise<void>;
+
+  /**
+   * Starts a new monitoring span
+   * @param name The name of the span
+   * @param tags Additional tags for the span
+   */
+  startSpan(name: string, tags?: Record<string, string>): Promise<void>;
+
+  /**
+   * Ends the current monitoring span
+   * @param error Optional error if the span failed
+   */
+  endSpan(error?: Error): Promise<void>;
+
   startMonitoring(
     operation: string,
     context: PerformanceContext
-  ): PerformanceMonitor;
-  recordMetrics(metrics: PerformanceMetrics, context: PerformanceContext): void;
+  ): {
+    complete(
+      success: boolean,
+      requestSize?: number,
+      responseSize?: number
+    ): void;
+  };
   recordBusinessMetric(
     metricName: string,
     value: number,
@@ -107,6 +127,6 @@ export interface PerformanceMonitoringService {
     thresholds: PerformanceThresholds
   ): void;
   getPerformanceStats(): PerformanceStats;
-  flushMetrics(): Promise<void>;
+  flushMetrics(namespace?: string): Promise<void>;
   shutdown(): Promise<void>;
 }

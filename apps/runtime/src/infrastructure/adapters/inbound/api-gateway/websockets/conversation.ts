@@ -95,18 +95,18 @@ const handleAuthMessage = async (
   });
 
   if (authResult.success && authResult.user) {
-    const safeUserId = authResult.user.getUserId();
+    const safeUserId = (authResult.user as any).getUserId();
 
     await container.getAuthenticationService().storeAuthenticatedConnection({
       connectionId: ConnectionId.create(connectionId),
-      user: authResult.user,
+      user: authResult.user as any,
     });
 
     await container
-      .createWebSocketMessageService(event)
+      .createWebSocketMessageService(event as any)
       .sendAuthResponse(connectionId, true, {
         userId: safeUserId,
-        username: authResult.user.getUsername(),
+        username: (authResult.user as any).getUsername(),
       });
 
     logger.info('WebSocket authentication successful', {
@@ -123,7 +123,7 @@ const handleAuthMessage = async (
       });
   } else {
     await container
-      .createWebSocketMessageService(event)
+      .createWebSocketMessageService(event as any)
       .sendAuthResponse(connectionId, false, {
         error: authResult.error,
       });
@@ -195,7 +195,7 @@ const handleChatMessage = async (
     throw new Error(result.error || 'Failed to send chat message');
   }
 
-  await container.createWebSocketMessageService(event).sendChatResponse(
+  await container.createWebSocketMessageService(event as any).sendChatResponse(
     connectionId,
     result.message?.getContent() ?? '',
     result.message?.getSessionId().getValue() ?? '',
@@ -313,7 +313,7 @@ const conversationHandler = async (
 
     return container
       .getErrorHandlingService()
-      .createErrorResponse(appError, event);
+      .createErrorResponse(appError, event) as APIGatewayProxyResult;
   }
 };
 

@@ -29,7 +29,7 @@ export class SendChatMessageUseCaseImpl
   constructor(
     private readonly chatService: ChatService,
     logger: Logger,
-    performanceMonitor?: PerformanceMonitoringService
+    performanceMonitor: PerformanceMonitoringService
   ) {
     super(logger, performanceMonitor);
   }

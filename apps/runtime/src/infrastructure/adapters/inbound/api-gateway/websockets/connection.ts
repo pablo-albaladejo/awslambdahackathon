@@ -185,9 +185,10 @@ export const createConnectionHandler = (
 
 // Create the handler with dependencies from container (for backward compatibility)
 const connectionHandler = createConnectionHandler({
-  errorHandlingService: container.getErrorHandlingService(),
+  errorHandlingService:
+    container.getErrorHandlingService() as ErrorHandlingService,
   performanceMonitoringService: container.getPerformanceMonitoringService(),
-  metricsService: container.getMetricsService(),
+  metricsService: container.getMetricsService() as MetricsService,
 });
 
 // Export the handler wrapped with Middy middleware

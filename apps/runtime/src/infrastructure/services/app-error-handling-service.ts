@@ -113,7 +113,7 @@ export class ApplicationErrorHandlingService implements ErrorHandlingService {
         stack: error.stack,
         ...context,
       },
-      context?.correlationId
+      context?.correlationId as string
     );
 
     logger.error('Handling unexpected error', {
@@ -210,7 +210,9 @@ export class ApplicationErrorHandlingService implements ErrorHandlingService {
     error: AppError
   ): Promise<void> {
     try {
-      const webSocketService = container.createWebSocketMessageService(event);
+      const webSocketService = container.createWebSocketMessageService(
+        event as any
+      );
 
       const errorMessage = this.getUserFriendlyErrorMessage(error);
 

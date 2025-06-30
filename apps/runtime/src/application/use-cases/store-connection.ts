@@ -1,7 +1,7 @@
 import { Logger } from '@config/container';
-import { ConnectionService } from '@domain/services/connection-service';
 import { PerformanceMonitoringService } from '@domain/services/performance-monitoring-service';
 import { ConnectionId } from '@domain/value-objects';
+import { ConnectionService } from '@infrastructure/services/connection-service';
 
 import { BaseResult, BaseUseCase } from './base-use-case';
 
@@ -22,7 +22,7 @@ export class StoreConnectionUseCaseImpl
   constructor(
     private readonly connectionService: ConnectionService,
     logger: Logger,
-    performanceMonitor?: PerformanceMonitoringService
+    performanceMonitor: PerformanceMonitoringService
   ) {
     super(logger, performanceMonitor);
   }
@@ -47,7 +47,9 @@ export class StoreConnectionUseCaseImpl
         connectionId: command.connectionId,
       });
 
-      return { success: true };
+      return {
+        success: true,
+      };
     } catch (error) {
       return this.handleError(error, {
         connectionId: command.connectionId,

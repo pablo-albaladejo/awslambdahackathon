@@ -29,7 +29,7 @@ export class CheckAuthenticatedConnectionUseCaseImpl
   constructor(
     private readonly authenticationService: AuthenticationService,
     logger: Logger,
-    performanceMonitor?: PerformanceMonitoringService
+    performanceMonitor: PerformanceMonitoringService
   ) {
     super(logger, performanceMonitor);
   }

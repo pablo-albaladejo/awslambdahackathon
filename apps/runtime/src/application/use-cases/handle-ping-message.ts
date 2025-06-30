@@ -19,7 +19,7 @@ export class HandlePingMessageUseCaseImpl
 {
   constructor(
     logger: Logger,
-    performanceMonitor?: PerformanceMonitoringService
+    performanceMonitor: PerformanceMonitoringService
   ) {
     super(logger, performanceMonitor);
   }

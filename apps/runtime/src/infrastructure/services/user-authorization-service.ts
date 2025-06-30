@@ -1,6 +1,6 @@
 import { logger } from '@awslambdahackathon/utils/lambda';
 import { container } from '@config/container';
-import { User } from '@domain/entities';
+import { User, UserGroup } from '@domain/entities/user';
 import { ConnectionManagementService as DomainConnectionManagementService } from '@domain/services/connection-management-service';
 import {
   AuthorizationResult,
@@ -17,7 +17,7 @@ export class UserAuthorizationService
   ): Promise<boolean> {
     try {
       const user = await this.getUserFromConnection(connectionId);
-      return user?.hasGroup(requiredGroup) ?? false;
+      return user?.hasGroup(requiredGroup as UserGroup) ?? false;
     } catch (error) {
       logger.error('Error checking user group', {
         connectionId: connectionId.getValue(),
@@ -34,7 +34,7 @@ export class UserAuthorizationService
   ): Promise<boolean> {
     try {
       const user = await this.getUserFromConnection(connectionId);
-      return user?.hasAnyGroup(requiredGroups) ?? false;
+      return user?.hasAnyGroup(requiredGroups as UserGroup[]) ?? false;
     } catch (error) {
       logger.error('Error checking user groups (any)', {
         connectionId: connectionId.getValue(),
@@ -51,7 +51,7 @@ export class UserAuthorizationService
   ): Promise<boolean> {
     try {
       const user = await this.getUserFromConnection(connectionId);
-      return user?.hasAllGroups(requiredGroups) ?? false;
+      return user?.hasAllGroups(requiredGroups as UserGroup[]) ?? false;
     } catch (error) {
       logger.error('Error checking user groups (all)', {
         connectionId: connectionId.getValue(),
@@ -203,7 +203,7 @@ export class UserAuthorizationService
   ): AuthorizationResult {
     try {
       let isAuthorized = false;
-      let requiredGroups: string[] = [];
+      let requiredGroups: UserGroup[] = [];
 
       switch (requiredAction) {
         case 'send_message':
@@ -258,5 +258,26 @@ export class UserAuthorizationService
         'connectionManagementService'
       );
     return connectionManagementService.getUserFromConnection(connectionId);
+  }
+
+  hasPermission(user: User | null, requiredGroup: UserGroup): boolean {
+    if (!user) {
+      return false;
+    }
+    return user.hasGroup(requiredGroup);
+  }
+
+  hasAnyPermission(user: User | null, requiredGroups: UserGroup[]): boolean {
+    if (!user) {
+      return false;
+    }
+    return user.hasAnyGroup(requiredGroups);
+  }
+
+  hasAllPermissions(user: User | null, requiredGroups: UserGroup[]): boolean {
+    if (!user) {
+      return false;
+    }
+    return user.hasAllGroups(requiredGroups);
   }
 }

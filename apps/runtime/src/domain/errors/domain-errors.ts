@@ -1,12 +1,21 @@
-export abstract class DomainError extends Error {
+export type ErrorCode =
+  | 'VALIDATION_ERROR'
+  | 'AUTHENTICATION_ERROR'
+  | 'AUTHORIZATION_ERROR'
+  | 'NOT_FOUND'
+  | 'CONFLICT'
+  | 'INTERNAL_ERROR'
+  | 'CIRCUIT_BREAKER_ERROR';
+
+export class DomainError extends Error {
   constructor(
     message: string,
-    public readonly code: string,
-    public readonly field?: string,
+    public readonly code: ErrorCode,
     public readonly details?: Record<string, unknown>
   ) {
     super(message);
-    this.name = this.constructor.name;
+    this.name = 'DomainError';
+    Object.setPrototypeOf(this, DomainError.prototype);
   }
 }
 
@@ -16,7 +25,7 @@ export class ValidationError extends DomainError {
     field?: string,
     details?: Record<string, unknown>
   ) {
-    super(message, 'VALIDATION_ERROR', field, details);
+    super(message, 'VALIDATION_ERROR', details);
   }
 }
 
@@ -28,8 +37,7 @@ export class EntityNotFoundError extends DomainError {
   ) {
     super(
       `${entityType} with identifier '${identifier}' not found`,
-      'ENTITY_NOT_FOUND',
-      undefined,
+      'NOT_FOUND',
       { entityType, identifier, ...details }
     );
   }
@@ -37,13 +45,13 @@ export class EntityNotFoundError extends DomainError {
 
 export class AuthenticationError extends DomainError {
   constructor(message: string, details?: Record<string, unknown>) {
-    super(message, 'AUTHENTICATION_ERROR', undefined, details);
+    super(message, 'AUTHENTICATION_ERROR', details);
   }
 }
 
 export class AuthorizationError extends DomainError {
   constructor(message: string, details?: Record<string, unknown>) {
-    super(message, 'AUTHORIZATION_ERROR', undefined, details);
+    super(message, 'AUTHORIZATION_ERROR', details);
   }
 }
 
@@ -53,7 +61,7 @@ export class BusinessRuleViolationError extends DomainError {
     ruleName: string,
     details?: Record<string, unknown>
   ) {
-    super(message, 'BUSINESS_RULE_VIOLATION', undefined, {
+    super(message, 'CONFLICT', {
       ruleName,
       ...details,
     });
@@ -66,7 +74,7 @@ export class ConnectionError extends DomainError {
     connectionId?: string,
     details?: Record<string, unknown>
   ) {
-    super(message, 'CONNECTION_ERROR', undefined, {
+    super(message, 'INTERNAL_ERROR', {
       connectionId,
       ...details,
     });
@@ -79,7 +87,7 @@ export class MessageError extends DomainError {
     messageId?: string,
     details?: Record<string, unknown>
   ) {
-    super(message, 'MESSAGE_ERROR', undefined, {
+    super(message, 'INTERNAL_ERROR', {
       messageId,
       ...details,
     });
@@ -92,7 +100,7 @@ export class InfrastructureError extends DomainError {
     service: string,
     details?: Record<string, unknown>
   ) {
-    super(message, 'INFRASTRUCTURE_ERROR', undefined, {
+    super(message, 'INTERNAL_ERROR', {
       service,
       ...details,
     });
@@ -106,7 +114,7 @@ export class RateLimitError extends DomainError {
     window: string,
     details?: Record<string, unknown>
   ) {
-    super(message, 'RATE_LIMIT_ERROR', undefined, {
+    super(message, 'INTERNAL_ERROR', {
       limit,
       window,
       ...details,
@@ -123,7 +131,6 @@ export class CircuitBreakerError extends DomainError {
     super(
       `Circuit breaker is ${state} for service: ${service}`,
       'CIRCUIT_BREAKER_ERROR',
-      undefined,
       { service, state, ...details }
     );
   }
