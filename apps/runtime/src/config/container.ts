@@ -32,6 +32,7 @@ import { CommunicationService } from '@domain/services/communication-service';
 import { ErrorHandlingService } from '@domain/services/error-handling-service';
 import { MetricsService } from '@domain/services/metrics-service';
 import { PerformanceMonitoringService } from '@domain/services/performance-monitoring-service';
+import { AwsCloudWatchMetricsAdapter } from '@infrastructure/adapters/outbound/cloudwatch/cloudwatch-metrics-adapter';
 import { DynamoDBConnectionRepository } from '@infrastructure/adapters/outbound/dynamodb/dynamodb-connection';
 import { DynamoDBMessageRepository } from '@infrastructure/adapters/outbound/dynamodb/dynamodb-message';
 import { DynamoDBSessionRepository } from '@infrastructure/adapters/outbound/dynamodb/dynamodb-session';
@@ -48,6 +49,8 @@ import { AuthenticationService as AuthenticationServiceImpl } from '@infrastruct
 import { ChatService } from '@infrastructure/services/chat-service';
 import { CircuitBreakerService as CircuitBreakerServiceImpl } from '@infrastructure/services/circuit-breaker-service';
 import { ConnectionService } from '@infrastructure/services/connection-service';
+import { CloudWatchMetricsService } from '@infrastructure/services/metrics-service';
+import { CloudWatchPerformanceMonitoringService } from '@infrastructure/services/performance-monitoring-service';
 
 import { validateWebSocketRequiredEnvironmentVariables } from './websocket-lambda-config';
 
@@ -180,23 +183,7 @@ class DependencyContainer implements Container {
   }
 
   getPerformanceMonitoringService(): PerformanceMonitoringService {
-    // Create a simple performance monitoring service that logs to console
-    return {
-      startSpan: async () => {},
-      endSpan: async () => {},
-      startMonitoring: () => ({ complete: () => {} }),
-      recordMetrics: async () => {},
-      recordBusinessMetric: () => {},
-      recordErrorMetric: () => {},
-      checkPerformanceThresholds: () => {},
-      getPerformanceStats: () => ({
-        totalMetrics: 0,
-        bufferSize: 0,
-        lastFlush: null,
-      }),
-      flushMetrics: async () => {},
-      shutdown: async () => {},
-    } as any;
+    return this.resolve('PerformanceMonitoringService');
   }
 
   getErrorHandlingService(): ErrorHandlingService {
@@ -204,21 +191,7 @@ class DependencyContainer implements Container {
   }
 
   getMetricsService(): MetricsService {
-    // Create a simple metrics service that logs to console
-    return {
-      recordMetric: () => {},
-      recordCount: () => {},
-      recordDuration: () => {},
-      recordError: () => {},
-      recordErrorMetrics: async () => {},
-      recordBusinessMetrics: async () => {},
-      recordWebSocketMetrics: async () => {},
-      recordDatabaseMetrics: async () => {},
-      recordAuthenticationMetrics: async () => {},
-      publishMetrics: async () => {},
-      getMetrics: () => [],
-      clearMetrics: () => {},
-    } as any;
+    return this.resolve('MetricsService');
   }
 
   getCircuitBreakerService(): CircuitBreakerService {
@@ -301,8 +274,34 @@ class DependencyContainer implements Container {
       }
     );
 
-    // Note: MetricsService is created per-request in getMetricsService method
-    // Note: PerformanceMonitoringService is created per-request in getPerformanceMonitoringService method
+    // MetricsService and PerformanceMonitoringService are now properly registered below
+
+    this.register<PerformanceMonitoringService>(
+      'PerformanceMonitoringService',
+      CloudWatchPerformanceMonitoringService as Constructor<PerformanceMonitoringService>,
+      {
+        singleton: true,
+        dependencies: ['CloudWatchClient', 'CloudWatchConfig'],
+      }
+    );
+
+    this.register<AwsCloudWatchMetricsAdapter>(
+      'CloudWatchMetricsAdapter',
+      AwsCloudWatchMetricsAdapter as Constructor<AwsCloudWatchMetricsAdapter>,
+      {
+        singleton: true,
+        dependencies: ['CloudWatchClient'],
+      }
+    );
+
+    this.register<MetricsService>(
+      'MetricsService',
+      CloudWatchMetricsService as Constructor<MetricsService>,
+      {
+        singleton: true,
+        dependencies: ['CloudWatchMetricsAdapter'],
+      }
+    );
 
     this.register<CircuitBreakerService>(
       'CircuitBreakerService',
