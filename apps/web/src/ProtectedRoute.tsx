@@ -23,14 +23,9 @@ const ProtectedRoute = ({ children, requiredGroup }: ProtectedRouteProps) => {
         if (session.tokens && userGroups.includes(requiredGroup)) {
           setIsAuthenticated(true);
         } else {
-          // User is authenticated but not in the required group,
-          // or is not authenticated at all.
-          // You might want to navigate to a specific "unauthorized" page
-          // or just back to the home/login page.
           navigate('/');
         }
       } catch (error) {
-        // Not authenticated
         navigate('/');
       } finally {
         setIsLoading(false);
