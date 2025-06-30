@@ -1,6 +1,6 @@
-# Performance Optimizations
+# Web Performance Optimizations
 
-This document outlines the performance optimizations implemented in the AWS Lambda Hackathon project to ensure optimal user experience and efficient resource utilization.
+This document outlines the frontend performance optimizations implemented in the AWS Lambda Hackathon project to ensure optimal user experience and efficient resource utilization.
 
 ## 🚀 Overview
 

@@ -1,6 +1,6 @@
 # Circuit Breaker Service Usage Guide
 
-This document explains where and how the `CircuitBreakerService` is used in the WebSocket application.
+This document explains the implementation and usage of the `CircuitBreakerService` within the AWS Lambda backend of the real-time communication application, focusing on its role in enhancing resilience and fault tolerance.
 
 ## Locations where CircuitBreakerService is used
 

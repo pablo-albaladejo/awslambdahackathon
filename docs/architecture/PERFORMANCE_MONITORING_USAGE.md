@@ -1,6 +1,6 @@
 # Performance Monitoring Service Usage Guide
 
-This document explains where and how the `PerformanceMonitoringService` is used in the WebSocket application.
+This document explains where and how the `PerformanceMonitoringService` is used within the AWS Lambda backend of the real-time communication application, providing insights into its performance and operational health.
 
 ## Locations where PerformanceMonitoringService is used
 

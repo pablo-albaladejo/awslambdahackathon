@@ -1,5 +1,7 @@
 # Validation with Zod and Centralized Configuration
 
+This document describes the implementation of robust runtime validation and centralized configuration using **Zod**, with shared schemas for both the frontend (React) and **AWS Lambda** functions. This approach ensures strong type safety, comprehensive runtime validation, and maintainable configuration management across the entire application stack.
+
 ## Overview
 
 This document describes the implementation of runtime validation and centralized configuration using Zod, with shared schemas for both the frontend (React) and AWS Lambda functions. The approach ensures type safety, runtime validation, and maintainable configuration management across the entire stack.
@@ -166,6 +168,8 @@ export const getMessageAge = (message: ChatMessageData): number =>
 
 ### Frontend (`apps/web/src/config/app-config.ts`)
 
+This file defines the centralized configuration for the React frontend, leveraging shared schemas from `@awslambdahackathon/types` for validation.
+
 ```typescript
 import {
   FrontendConfigSchema,
@@ -199,6 +203,8 @@ export const getRumConfig = () => APP_CONFIG.rum;
 ```
 
 ### Lambda (`apps/runtime/src/config/lambda-config.ts`)
+
+This file defines the centralized configuration for the AWS Lambda backend, leveraging shared schemas from `@awslambdahackathon/types` for validation.
 
 ```typescript
 import {
@@ -536,9 +542,11 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
 };
 ```
 
-## Usage in Lambda
+## Usage in AWS Lambda Functions
 
 ### Example Handler with Validation
+
+AWS Lambda functions utilize the shared schemas and validation utilities to ensure incoming event data and internal configurations are valid.
 
 ```typescript
 import {

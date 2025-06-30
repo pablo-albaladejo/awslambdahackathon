@@ -1,6 +1,6 @@
 # Middy Integration
 
-This document describes the Middy middleware integration in the AWS Lambda Hackathon project.
+This document describes the integration of the Middy middleware framework within the AWS Lambda functions of the real-time communication project. Middy helps streamline handler logic, reduce boilerplate, and enforce consistent patterns for logging, validation, and error handling.
 
 ## Overview
 
@@ -10,7 +10,7 @@ Middy is a popular middleware framework for AWS Lambda that provides useful midd
 
 ### 1. WebSocket-Specific Handler Factory
 
-We've created a `createWebSocketHandler` function that wraps Lambda handlers with WebSocket-specific middleware:
+We've created a `createWebSocketHandler` function (available from `@awslambdahackathon/utils/lambda`) that wraps AWS Lambda handlers with WebSocket-specific middleware:
 
 ```typescript
 import {

@@ -1,6 +1,6 @@
-# AWS CloudWatch RUM Setup Guide
+# AWS CloudWatch Real User Monitoring (RUM) Setup Guide
 
-This guide explains how to set up and configure AWS CloudWatch Real User Monitoring (RUM) for the AWS Lambda Hackathon project.
+This guide explains how to set up and configure AWS CloudWatch Real User Monitoring (RUM) for the AWS Lambda Hackathon project's frontend application.
 
 ## 🎯 Overview
 

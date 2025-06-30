@@ -1,6 +1,6 @@
 # Monitoring and Alerting System
 
-This document describes the comprehensive monitoring and alerting system implemented for the AWS Lambda Hackathon application.
+This document describes the comprehensive monitoring and alerting system, primarily built using **AWS CloudWatch**, implemented for the AWS Lambda Hackathon application.
 
 ## Overview
 

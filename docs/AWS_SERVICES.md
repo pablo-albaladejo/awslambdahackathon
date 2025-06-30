@@ -5,6 +5,13 @@ This document provides an exhaustive list of the AWS services used in this proje
 ## Core Services
 
 -   **AWS Lambda**: The core of the serverless backend. All runtime code is executed in Lambda functions, which handle WebSocket connections, business logic, and API requests.
+    *   **Handle WebSocket Connections:** Lambda functions are triggered by AWS API Gateway WebSocket events (e.g., `$connect`, `$disconnect`, `$default` for messages), managing the lifecycle of connections and routing messages.
+    *   **Process Real-time Messages:** Each incoming message from a connected client triggers a Lambda function, which then processes the message (e.g., stores it in DynamoDB, broadcasts it to other connected users, or routes it to an MCP server for chatbot processing).
+    *   **Manage User Authentication:** Lambda functions are responsible for authenticating users, validating tokens (e.g., from AWS Cognito), and authorizing access to real-time features.
+    *   **Implement Business Logic:** All core business logic, such as storing chat messages, managing user sessions, and interacting with the DynamoDB database, is encapsulated within various Lambda functions.
+    *   **Integrate with MCP:** Specific Lambda functions are designed to act as hosts for the Model Context Protocol (MCP), allowing them to communicate with external MCP servers to extend the chatbot's capabilities by leveraging external AI models or specialized tools.
+    *   **Scalability and Cost-Efficiency:** By using Lambda, the backend automatically scales to handle varying loads without requiring manual server provisioning or management, and users only pay for the compute time consumed, making it highly cost-efficient for real-time applications.
+    *   **Observability and Resilience:** Lambda functions are integrated with AWS CloudWatch for logging, metrics, and alarms, and incorporate resilience patterns like Circuit Breakers to enhance fault tolerance.
 
 -   **Amazon API Gateway**: Used for both WebSocket and REST APIs.
     -   **WebSocket API**: Manages real-time, bidirectional communication between the frontend and the backend.

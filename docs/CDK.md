@@ -1,6 +1,6 @@
-# CDK
+# AWS Cloud Development Kit (CDK)
 
-This directory contains the AWS CDK code for the AWS Lambda Hackathon project.
+This document details the AWS Cloud Development Kit (CDK) code used to define and deploy the infrastructure for the AWS Lambda Hackathon project.
 
 ## Configuration
 
@@ -13,7 +13,7 @@ The project uses environment variables for configuration:
 export ENVIRONMENT=dev                    # Deployment environment (dev, prod, etc.)
 export AWS_REGION=us-east-2              # AWS Region
 export APP_NAME=MyAwesomeApp             # Application name (default: MyAwesomeApp)
-export CDK_DEFAULT_ACCOUNT=123456789012  # AWS Account ID
+export CDK_DEFAULT_ACCOUNT=123456789012  # AWS Account ID (Crucial for successful deployment)
 
 # Optional variables
 export AWS_PROFILE=awslambdahackathon    # AWS Profile for deployment
@@ -37,11 +37,11 @@ export AWS_PROFILE=awslambdahackathon    # AWS Profile for deployment
 
 ### RuntimeStack
 
-- **Lambda Functions**: Serverless functions for API endpoints
-- **Health Function**: `/health` endpoint with structured logging and metrics
-- **MCP Host Function**: `/mcp-host` endpoint for MCP protocol
-- **WebSocket Functions**: Connection and conversation handlers
-- **DynamoDB Tables**: WebSocket connections and messages storage
+-   **AWS Lambda Functions**: Serverless functions for API endpoints.
+-   **Health Function**: `/health` endpoint with structured logging and metrics.
+-   **MCP Host Function**: `/mcp-host` endpoint specifically designed to host the Model Context Protocol (MCP) for chatbot integration.
+-   **WebSocket Functions**: AWS Lambda functions handling `$connect`, `$disconnect`, and `$default` routes for real-time WebSocket communication.
+-   **DynamoDB Tables**: Stores WebSocket connections and chat messages.
 
 ### WebStack
 

@@ -1,6 +1,6 @@
 # Deployment Scripts
 
-This directory contains scripts for deploying, destroying, and managing the AWS Lambda Hackathon infrastructure.
+This document provides an overview and usage examples for the scripts used to deploy, destroy, and manage the AWS Lambda Hackathon project's infrastructure.
 
 ## Scripts Overview
 
@@ -18,7 +18,7 @@ Generates environment variables file for the frontend application.
 
 ### `create-default-users.sh`
 
-Creates default users in Cognito User Pool (called internally by deploy.sh).
+Creates default users in the Cognito User Pool. This script is typically called internally by `deploy.sh` during the deployment process.
 
 ## Usage Examples
 

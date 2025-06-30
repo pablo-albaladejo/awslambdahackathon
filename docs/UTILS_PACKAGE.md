@@ -1,6 +1,6 @@
 # @awslambdahackathon/utils
 
-This package provides utilities for both frontend and runtime applications with environment-specific exports.
+This package provides a collection of shared utility functions and helpers for both frontend and backend (AWS Lambda runtime) applications, with environment-specific exports to ensure optimal usage.
 
 ## Overview
 
