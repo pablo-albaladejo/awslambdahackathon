@@ -22,6 +22,7 @@ The documentation is divided into the following sections:
 -   [**Performance Optimizations (Web)**](./WEB_PERFORMANCE.md): Details on frontend performance optimizations.
 -   [**Shared Types and Schemas**](./TYPES_PACKAGE.md): Documentation for the shared TypeScript types and Zod schemas.
 -   [**Utilities Package**](./UTILS_PACKAGE.md): Information about the shared utility functions.
+-   [**LLM and Bedrock Integration**](./LLM_AND_BEDROCK.md): Information about the integration of LLMs and AWS Bedrock.
 
 ## Diagrams
 
