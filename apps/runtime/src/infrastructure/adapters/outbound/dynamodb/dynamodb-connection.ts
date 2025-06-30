@@ -50,15 +50,7 @@ export class DynamoDBConnectionRepository implements ConnectionRepository {
         return null;
       }
 
-      return Connection.fromData({
-        id: result.Item.connectionId,
-        userId: result.Item.userId,
-        status: result.Item.status as ConnectionStatus,
-        connectedAt: new Date(result.Item.connectedAt),
-        lastActivityAt: new Date(result.Item.lastActivityAt),
-        ttl: result.Item.ttl,
-        metadata: result.Item.metadata || {},
-      });
+      return this.mapToConnection(result.Item);
     } catch (error) {
       logger.error('Error finding connection by ID', {
         error: error instanceof Error ? error.message : String(error),
@@ -84,17 +76,7 @@ export class DynamoDBConnectionRepository implements ConnectionRepository {
         return [];
       }
 
-      return result.Items.map(item =>
-        Connection.fromData({
-          id: item.connectionId,
-          userId: item.userId,
-          status: item.status as ConnectionStatus,
-          connectedAt: new Date(item.connectedAt),
-          lastActivityAt: new Date(item.lastActivityAt),
-          ttl: item.ttl,
-          metadata: item.metadata || {},
-        })
-      );
+      return result.Items.map(item => this.mapToConnection(item));
     } catch (error) {
       logger.error('Error finding connections by user ID', {
         error: error instanceof Error ? error.message : String(error),
@@ -120,17 +102,7 @@ export class DynamoDBConnectionRepository implements ConnectionRepository {
         return [];
       }
 
-      return result.Items.map(item =>
-        Connection.fromData({
-          id: item.connectionId,
-          userId: item.userId,
-          status: item.status as ConnectionStatus,
-          connectedAt: new Date(item.connectedAt),
-          lastActivityAt: new Date(item.lastActivityAt),
-          ttl: item.ttl,
-          metadata: item.metadata || {},
-        })
-      );
+      return result.Items.map(item => this.mapToConnection(item));
     } catch (error) {
       logger.error('Error finding connections by status', {
         error: error instanceof Error ? error.message : String(error),
@@ -246,17 +218,7 @@ export class DynamoDBConnectionRepository implements ConnectionRepository {
         return [];
       }
 
-      return result.Items.map(item =>
-        Connection.fromData({
-          id: item.connectionId,
-          userId: item.userId,
-          status: item.status as ConnectionStatus,
-          connectedAt: new Date(item.connectedAt),
-          lastActivityAt: new Date(item.lastActivityAt),
-          ttl: item.ttl,
-          metadata: item.metadata || {},
-        })
-      );
+      return result.Items.map(item => this.mapToConnection(item));
     } catch (error) {
       logger.error('Error finding expired connections', {
         error: error instanceof Error ? error.message : String(error),
@@ -419,5 +381,41 @@ export class DynamoDBConnectionRepository implements ConnectionRepository {
       });
       throw new Error('Failed to find expired authenticated connections');
     }
+  }
+
+  private mapToConnection(item: Record<string, unknown>): Connection {
+    // Safe type conversion with validation
+    const safeString = (value: unknown): string => {
+      if (typeof value === 'string') return value;
+      throw new Error(`Expected string, got ${typeof value}`);
+    };
+
+    const safeNumber = (value: unknown): number | undefined => {
+      if (value === undefined || value === null) return undefined;
+      if (typeof value === 'number') return value;
+      throw new Error(`Expected number, got ${typeof value}`);
+    };
+
+    const safeConnectionStatus = (value: unknown): ConnectionStatus => {
+      if (
+        typeof value === 'string' &&
+        ['active', 'inactive', 'disconnected'].includes(value)
+      ) {
+        return value as ConnectionStatus;
+      }
+      throw new Error(`Invalid ConnectionStatus: ${value}`);
+    };
+
+    return Connection.fromData({
+      id: safeString(item.connectionId || item.id),
+      userId: safeString(item.userId),
+      status: safeConnectionStatus(item.status),
+      connectedAt: new Date(safeString(item.connectedAt)),
+      lastActivityAt: item.lastActivityAt
+        ? new Date(safeString(item.lastActivityAt))
+        : undefined,
+      ttl: safeNumber(item.ttl),
+      metadata: (item.metadata as Record<string, unknown>) || {},
+    });
   }
 }

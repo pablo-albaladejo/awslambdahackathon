@@ -44,17 +44,7 @@ export class DynamoDBMessageRepository implements MessageRepository {
         return null;
       }
 
-      return Message.fromData({
-        id: result.Item.messageId,
-        content: result.Item.content,
-        type: result.Item.type as MessageType,
-        userId: result.Item.userId,
-        sessionId: result.Item.sessionId,
-        status: result.Item.status as MessageStatus,
-        createdAt: new Date(result.Item.createdAt),
-        metadata: result.Item.metadata || {},
-        replyToMessageId: result.Item.replyToMessageId,
-      });
+      return this.mapToMessage(result.Item);
     } catch (error) {
       logger.error('Error finding message by ID', {
         error: error instanceof Error ? error.message : String(error),
@@ -81,19 +71,7 @@ export class DynamoDBMessageRepository implements MessageRepository {
         return [];
       }
 
-      return result.Items.map(item =>
-        Message.fromData({
-          id: item.messageId,
-          content: item.content,
-          type: item.type as MessageType,
-          userId: item.userId,
-          sessionId: item.sessionId,
-          status: item.status as MessageStatus,
-          createdAt: new Date(item.createdAt),
-          metadata: item.metadata || {},
-          replyToMessageId: item.replyToMessageId,
-        })
-      );
+      return result.Items.map(item => this.mapToMessage(item));
     } catch (error) {
       logger.error('Error finding messages by session', {
         error: error instanceof Error ? error.message : String(error),
@@ -120,19 +98,7 @@ export class DynamoDBMessageRepository implements MessageRepository {
         return [];
       }
 
-      return result.Items.map(item =>
-        Message.fromData({
-          id: item.messageId,
-          content: item.content,
-          type: item.type as MessageType,
-          userId: item.userId,
-          sessionId: item.sessionId,
-          status: item.status as MessageStatus,
-          createdAt: new Date(item.createdAt),
-          metadata: item.metadata || {},
-          replyToMessageId: item.replyToMessageId,
-        })
-      );
+      return result.Items.map(item => this.mapToMessage(item));
     } catch (error) {
       logger.error('Error finding messages by user', {
         error: error instanceof Error ? error.message : String(error),
@@ -159,19 +125,7 @@ export class DynamoDBMessageRepository implements MessageRepository {
         return [];
       }
 
-      return result.Items.map(item =>
-        Message.fromData({
-          id: item.messageId,
-          content: item.content,
-          type: item.type as MessageType,
-          userId: item.userId,
-          sessionId: item.sessionId,
-          status: item.status as MessageStatus,
-          createdAt: new Date(item.createdAt),
-          metadata: item.metadata || {},
-          replyToMessageId: item.replyToMessageId,
-        })
-      );
+      return result.Items.map(item => this.mapToMessage(item));
     } catch (error) {
       logger.error('Error finding messages by type', {
         error: error instanceof Error ? error.message : String(error),
@@ -268,19 +222,7 @@ export class DynamoDBMessageRepository implements MessageRepository {
         return [];
       }
 
-      return result.Items.map(item =>
-        Message.fromData({
-          id: item.messageId,
-          content: item.content,
-          type: item.type as MessageType,
-          userId: item.userId,
-          sessionId: item.sessionId,
-          status: item.status as MessageStatus,
-          createdAt: new Date(item.createdAt),
-          metadata: item.metadata || {},
-          replyToMessageId: item.replyToMessageId,
-        })
-      );
+      return result.Items.map(item => this.mapToMessage(item));
     } catch (error) {
       logger.error('Error finding recent messages', {
         error: error instanceof Error ? error.message : String(error),
@@ -314,19 +256,7 @@ export class DynamoDBMessageRepository implements MessageRepository {
         return [];
       }
 
-      return result.Items.map(item =>
-        Message.fromData({
-          id: item.messageId,
-          content: item.content,
-          type: item.type as MessageType,
-          userId: item.userId,
-          sessionId: item.sessionId,
-          status: item.status as MessageStatus,
-          createdAt: new Date(item.createdAt),
-          metadata: item.metadata || {},
-          replyToMessageId: item.replyToMessageId,
-        })
-      );
+      return result.Items.map(item => this.mapToMessage(item));
     } catch (error) {
       logger.error('Error finding messages by date range', {
         error: error instanceof Error ? error.message : String(error),
@@ -379,5 +309,47 @@ export class DynamoDBMessageRepository implements MessageRepository {
       });
       throw new Error('Failed to count messages by session');
     }
+  }
+
+  private mapToMessage(item: Record<string, unknown>): Message {
+    // Safe type conversion with validation
+    const safeString = (value: unknown): string => {
+      if (typeof value === 'string') return value;
+      throw new Error(`Expected string, got ${typeof value}`);
+    };
+
+    const safeMessageType = (value: unknown): MessageType => {
+      if (
+        typeof value === 'string' &&
+        ['text', 'system', 'notification'].includes(value)
+      ) {
+        return value as MessageType;
+      }
+      throw new Error(`Invalid MessageType: ${value}`);
+    };
+
+    const safeMessageStatus = (value: unknown): MessageStatus => {
+      if (
+        typeof value === 'string' &&
+        ['sent', 'delivered', 'read', 'failed'].includes(value)
+      ) {
+        return value as MessageStatus;
+      }
+      throw new Error(`Invalid MessageStatus: ${value}`);
+    };
+
+    return Message.fromData({
+      id: safeString(item.messageId || item.id),
+      content: safeString(item.content),
+      type: safeMessageType(item.type),
+      userId: safeString(item.userId),
+      sessionId: safeString(item.sessionId),
+      status: safeMessageStatus(item.status),
+      createdAt: new Date(safeString(item.createdAt)),
+      metadata: (item.metadata as Record<string, unknown>) || {},
+      replyToMessageId: item.replyToMessageId
+        ? safeString(item.replyToMessageId)
+        : undefined,
+    });
   }
 }

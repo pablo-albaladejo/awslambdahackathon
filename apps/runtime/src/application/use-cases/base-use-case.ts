@@ -56,5 +56,38 @@ export abstract class BaseUseCase<
     } as TResult;
   }
 
-  abstract execute(command: TCommand): Promise<TResult>;
+  protected abstract execute(command: TCommand): Promise<TResult>;
+
+  protected createSuccessResult(data?: Partial<TResult>): TResult {
+    return {
+      success: true,
+      ...data,
+    } as TResult;
+  }
+
+  protected createErrorResult(
+    error: string,
+    errorCode?: string,
+    data?: Partial<TResult>
+  ): TResult {
+    return {
+      success: false,
+      error,
+      errorCode,
+      ...data,
+    } as TResult;
+  }
+
+  protected createFailureResult(
+    error: string,
+    errorCode?: string,
+    data?: Partial<TResult>
+  ): TResult {
+    return {
+      success: false,
+      error,
+      errorCode,
+      ...data,
+    } as TResult;
+  }
 }

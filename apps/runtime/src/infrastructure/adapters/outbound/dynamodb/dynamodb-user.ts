@@ -321,14 +321,37 @@ export class DynamoDBUserRepository implements UserRepository {
 
   private mapToRecord(user: User): UserRecord {
     const data = user.toJSON();
+
+    // Safe type conversion with validation
+    const safeString = (value: unknown): string => {
+      if (typeof value === 'string') return value;
+      throw new Error(`Expected string, got ${typeof value}`);
+    };
+
+    const safeBoolean = (value: unknown): boolean => {
+      if (typeof value === 'boolean') return value;
+      throw new Error(`Expected boolean, got ${typeof value}`);
+    };
+
+    const safeUserGroups = (value: unknown): UserGroup[] => {
+      if (Array.isArray(value)) return value;
+      throw new Error(`Expected array, got ${typeof value}`);
+    };
+
+    const safeDate = (value: unknown): string => {
+      if (value instanceof Date) return value.toISOString();
+      if (typeof value === 'string') return value;
+      throw new Error(`Expected Date or string, got ${typeof value}`);
+    };
+
     return {
-      id: data.id as string,
-      username: data.username as string,
-      email: data.email as string,
-      groups: data.groups as UserGroup[],
-      createdAt: (data.createdAt as Date).toISOString(),
-      lastActivityAt: (data.lastActivityAt as Date).toISOString(),
-      isActive: data.isActive as boolean,
+      id: safeString(data.id),
+      username: safeString(data.username),
+      email: safeString(data.email),
+      groups: safeUserGroups(data.groups),
+      createdAt: safeDate(data.createdAt),
+      lastActivityAt: safeDate(data.lastActivityAt),
+      isActive: safeBoolean(data.isActive),
     };
   }
 }

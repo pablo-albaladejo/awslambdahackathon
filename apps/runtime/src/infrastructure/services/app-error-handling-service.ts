@@ -211,7 +211,7 @@ export class ApplicationErrorHandlingService implements ErrorHandlingService {
   ): Promise<void> {
     try {
       const webSocketService = container.createWebSocketMessageService(
-        event as any
+        event as never
       );
 
       const errorMessage = this.getUserFriendlyErrorMessage(error);

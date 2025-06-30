@@ -11,8 +11,26 @@ import {
   WEBSOCKET_CONSTANTS,
 } from '@config/constants';
 import { container } from '@config/container';
-import { ConnectionId } from '@domain/value-objects/connection-id';
+import { ConnectionId } from '@domain/value-objects';
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
+
+// Type guards for safe type checking
+function hasUserMethods(obj: unknown): obj is {
+  getUserId(): string;
+  getUsername(): string;
+  getId(): { getValue(): string };
+} {
+  return (
+    typeof obj === 'object' &&
+    obj !== null &&
+    'getUserId' in obj &&
+    'getUsername' in obj &&
+    'getId' in obj &&
+    typeof (obj as Record<string, unknown>).getUserId === 'function' &&
+    typeof (obj as Record<string, unknown>).getUsername === 'function' &&
+    typeof (obj as Record<string, unknown>).getId === 'function'
+  );
+}
 
 interface WebSocketMessage {
   type: 'auth' | 'message' | 'ping';
@@ -69,6 +87,18 @@ const parseWebSocketMessage = (
   }
 };
 
+// Safe wrapper functions
+function createWebSocketService(event: APIGatewayProxyEvent) {
+  return container.createWebSocketMessageService(event as never);
+}
+
+function storeAuthenticatedConnection(connectionId: string, user: unknown) {
+  return container.getAuthenticationService().storeAuthenticatedConnection({
+    connectionId: ConnectionId.create(connectionId),
+    user: user as never,
+  });
+}
+
 // Handler for authentication messages
 const handleAuthMessage = async (
   message: WebSocketMessage,
@@ -94,20 +124,19 @@ const handleAuthMessage = async (
     token: typeof token === 'string' ? token : '',
   });
 
-  if (authResult.success && authResult.user) {
-    const safeUserId = (authResult.user as any).getUserId();
+  if (
+    authResult.success &&
+    authResult.user &&
+    hasUserMethods(authResult.user)
+  ) {
+    const safeUserId = authResult.user.getUserId();
 
-    await container.getAuthenticationService().storeAuthenticatedConnection({
-      connectionId: ConnectionId.create(connectionId),
-      user: authResult.user as any,
+    await storeAuthenticatedConnection(connectionId, authResult.user);
+
+    await createWebSocketService(event).sendAuthResponse(connectionId, true, {
+      userId: safeUserId,
+      username: authResult.user.getUsername(),
     });
-
-    await container
-      .createWebSocketMessageService(event as any)
-      .sendAuthResponse(connectionId, true, {
-        userId: safeUserId,
-        username: (authResult.user as any).getUsername(),
-      });
 
     logger.info('WebSocket authentication successful', {
       connectionId,
@@ -122,11 +151,9 @@ const handleAuthMessage = async (
         userId: safeUserId,
       });
   } else {
-    await container
-      .createWebSocketMessageService(event as any)
-      .sendAuthResponse(connectionId, false, {
-        error: authResult.error,
-      });
+    await createWebSocketService(event).sendAuthResponse(connectionId, false, {
+      error: authResult.error,
+    });
 
     logger.error('WebSocket authentication failed', {
       connectionId,
@@ -195,7 +222,7 @@ const handleChatMessage = async (
     throw new Error(result.error || 'Failed to send chat message');
   }
 
-  await container.createWebSocketMessageService(event as any).sendChatResponse(
+  await createWebSocketService(event).sendChatResponse(
     connectionId,
     result.message?.getContent() ?? '',
     result.message?.getSessionId().getValue() ?? '',

@@ -46,16 +46,7 @@ export class DynamoDBSessionRepository implements SessionRepository {
         return null;
       }
 
-      return Session.fromData({
-        id: result.Item.sessionId,
-        userId: result.Item.userId,
-        status: result.Item.status as SessionStatus,
-        createdAt: new Date(result.Item.createdAt),
-        lastActivityAt: new Date(result.Item.lastActivityAt),
-        expiresAt: new Date(result.Item.expiresAt),
-        metadata: result.Item.metadata || {},
-        maxDurationInMinutes: result.Item.maxDurationInMinutes,
-      });
+      return this.mapToSession(result.Item);
     } catch (error) {
       logger.error('Error finding session by ID', {
         error: error instanceof Error ? error.message : String(error),
@@ -82,18 +73,7 @@ export class DynamoDBSessionRepository implements SessionRepository {
         return [];
       }
 
-      return result.Items.map(item =>
-        Session.fromData({
-          id: item.sessionId,
-          userId: item.userId,
-          status: item.status as SessionStatus,
-          createdAt: new Date(item.createdAt),
-          lastActivityAt: new Date(item.lastActivityAt),
-          expiresAt: new Date(item.expiresAt),
-          metadata: item.metadata || {},
-          maxDurationInMinutes: item.maxDurationInMinutes,
-        })
-      );
+      return result.Items.map(item => this.mapToSession(item));
     } catch (error) {
       logger.error('Error finding sessions by user', {
         error: error instanceof Error ? error.message : String(error),
@@ -122,18 +102,7 @@ export class DynamoDBSessionRepository implements SessionRepository {
         return [];
       }
 
-      return result.Items.map(item =>
-        Session.fromData({
-          id: item.sessionId,
-          userId: item.userId,
-          status: item.status as SessionStatus,
-          createdAt: new Date(item.createdAt),
-          lastActivityAt: new Date(item.lastActivityAt),
-          expiresAt: new Date(item.expiresAt),
-          metadata: item.metadata || {},
-          maxDurationInMinutes: item.maxDurationInMinutes,
-        })
-      );
+      return result.Items.map(item => this.mapToSession(item));
     } catch (error) {
       logger.error('Error finding sessions by status', {
         error: error instanceof Error ? error.message : String(error),
@@ -162,18 +131,9 @@ export class DynamoDBSessionRepository implements SessionRepository {
         return [];
       }
 
-      return result.Items.map(item =>
-        Session.fromData({
-          id: item.sessionId,
-          userId: item.userId,
-          status: item.status as SessionStatus,
-          createdAt: new Date(item.createdAt),
-          lastActivityAt: new Date(item.lastActivityAt),
-          expiresAt: new Date(item.expiresAt),
-          metadata: item.metadata || {},
-          maxDurationInMinutes: item.maxDurationInMinutes,
-        })
-      ).filter(session => session.isActive()); // Additional filter for expired sessions
+      return result.Items.map(item => this.mapToSession(item)).filter(session =>
+        session.isActive()
+      ); // Additional filter for expired sessions
     } catch (error) {
       logger.error('Error finding active sessions by user', {
         error: error instanceof Error ? error.message : String(error),
@@ -199,18 +159,7 @@ export class DynamoDBSessionRepository implements SessionRepository {
         return [];
       }
 
-      return result.Items.map(item =>
-        Session.fromData({
-          id: item.sessionId,
-          userId: item.userId,
-          status: item.status as SessionStatus,
-          createdAt: new Date(item.createdAt),
-          lastActivityAt: new Date(item.lastActivityAt),
-          expiresAt: new Date(item.expiresAt),
-          metadata: item.metadata || {},
-          maxDurationInMinutes: item.maxDurationInMinutes,
-        })
-      );
+      return result.Items.map(item => this.mapToSession(item));
     } catch (error) {
       logger.error('Error finding expired sessions', {
         error: error instanceof Error ? error.message : String(error),
@@ -231,11 +180,13 @@ export class DynamoDBSessionRepository implements SessionRepository {
             userId: session.getUserId().getValue(),
             status: session.getStatus(),
             createdAt: session.getCreatedAt().toISOString(),
-            lastActivityAt: session.getLastActivityAt().toISOString(),
-            expiresAt: session.getExpiresAt().toISOString(),
+            lastActivityAt: session.getLastActivityAt()?.toISOString(),
+            expiresAt: session.getExpiresAt()?.toISOString(),
             metadata: session.getMetadata(),
             maxDurationInMinutes: session.getMaxDurationInMinutes(),
-            ttl: Math.floor(session.getExpiresAt().getTime() / 1000),
+            ttl: session.getExpiresAt()
+              ? Math.floor((session.getExpiresAt() as Date).getTime() / 1000)
+              : Math.floor(Date.now() / 1000) + 86400, // Default 24 hours
           },
         })
       );
@@ -398,18 +349,7 @@ export class DynamoDBSessionRepository implements SessionRepository {
         return [];
       }
 
-      return result.Items.map(item =>
-        Session.fromData({
-          id: item.sessionId,
-          userId: item.userId,
-          status: item.status as SessionStatus,
-          createdAt: new Date(item.createdAt),
-          lastActivityAt: new Date(item.lastActivityAt),
-          expiresAt: new Date(item.expiresAt),
-          metadata: item.metadata || {},
-          maxDurationInMinutes: item.maxDurationInMinutes,
-        })
-      );
+      return result.Items.map(item => this.mapToSession(item));
     } catch (error) {
       logger.error('Error finding inactive sessions', {
         error: error instanceof Error ? error.message : String(error),
@@ -513,5 +453,39 @@ export class DynamoDBSessionRepository implements SessionRepository {
       });
       throw new Error('Failed to count sessions by status');
     }
+  }
+
+  private mapToSession(item: Record<string, unknown>): Session {
+    // Safe type conversion with validation
+    const safeString = (value: unknown): string => {
+      if (typeof value === 'string') return value;
+      throw new Error(`Expected string, got ${typeof value}`);
+    };
+
+    const safeSessionStatus = (value: unknown): SessionStatus => {
+      if (
+        typeof value === 'string' &&
+        ['active', 'inactive', 'expired'].includes(value)
+      ) {
+        return value as SessionStatus;
+      }
+      throw new Error(`Invalid SessionStatus: ${value}`);
+    };
+
+    return Session.fromData({
+      id: safeString(item.sessionId || item.id),
+      userId: safeString(item.userId),
+      status: safeSessionStatus(item.status),
+      createdAt: new Date(safeString(item.createdAt)),
+      lastActivityAt: item.lastActivityAt
+        ? new Date(safeString(item.lastActivityAt))
+        : undefined,
+      expiresAt: new Date(safeString(item.expiresAt)), // expiresAt is required
+      metadata: (item.metadata as Record<string, unknown>) || {},
+      maxDurationInMinutes:
+        typeof item.maxDurationInMinutes === 'number'
+          ? item.maxDurationInMinutes
+          : undefined,
+    });
   }
 }

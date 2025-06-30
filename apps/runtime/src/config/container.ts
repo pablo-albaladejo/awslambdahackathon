@@ -539,11 +539,7 @@ export interface CircuitBreakerService {
 }
 
 export interface WebSocketEvent {
-  requestContext: {
-    connectionId?: string;
-    routeKey?: string;
-    [key: string]: unknown;
-  };
-  body?: string;
+  requestContext: unknown;
+  body?: string | null;
   [key: string]: unknown;
 }

@@ -2,6 +2,12 @@ import { User, UserGroup } from '@domain/entities/user';
 
 import { Specification } from '../specification';
 
+// User group constants
+const USER_GROUPS = {
+  ADMIN: 'admin' as UserGroup,
+  USER: 'user' as UserGroup,
+} as const;
+
 export class ActiveUserSpecification implements Specification<User> {
   isSatisfiedBy(user: User): boolean {
     return user.isActive();
@@ -16,13 +22,13 @@ export class InactiveUserSpecification implements Specification<User> {
 
 export class AdminUserSpecification implements Specification<User> {
   isSatisfiedBy(user: User): boolean {
-    return user.hasGroup('admin' as UserGroup);
+    return user.hasGroup(USER_GROUPS.ADMIN);
   }
 }
 
 export class ModeratorUserSpecification implements Specification<User> {
   isSatisfiedBy(user: User): boolean {
-    return user.hasGroup('user' as UserGroup);
+    return user.hasGroup(USER_GROUPS.USER);
   }
 }
 
@@ -98,5 +104,17 @@ export class UserByEmailDomainSpecification implements Specification<User> {
     return {
       email: { $regex: `@${this.domain}$` },
     };
+  }
+}
+
+export class IsAdminSpecification implements Specification<User> {
+  isSatisfiedBy(user: User): boolean {
+    return user.hasGroup(USER_GROUPS.ADMIN);
+  }
+}
+
+export class IsActiveUserSpecification implements Specification<User> {
+  isSatisfiedBy(user: User): boolean {
+    return user.hasGroup(USER_GROUPS.USER);
   }
 }
