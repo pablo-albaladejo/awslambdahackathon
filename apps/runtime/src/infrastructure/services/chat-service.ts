@@ -1,12 +1,210 @@
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, PutCommand } from '@aws-sdk/lib-dynamodb';
+import { logger } from '@awslambdahackathon/utils/lambda';
 import { container } from '@config/container';
-import { ConnectionId } from '@domain/value-objects';
+import { Message, MessageType } from '@domain/entities';
+import { MessageRepository } from '@domain/repositories/message';
+import { SessionRepository } from '@domain/repositories/session';
+import { UserRepository } from '@domain/repositories/user';
+import { SessionId, UserId } from '@domain/value-objects';
 
-const ddbClient = new DynamoDBClient({});
-const ddbDocClient = DynamoDBDocumentClient.from(ddbClient);
+import {
+  ChatService as DomainChatService,
+  ProcessMessageCommand,
+  ProcessMessageResult,
+  ValidationResult,
+} from '@/application/services/chat-service';
 
-export class ChatService {
+export class ChatService implements DomainChatService {
+  private readonly userRepository: UserRepository;
+  private readonly messageRepository: MessageRepository;
+  private readonly sessionRepository: SessionRepository;
+
+  constructor() {
+    this.userRepository = container.get<UserRepository>('userRepository');
+    this.messageRepository =
+      container.get<MessageRepository>('messageRepository');
+    this.sessionRepository =
+      container.get<SessionRepository>('sessionRepository');
+  }
+
+  async processMessage(
+    command: ProcessMessageCommand
+  ): Promise<ProcessMessageResult> {
+    // Start performance monitoring for chat message processing
+    const performanceMonitor = container
+      .getPerformanceMonitoringService()
+      .startMonitoring('chat_message_processing', {
+        userId: command.userId.getValue(),
+        sessionId: command.sessionId.getValue(),
+        messageLength: command.content?.length,
+        messageType: command.messageType,
+        operation: 'chat_message_processing',
+        service: 'chat',
+      });
+
+    try {
+      // Convert messageType to MessageType enum
+      const messageType = this.convertToMessageType(command.messageType);
+
+      // Validate the message first
+      const validationResult = await this.validateMessage(
+        Message.fromData({
+          id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          content: command.content,
+          type: messageType,
+          userId: command.userId.getValue(),
+          sessionId: command.sessionId.getValue(),
+          createdAt: new Date(),
+        })
+      );
+
+      if (!validationResult.isValid) {
+        throw new Error(validationResult.error || 'Message validation failed');
+      }
+
+      // Check if user can send message
+      const canSend = await this.canUserSendMessage(command.userId);
+      if (!canSend) {
+        throw new Error('User is not allowed to send messages');
+      }
+
+      const now = new Date();
+      const message = Message.fromData({
+        id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        content: command.content,
+        type: messageType,
+        userId: command.userId.getValue(),
+        sessionId: command.sessionId.getValue(),
+        createdAt: now,
+      });
+
+      // Store the message using repository
+      await this.messageRepository.save(message);
+
+      // Create echo message if it's a user message
+      let echoMessage: Message | null = null;
+      let isEcho = false;
+
+      if (command.messageType === 'user') {
+        echoMessage = await this.createEchoMessage(message);
+        await this.messageRepository.save(echoMessage);
+        isEcho = true;
+      }
+
+      performanceMonitor.complete(true);
+
+      return {
+        message: echoMessage || message,
+        sessionId: command.sessionId,
+        isEcho,
+      };
+    } catch (error) {
+      performanceMonitor.complete(false);
+
+      throw error;
+    }
+  }
+
+  async validateMessage(message: Message): Promise<ValidationResult> {
+    try {
+      // Check if message content is not empty
+      if (!message.getContent() || message.getContent().trim().length === 0) {
+        return {
+          isValid: false,
+          error: 'Message content cannot be empty',
+        };
+      }
+
+      // Check message length (max 1000 characters)
+      if (message.getContent().length > 1000) {
+        return {
+          isValid: false,
+          error: 'Message content is too long (max 1000 characters)',
+        };
+      }
+
+      // Check if message type is valid
+      const validTypes = [
+        MessageType.USER,
+        MessageType.BOT,
+        MessageType.SYSTEM,
+      ];
+      if (!validTypes.includes(message.getType())) {
+        return {
+          isValid: false,
+          error: 'Invalid message type',
+        };
+      }
+
+      // Check if timestamp is not in the future
+      if (message.getCreatedAt() > new Date()) {
+        return {
+          isValid: false,
+          error: 'Message timestamp cannot be in the future',
+        };
+      }
+
+      return { isValid: true };
+    } catch (error) {
+      logger.error('Error validating message', {
+        messageId: message.getId().getValue(),
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return {
+        isValid: false,
+        error: 'Message validation failed',
+      };
+    }
+  }
+
+  async createEchoMessage(originalMessage: Message): Promise<Message> {
+    const now = new Date();
+    return Message.fromData({
+      id: `echo_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      content: `Echo: ${originalMessage.getContent()}`,
+      type: MessageType.BOT,
+      userId: originalMessage.getUserId().getValue(),
+      sessionId: originalMessage.getSessionId().getValue(),
+      createdAt: now,
+    });
+  }
+
+  async canUserSendMessage(userId: UserId): Promise<boolean> {
+    try {
+      // Check if user exists and is active
+      const user = await this.userRepository.findById(userId);
+
+      if (!user) {
+        return false;
+      }
+
+      // Add any additional business logic here
+      // For example, check if user is suspended, has exceeded rate limits, etc.
+
+      return true;
+    } catch (error) {
+      logger.error('Error checking if user can send message', {
+        userId: userId.getValue(),
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return false;
+    }
+  }
+
+  private convertToMessageType(
+    messageType: 'user' | 'bot' | 'system'
+  ): MessageType {
+    switch (messageType) {
+      case 'user':
+        return MessageType.USER;
+      case 'bot':
+        return MessageType.BOT;
+      case 'system':
+        return MessageType.SYSTEM;
+      default:
+        return MessageType.USER;
+    }
+  }
+
   async storeAndEchoMessage({
     connectionId,
     message,
@@ -16,120 +214,50 @@ export class ChatService {
     message: string;
     sessionId?: string;
   }): Promise<{ message: string; sessionId: string }> {
-    // Start performance monitoring for chat message processing
-    const performanceMonitor = container
-      .getPerformanceMonitoringService()
-      .startMonitoring('chat_message_processing', {
-        connectionId,
-        messageLength: message?.length,
-        hasSessionId: !!sessionId,
-        sessionId,
-        operation: 'chat_message_processing',
-        service: 'chat',
-      });
-
     try {
-      if (typeof message !== 'string')
-        throw new Error('Message must be a string');
+      // Get or create session
+      const session = sessionId
+        ? await this.sessionRepository.findById(SessionId.create(sessionId))
+        : null;
 
-      const user = await container
-        .getAuthenticationService()
-        .getUserFromConnection(ConnectionId.create(connectionId));
-      if (!user) throw new Error('User not found for authenticated connection');
+      const finalSessionId =
+        session?.getId() || SessionId.create(`session_${Date.now()}`);
 
-      const now = new Date();
-      const currentSessionId =
-        sessionId ||
-        `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      const userMessage = {
-        message,
-        sessionId: currentSessionId,
-        timestamp: now.toISOString(),
-      };
-
-      // Use circuit breaker for DynamoDB user message storage
-      await container.getCircuitBreakerService().execute(
-        'dynamodb',
-        'storeUserMessage',
-        async () => {
-          return await ddbDocClient.send(
-            new PutCommand({
-              TableName: process.env.WEBSOCKET_MESSAGES_TABLE,
-              Item: {
-                ...userMessage,
-                ttl: Math.floor(now.getTime() / 1000) + 24 * 60 * 60,
-                type: 'user',
-                connectionId,
-                userId: user.getId().getValue(),
-              },
-            })
-          );
-        },
-        async () => {
-          // Fallback behavior when DynamoDB is unavailable
-          throw new Error('Database temporarily unavailable');
-        },
-        {
-          failureThreshold: 3, // 3 fallos antes de abrir el circuito
-          recoveryTimeout: 20000, // 20 segundos de espera
-          expectedResponseTime: 500, // 500ms de tiempo de respuesta esperado
-          monitoringWindow: 60000, // Ventana de monitoreo de 1 minuto
-          minimumRequestCount: 5, // Mínimo 5 requests antes de abrir el circuito
-        }
-      );
-
-      // Echo the message back as bot
-      const botMessage = {
-        message,
-        sessionId: currentSessionId,
-        timestamp: new Date().toISOString(),
-      };
-
-      // Use circuit breaker for DynamoDB bot message storage
-      await container.getCircuitBreakerService().execute(
-        'dynamodb',
-        'storeBotMessage',
-        async () => {
-          return await ddbDocClient.send(
-            new PutCommand({
-              TableName: process.env.WEBSOCKET_MESSAGES_TABLE,
-              Item: {
-                ...botMessage,
-                ttl: Math.floor(now.getTime() / 1000) + 24 * 60 * 60,
-                type: 'bot',
-                connectionId,
-                userId: user.getId().getValue(),
-              },
-            })
-          );
-        },
-        async () => {
-          // Fallback behavior when DynamoDB is unavailable
-          throw new Error('Database temporarily unavailable');
-        },
-        {
-          failureThreshold: 3, // 3 fallos antes de abrir el circuito
-          recoveryTimeout: 20000, // 20 segundos de espera
-          expectedResponseTime: 500, // 500ms de tiempo de respuesta esperado
-          monitoringWindow: 60000, // Ventana de monitoreo de 1 minuto
-          minimumRequestCount: 5, // Mínimo 5 requests antes de abrir el circuito
-        }
-      );
-
-      performanceMonitor.complete(true, {
-        userId: user.getId().getValue(),
-        sessionId: currentSessionId,
-        messageLength: message.length,
-        messageType: 'user_and_bot',
+      // Create user message
+      const userMessage = Message.fromData({
+        id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        content: message,
+        type: MessageType.USER,
+        userId: 'system', // This should come from authentication
+        sessionId: finalSessionId.getValue(),
+        createdAt: new Date(),
       });
 
-      return { message, sessionId: currentSessionId };
+      // Store user message
+      await this.messageRepository.save(userMessage);
+
+      // Create and store echo message
+      const echoMessage = Message.fromData({
+        id: `echo_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        content: `Echo: ${message}`,
+        type: MessageType.BOT,
+        userId: 'system',
+        sessionId: finalSessionId.getValue(),
+        createdAt: new Date(),
+      });
+
+      await this.messageRepository.save(echoMessage);
+
+      return {
+        message: echoMessage.getContent(),
+        sessionId: finalSessionId.getValue(),
+      };
     } catch (error) {
-      performanceMonitor.complete(false, {
-        error: error instanceof Error ? error.message : String(error),
+      logger.error('Error storing and echoing message', {
         connectionId,
-        messageLength: message?.length,
+        message,
         sessionId,
+        error: error instanceof Error ? error.message : String(error),
       });
       throw error;
     }

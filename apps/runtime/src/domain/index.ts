@@ -8,4 +8,4 @@ export * from './entities';
 export * from './repositories';
 
 // Domain Service Interfaces
-export * from './services';
+export * from '../application/services';

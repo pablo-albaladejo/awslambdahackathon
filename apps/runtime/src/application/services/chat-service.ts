@@ -1,5 +1,5 @@
-import { Message } from '../entities';
-import { SessionId, UserId } from '../value-objects';
+import { Message } from '../../domain/entities';
+import { SessionId, UserId } from '../../domain/value-objects';
 
 export interface ProcessMessageCommand {
   content: string;

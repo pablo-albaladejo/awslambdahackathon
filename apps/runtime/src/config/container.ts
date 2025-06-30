@@ -1,24 +1,37 @@
-import { logger } from '@awslambdahackathon/utils/lambda';
-import { AuthenticationService as DomainAuthenticationService } from '@domain/services/authentication-service';
-import { ChatService as DomainChatService } from '@domain/services/chat-service';
-import { ConnectionService as DomainConnectionService } from '@domain/services/connection-service';
-import { AuthenticationService as InfrastructureAuthenticationService } from '@infrastructure/services/authentication-service';
-import { ChatService as InfrastructureChatService } from '@infrastructure/services/chat-service';
-import { CircuitBreakerService as InfrastructureCircuitBreakerService } from '@infrastructure/services/circuit-breaker-service';
-import { ConnectionService as InfrastructureConnectionService } from '@infrastructure/services/connection-service';
+import { PerformanceMonitoringService } from '@application/services/performance-monitoring-service';
 import {
-  AppError,
-  ErrorType,
-  ErrorHandlingService as InfrastructureErrorHandlingService,
-} from '@infrastructure/services/error-handling-service';
-import { MetricsService as InfrastructureMetricsService } from '@infrastructure/services/metrics-service';
-import { PerformanceMonitoringService as InfrastructurePerformanceMonitoringService } from '@infrastructure/services/performance-monitoring-service';
-import { WebSocketMessageService as InfrastructureWebSocketMessageService } from '@infrastructure/services/websocket-message-service';
-import type { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
+  AuthResponse,
+  WebSocketMessage,
+} from '@application/services/websocket-message-service';
+import { logger } from '@awslambdahackathon/utils/lambda';
+import { ConnectionRepository } from '@domain/repositories/connection';
+import { MessageRepository } from '@domain/repositories/message';
+import { SessionRepository } from '@domain/repositories/session';
+import { UserRepository } from '@domain/repositories/user';
+import { AuthenticationService } from '@domain/services/authentication-service';
+import { ChatService } from '@domain/services/chat-service';
+import { ConnectionService } from '@domain/services/connection-service';
+import { WebSocketMessageService } from '@domain/services/websocket-message-service';
+import { DynamoDBConnectionRepository } from '@infrastructure/adapters/outbound/dynamodb/dynamodb-connection';
+import { DynamoDBMessageRepository } from '@infrastructure/adapters/outbound/dynamodb/dynamodb-message';
+import { DynamoDBSessionRepository } from '@infrastructure/adapters/outbound/dynamodb/dynamodb-session';
+import { DynamoDBUserRepository } from '@infrastructure/adapters/outbound/dynamodb/dynamodb-user';
+import { AwsWebSocketAdapterFactory } from '@infrastructure/adapters/outbound/websocket';
+import {
+  ApplicationErrorHandlingService,
+  ErrorHandlingService,
+} from '@infrastructure/services/app-error-handling-service';
+import { AuthenticationService as AuthenticationServiceImpl } from '@infrastructure/services/authentication-service';
+import { ChatService as ChatServiceImpl } from '@infrastructure/services/chat-service';
+import { CircuitBreakerService } from '@infrastructure/services/circuit-breaker-service';
+import { CloudWatchPerformanceMonitoringService } from '@infrastructure/services/cloudwatch-performance-monitoring-service';
+import { ConnectionService as ConnectionServiceImpl } from '@infrastructure/services/connection-service';
+import { CloudWatchMetricsService } from '@infrastructure/services/metrics-service';
+import { WebSocketMessageService as WebSocketMessageServiceImpl } from '@infrastructure/services/websocket-message-service';
+import type { APIGatewayProxyEvent } from 'aws-lambda';
 
-// Import domain service interfaces
+import { MetricsService } from '@/application/services/metrics-service';
 
-// Define proper types for the services
 export interface User {
   userId: string;
   username: string;
@@ -64,28 +77,6 @@ export interface ChatResponseData {
   isEcho: boolean;
 }
 
-export interface PerformanceContext {
-  operation: string;
-  service: string;
-  connectionId?: string;
-  userId?: string;
-  correlationId?: string;
-  stage?: string;
-  environment?: string;
-  eventType?: string;
-  tokenLength?: number;
-  messageLength?: number;
-  [key: string]: unknown;
-}
-
-export interface PerformanceMetrics {
-  duration: number;
-  memoryUsage: number;
-  success: boolean;
-  errorCount: number;
-  [key: string]: unknown;
-}
-
 export interface CircuitBreakerConfig {
   timeout?: number;
   errorThresholdPercentage?: number;
@@ -101,165 +92,105 @@ export interface CircuitBreakerStats {
   state: string;
   failureCount: number;
   successCount: number;
-  lastFailureTime?: Date;
-  nextAttemptTime?: Date;
+  totalRequests: number;
+  lastFailureTime: Date | null;
+  lastSuccessTime: Date | null;
+  nextAttemptTime: Date | null;
+  failureRate: number;
 }
 
 // Service interfaces for dependency injection - using domain interfaces
-export type ConnectionServiceType = DomainConnectionService;
-export type ChatServiceType = DomainChatService;
-export type AuthenticationServiceType = DomainAuthenticationService;
+export type ConnectionServiceType = ConnectionService;
+export type ChatServiceType = ChatService;
+export type AuthenticationServiceType = AuthenticationService;
+export type WebSocketMessageServiceType = WebSocketMessageService;
 
-export interface ErrorHandlingService {
-  createError(
-    type: ErrorType,
-    message: string,
-    code: string,
-    details?: Record<string, unknown>,
-    correlationId?: string
-  ): AppError;
-  handleError(error: Error | AppError, context?: ErrorContext): AppError;
-  createErrorResponse(
-    error: AppError,
-    event?: APIGatewayProxyEvent
-  ): APIGatewayProxyResult;
-  handleWebSocketError(
-    error: AppError,
-    connectionId: string,
-    event: APIGatewayProxyEvent
-  ): Promise<void>;
-}
-
-export interface MetricsService {
-  recordErrorMetrics(
-    code: string,
-    context: string,
-    metadata: MetricsMetadata
-  ): Promise<void>;
-  recordBusinessMetrics(
-    name: string,
-    value: number,
-    metadata: MetricsMetadata
-  ): Promise<void>;
-  recordWebSocketMetrics(
-    name: string,
-    success: boolean,
-    duration: number,
-    errorType?: string
-  ): Promise<void>;
-  recordDatabaseMetrics(
-    operation: string,
-    tableName: string,
-    success: boolean,
-    duration: number,
-    errorType?: string
-  ): Promise<void>;
-  recordAuthenticationMetrics(
-    success: boolean,
-    duration: number,
-    errorType?: string,
-    userId?: string
-  ): Promise<void>;
-}
-
-export interface WebSocketMessageService {
-  sendAuthResponse(
-    connectionId: string,
-    event: APIGatewayProxyEvent,
-    success: boolean,
-    data: AuthResponseData
-  ): Promise<boolean>;
-  sendChatResponse(
-    connectionId: string,
-    event: APIGatewayProxyEvent,
-    message: string,
-    sessionId: string,
-    isEcho: boolean
-  ): Promise<boolean>;
-  sendErrorMessage(
-    connectionId: string,
-    event: APIGatewayProxyEvent,
-    message: string
-  ): Promise<boolean>;
-}
-
-export interface PerformanceMonitoringService {
-  startMonitoring(
-    operation: string,
-    context: PerformanceContext
-  ): PerformanceMonitor;
-  recordMetrics(metrics: PerformanceMetrics, context: PerformanceContext): void;
-  recordBusinessMetric(
-    metricName: string,
-    value: number,
-    unit: string,
-    context: PerformanceContext,
-    additionalDimensions?: Array<{ Name: string; Value: string }>
-  ): void;
-  recordErrorMetric(
-    errorType: string,
-    errorCode: string,
-    context: PerformanceContext
-  ): void;
-  checkPerformanceThresholds(
-    metrics: PerformanceMetrics,
-    context: PerformanceContext,
-    thresholds: PerformanceThresholds
-  ): void;
-  getPerformanceStats(): PerformanceStats;
-  flushMetrics(): Promise<void>;
-  shutdown(): Promise<void>;
-}
-
-export interface PerformanceMonitor {
-  complete(success: boolean, context?: Record<string, unknown>): void;
-}
-
-export interface PerformanceThresholds {
-  warning: number;
-  critical: number;
-  timeout: number;
-}
-
-export interface PerformanceStats {
-  totalMetrics: number;
-  bufferSize: number;
-  lastFlush: Date | null;
-}
-
-export interface CircuitBreakerService {
-  execute<T>(
-    serviceName: string,
-    operation: string,
-    operationFn: () => Promise<T>,
-    fallback?: () => Promise<T> | T,
-    config?: CircuitBreakerConfig
-  ): Promise<T>;
-  getCircuitBreaker(
-    serviceName: string,
-    operation: string,
-    config?: CircuitBreakerConfig
-  ): CircuitBreaker;
-  getAllStats(): Record<string, CircuitBreakerStats>;
-  resetAll(): void;
-  getCircuitBreakerStats(
-    serviceName: string,
-    operation: string
-  ): CircuitBreakerStats;
-  setDefaultConfig(config: CircuitBreakerConfig): void;
-}
-
-export interface CircuitBreaker {
-  execute<T>(fn: () => Promise<T>): Promise<T>;
-  getStats(): CircuitBreakerStats;
-}
-
-// Dependency injection container
-export class Container {
-  private static instance: Container;
+export class ServiceRegistry {
   private services: Map<string, unknown> = new Map();
 
+  register<T>(serviceName: string, service: T): void {
+    this.services.set(serviceName, service);
+    logger.debug('Service registered', { serviceName });
+  }
+
+  get<T>(serviceName: string): T {
+    const service = this.services.get(serviceName);
+    if (!service) {
+      throw new Error(`Service '${serviceName}' not found in registry`);
+    }
+    return service as T;
+  }
+
+  has(serviceName: string): boolean {
+    return this.services.has(serviceName);
+  }
+
+  getAllServiceNames(): string[] {
+    return Array.from(this.services.keys());
+  }
+}
+
+export class ServiceFactory {
+  private readonly websocketAdapterFactory: AwsWebSocketAdapterFactory;
+
+  constructor() {
+    this.websocketAdapterFactory = new AwsWebSocketAdapterFactory();
+  }
+
+  createConnectionService(): ConnectionServiceType {
+    return new ConnectionServiceImpl();
+  }
+
+  createAuthenticationService(): AuthenticationServiceType {
+    return new AuthenticationServiceImpl();
+  }
+
+  createChatService(): ChatServiceType {
+    return new ChatServiceImpl();
+  }
+
+  createErrorHandlingService(): ErrorHandlingService {
+    return new ApplicationErrorHandlingService();
+  }
+
+  createMetricsService(): MetricsService {
+    return new CloudWatchMetricsService();
+  }
+
+  createPerformanceMonitoringService(): PerformanceMonitoringService {
+    return new CloudWatchPerformanceMonitoringService();
+  }
+
+  createCircuitBreakerService(): CircuitBreakerService {
+    return new CircuitBreakerService();
+  }
+
+  // Repository creation methods
+  createUserRepository(): UserRepository {
+    return new DynamoDBUserRepository();
+  }
+
+  createConnectionRepository(): ConnectionRepository {
+    return new DynamoDBConnectionRepository();
+  }
+
+  createMessageRepository(): MessageRepository {
+    return new DynamoDBMessageRepository();
+  }
+
+  createSessionRepository(): SessionRepository {
+    return new DynamoDBSessionRepository();
+  }
+}
+
+export class Container {
+  private static instance: Container;
+  private registry: ServiceRegistry;
+  private factory: ServiceFactory;
+
   private constructor() {
+    this.registry = new ServiceRegistry();
+    this.factory = new ServiceFactory();
     this.initializeServices();
   }
 
@@ -271,81 +202,164 @@ export class Container {
   }
 
   private initializeServices(): void {
-    // Initialize services
-    const connectionService = new InfrastructureConnectionService();
-    const authenticationService = new InfrastructureAuthenticationService();
-    const chatService = new InfrastructureChatService();
-    const errorHandlingService = new InfrastructureErrorHandlingService();
-    const metricsService = new InfrastructureMetricsService();
-    const websocketMessageService = new InfrastructureWebSocketMessageService();
-    const performanceMonitoringService =
-      new InfrastructurePerformanceMonitoringService();
-    const circuitBreakerService = new InfrastructureCircuitBreakerService();
+    logger.info('Initializing services in container');
 
-    // Register services
-    logger.info('Registering services in container');
-    this.services.set('connectionService', connectionService);
-    this.services.set('authenticationService', authenticationService);
-    this.services.set('chatService', chatService);
-    this.services.set('errorHandlingService', errorHandlingService);
-    this.services.set('metricsService', metricsService);
-    this.services.set('websocketMessageService', websocketMessageService);
-    this.services.set(
-      'performanceMonitoringService',
-      performanceMonitoringService
+    // Register repositories first
+    this.registry.register(
+      'userRepository',
+      this.factory.createUserRepository()
     );
-    this.services.set('circuitBreakerService', circuitBreakerService);
-  }
+    this.registry.register(
+      'connectionRepository',
+      this.factory.createConnectionRepository()
+    );
+    this.registry.register(
+      'messageRepository',
+      this.factory.createMessageRepository()
+    );
+    this.registry.register(
+      'sessionRepository',
+      this.factory.createSessionRepository()
+    );
 
-  public get<T>(serviceName: string): T {
-    logger.info('Getting service from container', { serviceName });
-    logger.info('All services in container', {
-      services: Array.from(this.services.keys()),
+    // Register services using factory
+    this.registry.register(
+      'connectionService',
+      this.factory.createConnectionService()
+    );
+    this.registry.register(
+      'authenticationService',
+      this.factory.createAuthenticationService()
+    );
+    this.registry.register('chatService', this.factory.createChatService());
+    this.registry.register(
+      'errorHandlingService',
+      this.factory.createErrorHandlingService()
+    );
+    this.registry.register(
+      'metricsService',
+      this.factory.createMetricsService()
+    );
+    this.registry.register(
+      'performanceMonitoringService',
+      this.factory.createPerformanceMonitoringService()
+    );
+    this.registry.register(
+      'circuitBreakerService',
+      this.factory.createCircuitBreakerService()
+    );
+
+    logger.info('Services initialized successfully', {
+      services: this.registry.getAllServiceNames(),
     });
-    const service = this.services.get(serviceName);
-    if (!service) {
-      throw new Error(`Service '${serviceName}' not found in container`);
-    }
-    return service as T;
-  }
-
-  public set(serviceName: string, service: unknown): void {
-    this.services.set(serviceName, service);
   }
 
   // Convenience methods for commonly used services
   public getConnectionService(): ConnectionServiceType {
-    return this.get<ConnectionServiceType>('connectionService');
+    return this.registry.get<ConnectionServiceType>('connectionService');
   }
 
   public getAuthenticationService(): AuthenticationServiceType {
-    return this.get<AuthenticationServiceType>('authenticationService');
+    return this.registry.get<AuthenticationServiceType>(
+      'authenticationService'
+    );
   }
 
   public getChatService(): ChatServiceType {
-    return this.get<ChatServiceType>('chatService');
+    return this.registry.get<ChatServiceType>('chatService');
   }
 
   public getErrorHandlingService(): ErrorHandlingService {
-    return this.get<ErrorHandlingService>('errorHandlingService');
+    return this.registry.get<ErrorHandlingService>('errorHandlingService');
   }
 
   public getMetricsService(): MetricsService {
-    return this.get<MetricsService>('metricsService');
+    return this.registry.get<MetricsService>('metricsService');
   }
 
-  public getWebSocketMessageService(): WebSocketMessageService {
-    return this.get<WebSocketMessageService>('websocketMessageService');
+  public createWebSocketMessageService(
+    event: APIGatewayProxyEvent
+  ): WebSocketMessageServiceType {
+    const infrastructureService = new WebSocketMessageServiceImpl();
+
+    // Create an adapter that implements the domain interface
+    return {
+      async sendMessage(
+        connectionId: string,
+        message: WebSocketMessage
+      ): Promise<boolean> {
+        return infrastructureService.sendMessage(connectionId, event, message);
+      },
+      async sendAuthResponse(
+        connectionId: string,
+        success: boolean,
+        data: AuthResponse
+      ): Promise<boolean> {
+        return infrastructureService.sendAuthResponse(
+          connectionId,
+          event,
+          success,
+          data
+        );
+      },
+      async sendChatResponse(
+        connectionId: string,
+        message: string,
+        sessionId: string,
+        isEcho: boolean
+      ): Promise<boolean> {
+        return infrastructureService.sendChatResponse(
+          connectionId,
+          event,
+          message,
+          sessionId,
+          isEcho
+        );
+      },
+      async sendErrorMessage(
+        connectionId: string,
+        errorMessage: string
+      ): Promise<boolean> {
+        return infrastructureService.sendErrorMessage(
+          connectionId,
+          event,
+          errorMessage
+        );
+      },
+      async sendSystemMessage(
+        connectionId: string,
+        text: string
+      ): Promise<boolean> {
+        return infrastructureService.sendSystemMessage(
+          connectionId,
+          event,
+          text
+        );
+      },
+      cleanup(): void {
+        infrastructureService.cleanup();
+      },
+    };
   }
 
   public getPerformanceMonitoringService(): PerformanceMonitoringService {
-    return this.get<PerformanceMonitoringService>(
+    return this.registry.get<PerformanceMonitoringService>(
       'performanceMonitoringService'
     );
   }
 
   public getCircuitBreakerService(): CircuitBreakerService {
-    return this.get<CircuitBreakerService>('circuitBreakerService');
+    return this.registry.get<CircuitBreakerService>('circuitBreakerService');
+  }
+
+  // Generic getter for advanced usage
+  public get<T>(serviceName: string): T {
+    return this.registry.get<T>(serviceName);
+  }
+
+  // For testing and advanced scenarios
+  public set(serviceName: string, service: unknown): void {
+    this.registry.register(serviceName, service);
   }
 }
 

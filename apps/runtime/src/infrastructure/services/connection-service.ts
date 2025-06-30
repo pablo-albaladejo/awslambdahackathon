@@ -1,36 +1,33 @@
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import {
-  DeleteCommand,
-  DynamoDBDocumentClient,
-  PutCommand,
-} from '@aws-sdk/lib-dynamodb';
+import { logger } from '@awslambdahackathon/utils/lambda';
 import { container } from '@config/container';
+import { Connection, ConnectionStatus } from '@domain/entities';
+import { ConnectionRepository } from '@domain/repositories/connection';
+import { ConnectionId, UserId } from '@domain/value-objects';
 
-const ddbClient = new DynamoDBClient({});
-const ddbDocClient = DynamoDBDocumentClient.from(ddbClient);
+import {
+  ConnectionService as DomainConnectionService,
+  RemoveConnectionCommand,
+  StoreConnectionCommand,
+} from '@/application/services/connection-service';
 
-export class ConnectionService {
-  private readonly tableName = process.env.WEBSOCKET_CONNECTIONS_TABLE!;
+export class ConnectionService implements DomainConnectionService {
+  private readonly connectionRepository: ConnectionRepository;
 
-  async storeConnection(connectionId: string): Promise<void> {
-    const now = new Date();
-    const connection = {
-      connectionId,
-      timestamp: now.toISOString(),
-      ttl: Math.floor(now.getTime() / 1000) + 2 * 60 * 60, // 2 hours TTL
-    };
+  constructor() {
+    this.connectionRepository = container.get<ConnectionRepository>(
+      'connectionRepository'
+    );
+  }
 
-    // Use circuit breaker for DynamoDB connection storage
+  async storeConnection(command: StoreConnectionCommand): Promise<void> {
+    const connection = Connection.create(command.connectionId.getValue());
+
+    // Use circuit breaker for connection storage
     await container.getCircuitBreakerService().execute(
       'dynamodb',
       'storeConnection',
       async () => {
-        return await ddbDocClient.send(
-          new PutCommand({
-            TableName: this.tableName,
-            Item: connection,
-          })
-        );
+        await this.connectionRepository.save(connection);
       },
       async () => {
         // Fallback behavior when DynamoDB is unavailable
@@ -46,18 +43,13 @@ export class ConnectionService {
     );
   }
 
-  async removeConnection(connectionId: string): Promise<void> {
-    // Use circuit breaker for DynamoDB connection removal
+  async removeConnection(command: RemoveConnectionCommand): Promise<void> {
+    // Use circuit breaker for connection removal
     await container.getCircuitBreakerService().execute(
       'dynamodb',
       'removeConnection',
       async () => {
-        return await ddbDocClient.send(
-          new DeleteCommand({
-            TableName: this.tableName,
-            Key: { connectionId },
-          })
-        );
+        await this.connectionRepository.delete(command.connectionId);
       },
       async () => {
         // Fallback behavior when DynamoDB is unavailable
@@ -71,5 +63,65 @@ export class ConnectionService {
         minimumRequestCount: 5,
       }
     );
+  }
+
+  async getConnection(connectionId: ConnectionId): Promise<Connection | null> {
+    try {
+      return await this.connectionRepository.findById(connectionId);
+    } catch (error) {
+      logger.error('Error getting connection', {
+        connectionId: connectionId.getValue(),
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
+  }
+
+  async updateConnectionActivity(connectionId: ConnectionId): Promise<void> {
+    try {
+      await this.connectionRepository.updateActivity(connectionId);
+    } catch (error) {
+      logger.error('Error updating connection activity', {
+        connectionId: connectionId.getValue(),
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
+  }
+
+  async findConnectionsByUser(userId: UserId): Promise<Connection[]> {
+    try {
+      return await this.connectionRepository.findByUserId(userId);
+    } catch (error) {
+      logger.error('Error finding connections by user', {
+        userId: userId.getValue(),
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
+  }
+
+  async cleanupExpiredConnections(): Promise<void> {
+    try {
+      await this.connectionRepository.deleteExpiredConnections();
+    } catch (error) {
+      logger.error('Error cleaning up expired connections', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
+  }
+
+  async countActiveConnections(): Promise<number> {
+    try {
+      return await this.connectionRepository.countByStatus(
+        ConnectionStatus.CONNECTED
+      );
+    } catch (error) {
+      logger.error('Error counting active connections', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
   }
 }

@@ -1,6 +1,7 @@
 import { logger } from '@awslambdahackathon/utils/lambda';
-import type { AuthenticationService } from '@domain/services/authentication-service';
 import { ConnectionId } from '@domain/value-objects';
+
+import type { AuthenticationService } from '@/application/services/authentication-service';
 
 interface RemoveAuthenticatedConnectionResult {
   success: boolean;

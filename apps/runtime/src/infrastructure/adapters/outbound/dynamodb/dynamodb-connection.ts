@@ -10,7 +10,11 @@ import {
 } from '@aws-sdk/lib-dynamodb';
 import { logger } from '@awslambdahackathon/utils/lambda';
 import { Connection, ConnectionStatus } from '@domain/entities/connection';
-import { ConnectionRepository } from '@domain/repositories/connection';
+import { User } from '@domain/entities/user';
+import {
+  AuthenticatedConnectionData,
+  ConnectionRepository,
+} from '@domain/repositories/connection';
 import { ConnectionId, UserId } from '@domain/value-objects';
 
 export class DynamoDBConnectionRepository implements ConnectionRepository {
@@ -271,24 +275,142 @@ export class DynamoDBConnectionRepository implements ConnectionRepository {
 
   async countByStatus(status: ConnectionStatus): Promise<number> {
     try {
-      const result = await this.ddbClient.send(
-        new QueryCommand({
-          TableName: this.tableName,
-          IndexName: 'status-index',
-          KeyConditionExpression: 'status = :status',
-          ExpressionAttributeValues: {
-            ':status': status,
-          },
-          Select: 'COUNT',
-        })
-      );
-
-      return result.Count || 0;
+      const connections = await this.findByStatus(status);
+      return connections.length;
     } catch (error) {
       logger.error('Error counting connections by status', {
         error: error instanceof Error ? error.message : String(error),
       });
       throw new Error('Failed to count connections by status');
+    }
+  }
+
+  // Authenticated connection methods
+  async storeAuthenticatedConnection(
+    connectionId: ConnectionId,
+    user: User,
+    ttl: number
+  ): Promise<void> {
+    try {
+      const now = Date.now();
+      await this.ddbClient.send(
+        new PutCommand({
+          TableName: this.tableName,
+          Item: {
+            pk: `AUTH#${connectionId.getValue()}`,
+            sk: `AUTH#${connectionId.getValue()}`,
+            connectionId: connectionId.getValue(),
+            userId: user.getId().getValue(),
+            username: user.getUsername(),
+            email: user.getEmail(),
+            groups: user.getGroups(),
+            isAuthenticated: true,
+            authenticatedAt: now,
+            ttl,
+            expiresAt: Math.floor(now / 1000) + ttl,
+          },
+        })
+      );
+    } catch (error) {
+      logger.error('Error storing authenticated connection', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw new Error('Failed to store authenticated connection');
+    }
+  }
+
+  async findAuthenticatedConnection(
+    connectionId: ConnectionId
+  ): Promise<AuthenticatedConnectionData | null> {
+    try {
+      const result = await this.ddbClient.send(
+        new GetCommand({
+          TableName: this.tableName,
+          Key: {
+            pk: `AUTH#${connectionId.getValue()}`,
+            sk: `AUTH#${connectionId.getValue()}`,
+          },
+        })
+      );
+
+      if (!result.Item || !result.Item.isAuthenticated) {
+        return null;
+      }
+
+      return {
+        connectionId: result.Item.connectionId,
+        userId: result.Item.userId,
+        username: result.Item.username,
+        email: result.Item.email,
+        groups: result.Item.groups || [],
+        isAuthenticated: result.Item.isAuthenticated,
+        authenticatedAt: result.Item.authenticatedAt,
+        ttl: result.Item.ttl,
+      };
+    } catch (error) {
+      logger.error('Error finding authenticated connection', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw new Error('Failed to find authenticated connection');
+    }
+  }
+
+  async removeAuthenticatedConnection(
+    connectionId: ConnectionId
+  ): Promise<void> {
+    try {
+      await this.ddbClient.send(
+        new DeleteCommand({
+          TableName: this.tableName,
+          Key: {
+            pk: `AUTH#${connectionId.getValue()}`,
+            sk: `AUTH#${connectionId.getValue()}`,
+          },
+        })
+      );
+    } catch (error) {
+      logger.error('Error removing authenticated connection', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw new Error('Failed to remove authenticated connection');
+    }
+  }
+
+  async findExpiredAuthenticatedConnections(): Promise<
+    AuthenticatedConnectionData[]
+  > {
+    try {
+      const now = Math.floor(Date.now() / 1000);
+      const result = await this.ddbClient.send(
+        new ScanCommand({
+          TableName: this.tableName,
+          FilterExpression: 'begins_with(pk, :authPrefix) AND expiresAt < :now',
+          ExpressionAttributeValues: {
+            ':authPrefix': 'AUTH#',
+            ':now': now,
+          },
+        })
+      );
+
+      if (!result.Items) {
+        return [];
+      }
+
+      return result.Items.filter(item => item.isAuthenticated).map(item => ({
+        connectionId: item.connectionId,
+        userId: item.userId,
+        username: item.username,
+        email: item.email,
+        groups: item.groups || [],
+        isAuthenticated: item.isAuthenticated,
+        authenticatedAt: item.authenticatedAt,
+        ttl: item.ttl,
+      }));
+    } catch (error) {
+      logger.error('Error finding expired authenticated connections', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw new Error('Failed to find expired authenticated connections');
     }
   }
 }

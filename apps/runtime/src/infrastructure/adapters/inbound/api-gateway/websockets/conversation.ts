@@ -19,8 +19,9 @@ import {
 } from '@config/constants';
 import { container } from '@config/container';
 import { ConnectionId } from '@domain/value-objects/connection-id';
-import { ErrorType } from '@infrastructure/services/error-handling-service';
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
+
+import { ErrorType } from '@/infrastructure/services/app-error-handling-service';
 
 interface WebSocketMessage {
   type: 'auth' | 'message' | 'ping';
@@ -113,8 +114,8 @@ const handleAuthMessage = async (
     });
 
     await container
-      .getWebSocketMessageService()
-      .sendAuthResponse(connectionId, event, true, {
+      .createWebSocketMessageService(event)
+      .sendAuthResponse(connectionId, true, {
         userId: safeUserId,
         username: authResult.user.getUsername(),
       });
@@ -133,8 +134,8 @@ const handleAuthMessage = async (
       });
   } else {
     await container
-      .getWebSocketMessageService()
-      .sendAuthResponse(connectionId, event, false, {
+      .createWebSocketMessageService(event)
+      .sendAuthResponse(connectionId, false, {
         error: authResult.error,
       });
 
@@ -204,9 +205,8 @@ const handleChatMessage = async (
     throw new Error(result.error || 'Failed to send chat message');
   }
 
-  await container.getWebSocketMessageService().sendChatResponse(
+  await container.createWebSocketMessageService(event).sendChatResponse(
     connectionId,
-    event,
     result.message!,
     result.sessionId!,
     true // isEcho
@@ -327,11 +327,7 @@ const conversationHandler = async (
         event,
         correlationId
       );
-      performanceMonitor.complete(true, {
-        messageType: 'auth',
-        action: data.action,
-        hasToken: !!data.token,
-      });
+      performanceMonitor.complete(true);
       return result;
     }
 
@@ -379,11 +375,7 @@ const conversationHandler = async (
         .getErrorHandlingService()
         .handleWebSocketError(error, connectionId, event);
 
-      performanceMonitor.complete(false, {
-        messageType: type,
-        action,
-        error: 'UNAUTHENTICATED_CONNECTION',
-      });
+      performanceMonitor.complete(false);
 
       return createSuccessResponse({
         statusCode: WEBSOCKET_CONSTANTS.STATUS_CODES.SUCCESS,
@@ -399,22 +391,14 @@ const conversationHandler = async (
         event,
         correlationId
       );
-      performanceMonitor.complete(true, {
-        messageType: 'message',
-        action: data.action,
-        messageLength: data.message?.length,
-        sessionId: data.sessionId,
-      });
+      performanceMonitor.complete(true);
       return result;
     }
 
     // Handle ping messages
     if (type === WEBSOCKET_CONSTANTS.MESSAGE_TYPES.PING) {
       const result = await handlePingMessageHandler(connectionId);
-      performanceMonitor.complete(true, {
-        messageType: 'ping',
-        action: data.action,
-      });
+      performanceMonitor.complete(true);
       return result;
     }
 
@@ -447,11 +431,7 @@ const conversationHandler = async (
         }
       );
 
-    performanceMonitor.complete(false, {
-      messageType: type,
-      action,
-      error: 'INVALID_ACTION',
-    });
+    performanceMonitor.complete(false);
 
     return container
       .getErrorHandlingService()
@@ -477,12 +457,7 @@ const conversationHandler = async (
         }
       );
 
-    performanceMonitor.complete(false, {
-      messageType: 'unknown',
-      action: 'unknown',
-      error: appError.type,
-      errorMessage: appError.message,
-    });
+    performanceMonitor.complete(false);
 
     return container
       .getErrorHandlingService()
