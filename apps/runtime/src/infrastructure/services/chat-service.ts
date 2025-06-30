@@ -1,7 +1,7 @@
 import { logger } from '@awslambdahackathon/utils/lambda';
 import { MESSAGE_CONFIG } from '@config/constants';
 import { container } from '@config/container';
-import { Message, MessageType } from '@domain/entities';
+import { Message, MessageType } from '@domain/entities/message';
 import { MessageRepository } from '@domain/repositories/message';
 import { SessionRepository } from '@domain/repositories/session';
 import { UserRepository } from '@domain/repositories/user';
@@ -11,7 +11,7 @@ import {
   ProcessMessageCommand,
   ProcessMessageResult,
 } from '@domain/services/chat-service';
-import { InvokeLLMCommand, LLMService } from '@domain/services/llm-service';
+import { LLMRequest, LLMService } from '@domain/services/llm-service';
 import { UserId } from '@domain/value-objects';
 
 export class ChatService implements DomainChatService {
@@ -84,17 +84,25 @@ export class ChatService implements DomainChatService {
       await this.messageRepository.save(message);
 
       // Invoke LLM for bot response
-      const llmCommand: InvokeLLMCommand = {
-        prompt: command.content,
-        userId: command.userId,
-        sessionId: command.sessionId,
-        previousMessages: [], // TODO: Implement fetching previous messages for context
+      const llmRequest: LLMRequest = {
+        messageId: message.getId().getValue(),
+        userId: command.userId.getValue(),
+        sessionId: command.sessionId.getValue(),
+        message: command.content,
+        model: 'nova-micro',
+        maxTokens: 1000,
+        temperature: 0.7,
       };
-      const llmResult = await this.llmService.invokeModel(llmCommand);
+      const llmResult = await this.llmService.generateResponse(llmRequest);
+
+      if (!llmResult.success) {
+        throw new Error(llmResult.error || 'LLM generation failed');
+      }
 
       const botMessage = Message.fromData({
         id: `${MESSAGE_CONFIG.ID_PREFIX.MESSAGE}${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        content: llmResult.response,
+        content:
+          llmResult.response || 'Sorry, I could not generate a response.',
         type: MessageType.BOT,
         userId: command.userId.getValue(), // Bot message is associated with the user who initiated the conversation
         sessionId: command.sessionId.getValue(),

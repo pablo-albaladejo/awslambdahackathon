@@ -230,7 +230,7 @@ const handleAuthMessage = async (
           }
         );
     } else {
-      logger.warn('Authentication failed', {
+      logger.error('Authentication failed', {
         connectionId,
         success: authResult.success,
         hasUser: !!authResult.user,

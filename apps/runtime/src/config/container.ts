@@ -80,6 +80,7 @@ class DependencyContainer implements Container {
   private readonly instances = new Map<Token, unknown>();
   private readonly configs: {
     connectionsDB: DynamoDBConfig;
+    sessionsDB: DynamoDBConfig;
     messagesDB: DynamoDBConfig;
     webSocket: WebSocketConfig;
     cloudWatch: CloudWatchConfig;
@@ -89,10 +90,14 @@ class DependencyContainer implements Container {
     // Validate required environment variables using WebSocket-specific validation
     validateWebSocketRequiredEnvironmentVariables();
 
-    // Initialize separate configurations for connections and messages
+    // Initialize separate configurations for connections, sessions, and messages
     this.configs = {
       connectionsDB: {
         tableName: process.env.WEBSOCKET_CONNECTIONS_TABLE!,
+        region: process.env.AWS_REGION!,
+      },
+      sessionsDB: {
+        tableName: process.env.WEBSOCKET_SESSIONS_TABLE!,
         region: process.env.AWS_REGION!,
       },
       messagesDB: {
@@ -215,6 +220,7 @@ class DependencyContainer implements Container {
   private registerServices(): void {
     // Register configurations as singletons - direct instances
     this.instances.set('ConnectionsDBConfig', this.configs.connectionsDB);
+    this.instances.set('SessionsDBConfig', this.configs.sessionsDB);
     this.instances.set('MessagesDBConfig', this.configs.messagesDB);
     this.instances.set('WebSocketConfig', this.configs.webSocket);
     this.instances.set('CloudWatchConfig', this.configs.cloudWatch);
@@ -265,7 +271,7 @@ class DependencyContainer implements Container {
       DynamoDBSessionRepository as Constructor<SessionRepository>,
       {
         singleton: true,
-        dependencies: ['DynamoDBDocumentClient', 'MessagesDBConfig'],
+        dependencies: ['DynamoDBDocumentClient', 'SessionsDBConfig'],
       }
     );
 

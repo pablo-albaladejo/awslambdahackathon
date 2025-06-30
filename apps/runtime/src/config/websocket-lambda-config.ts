@@ -13,6 +13,7 @@ const WebSocketLambdaEnvironmentVarsSchema =
   BaseLambdaEnvironmentVarsSchema.extend({
     // Database configuration
     WEBSOCKET_CONNECTIONS_TABLE: z.string().min(1),
+    WEBSOCKET_SESSIONS_TABLE: z.string().min(1),
     WEBSOCKET_MESSAGES_TABLE: z.string().min(1),
 
     // WebSocket configuration
@@ -57,6 +58,7 @@ const WebSocketLambdaEnvironmentVarsSchema =
 export interface WebSocketLambdaConfig extends BaseLambdaConfig {
   database: {
     connectionsTable: string;
+    sessionsTable: string;
     messagesTable: string;
     region: string;
   };
@@ -105,6 +107,7 @@ export const createWebSocketLambdaConfig = (): WebSocketLambdaConfig => {
     ...baseConfig,
     database: {
       connectionsTable: env.WEBSOCKET_CONNECTIONS_TABLE,
+      sessionsTable: env.WEBSOCKET_SESSIONS_TABLE,
       messagesTable: env.WEBSOCKET_MESSAGES_TABLE,
       region: env.AWS_REGION,
     },
@@ -139,6 +142,7 @@ export const validateWebSocketRequiredEnvironmentVariables = (): void => {
   // Then validate WebSocket-specific requirements
   const webSocketRequiredEnvVars = [
     'WEBSOCKET_CONNECTIONS_TABLE',
+    'WEBSOCKET_SESSIONS_TABLE',
     'WEBSOCKET_MESSAGES_TABLE',
     'WEBSOCKET_ENDPOINT',
     'COGNITO_USER_POOL_ID',

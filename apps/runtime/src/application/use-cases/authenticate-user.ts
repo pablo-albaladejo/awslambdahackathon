@@ -37,7 +37,7 @@ export class AuthenticateUserUseCase extends BaseUseCase<
       });
 
       if (!command.token) {
-        this.logger.warn('Authentication failed: No token provided');
+        this.logger.error('Authentication failed: No token provided');
         return {
           success: false,
           error: 'Token is required',
@@ -64,7 +64,7 @@ export class AuthenticateUserUseCase extends BaseUseCase<
           isActive: authResult.user.isActive(),
         });
       } else {
-        this.logger.warn('User authentication failed', {
+        this.logger.error('User authentication failed', {
           error: authResult.error,
           success: authResult.success,
         });

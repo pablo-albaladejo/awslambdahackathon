@@ -121,9 +121,32 @@ export class DynamoDBUserRepository
     } catch (error) {
       logger.error('Error saving user', {
         userId: user.getId().getValue(),
+        username: user.getUsername(),
         error: error instanceof Error ? error.message : String(error),
+        errorStack: error instanceof Error ? error.stack : undefined,
+        errorName: error instanceof Error ? error.name : 'Unknown',
       });
-      throw new Error('Failed to save user');
+
+      // Provide more specific error information
+      if (error instanceof Error) {
+        if (error.message.includes('not authorized')) {
+          throw new Error(
+            `Failed to save user: Database permission denied - ${error.message}`
+          );
+        }
+        if (error.message.includes('ValidationException')) {
+          throw new Error(
+            `Failed to save user: Invalid data format - ${error.message}`
+          );
+        }
+        if (error.message.includes('ResourceNotFoundException')) {
+          throw new Error(
+            `Failed to save user: Database table not found - ${error.message}`
+          );
+        }
+        throw new Error(`Failed to save user: ${error.message}`);
+      }
+      throw new Error('Failed to save user: Unknown error occurred');
     }
   }
 

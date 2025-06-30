@@ -134,9 +134,38 @@ export class DynamoDBSessionRepository implements SessionRepository {
       ); // Additional filter for expired sessions
     } catch (error) {
       logger.error('Error finding active sessions by user', {
+        userId: userId.getValue(),
+        tableName: this.tableName,
+        indexName: 'userId-index',
         error: error instanceof Error ? error.message : String(error),
+        errorStack: error instanceof Error ? error.stack : undefined,
+        errorName: error instanceof Error ? error.name : 'Unknown',
       });
-      throw new Error('Failed to find active sessions by user');
+
+      // Provide more specific error information
+      if (error instanceof Error) {
+        if (error.message.includes('not authorized')) {
+          throw new Error(
+            `Failed to find active sessions by user: Database permission denied. The Lambda function role may not have permissions to query the userId-index on table ${this.tableName}. Error: ${error.message}`
+          );
+        }
+        if (error.message.includes('ValidationException')) {
+          throw new Error(
+            `Failed to find active sessions by user: Invalid query parameters - ${error.message}`
+          );
+        }
+        if (error.message.includes('ResourceNotFoundException')) {
+          throw new Error(
+            `Failed to find active sessions by user: Table or index not found. Check if userId-index exists on table ${this.tableName}. Error: ${error.message}`
+          );
+        }
+        throw new Error(
+          `Failed to find active sessions by user: ${error.message}`
+        );
+      }
+      throw new Error(
+        'Failed to find active sessions by user: Unknown error occurred'
+      );
     }
   }
 
