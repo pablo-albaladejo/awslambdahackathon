@@ -44,6 +44,7 @@ import {
   WebSocketConfig,
   WebSocketEvent,
 } from '@infrastructure/config/websocket-config';
+import { DynamoDBUserMapper } from '@infrastructure/mappers/database/dynamodb-user.mapper';
 import { ApplicationErrorHandlingService } from '@infrastructure/services/app-error-handling-service';
 import { AuthenticationService as AuthenticationServiceImpl } from '@infrastructure/services/authentication-service';
 import { ChatService } from '@infrastructure/services/chat-service';
@@ -238,7 +239,7 @@ class DependencyContainer implements Container {
       DynamoDBUserRepository as Constructor<UserRepository>,
       {
         singleton: true,
-        dependencies: ['DynamoDBDocumentClient', 'ConnectionsDBConfig'],
+        dependencies: ['DynamoDBDocumentClient', 'DynamoDBUserMapper'],
       }
     );
 
@@ -266,6 +267,16 @@ class DependencyContainer implements Container {
       {
         singleton: true,
         dependencies: ['DynamoDBDocumentClient', 'MessagesDBConfig'],
+      }
+    );
+
+    // Register mappers as singletons
+    this.register<DynamoDBUserMapper>(
+      'DynamoDBUserMapper',
+      DynamoDBUserMapper as Constructor<DynamoDBUserMapper>,
+      {
+        singleton: true,
+        dependencies: [],
       }
     );
 

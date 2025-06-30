@@ -1,6 +1,5 @@
 import { BaseResult, BaseUseCase } from '@application/use-cases/base-use-case';
 import { Logger } from '@awslambdahackathon/types';
-import { DomainError } from '@domain/errors/domain-errors';
 import { PerformanceMonitoringService } from '@domain/services/performance-monitoring-service';
 import { AuthenticationService } from '@infrastructure/services/authentication-service';
 
@@ -9,7 +8,7 @@ export interface AuthenticateUserCommand {
 }
 
 export interface AuthenticateUserResult extends BaseResult {
-  userId?: string;
+  user?: any;
 }
 
 export class AuthenticateUserUseCase extends BaseUseCase<
@@ -28,27 +27,55 @@ export class AuthenticateUserUseCase extends BaseUseCase<
     command: AuthenticateUserCommand
   ): Promise<AuthenticateUserResult> {
     try {
+      this.logger.info('Starting user authentication', {
+        hasToken: !!command.token,
+        tokenLength: command.token ? command.token.length : 0,
+        tokenPrefix: command.token
+          ? command.token.substring(0, 20) + '...'
+          : 'none',
+      });
+
       if (!command.token) {
-        throw new DomainError('Token is required', 'VALIDATION_ERROR');
+        this.logger.warn('Authentication failed: No token provided');
+        return {
+          success: false,
+          error: 'Token is required',
+        };
       }
 
+      this.logger.info('Calling authentication service');
       const authResult = await this.authService.authenticateUser({
         token: command.token,
       });
 
-      if (!authResult.success || !authResult.user) {
-        return {
-          success: false,
-          error: authResult.error || 'Authentication failed',
-          errorCode: 'AUTHENTICATION_FAILED',
-        };
+      this.logger.info('Authentication service response', {
+        success: authResult.success,
+        hasUser: !!authResult.user,
+        error: authResult.error,
+        userId: authResult.user?.getUserId(),
+        username: authResult.user?.getUsername(),
+      });
+
+      if (authResult.success && authResult.user) {
+        this.logger.info('User authentication successful', {
+          userId: authResult.user.getUserId(),
+          username: authResult.user.getUsername(),
+          isActive: authResult.user.isActive(),
+        });
+      } else {
+        this.logger.warn('User authentication failed', {
+          error: authResult.error,
+          success: authResult.success,
+        });
       }
 
-      return {
-        success: true,
-        userId: authResult.user.getUserId(),
-      };
+      return authResult;
     } catch (error) {
+      this.logger.error('Authentication use case failed with exception', {
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+
       return this.handleError(error, {
         hasToken: !!command.token,
       });

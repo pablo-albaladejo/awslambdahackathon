@@ -158,68 +158,124 @@ const handleAuthMessage = async (
   logger.info('Received authentication message', {
     connectionId,
     hasToken: !!token,
+    tokenLength: token ? token.length : 0,
     correlationId,
   });
 
-  const authenticateUserUseCase = container.getAuthenticateUserUseCase();
-  const authResult = await authenticateUserUseCase.execute({
-    token: typeof token === 'string' ? token : '',
-  });
+  try {
+    const authenticateUserUseCase = container.getAuthenticateUserUseCase();
 
-  if (
-    authResult.success &&
-    authResult.user &&
-    hasUserMethods(authResult.user)
-  ) {
-    const safeUserId = authResult.user.getUserId();
-
-    await storeAuthenticatedConnection(connectionId, authResult.user);
-
-    await createWebSocketService(event).sendAuthenticationResponse(
-      ConnectionId.create(connectionId),
-      {
-        success: true,
-        user: {
-          id: safeUserId,
-          username: authResult.user.getUsername(),
-          email: authResult.user.getEmail?.() || '',
-          groups: authResult.user.getGroups?.() || [],
-        },
-      }
-    );
-
-    logger.info('WebSocket authentication successful', {
+    logger.info('Executing authentication use case', {
       connectionId,
-      userId: safeUserId,
       correlationId,
     });
 
-    await container
-      .getMetricsService()
-      .recordBusinessMetrics(METRIC_CONSTANTS.NAMES.AUTHENTICATION_SUCCESS, 1, {
+    const authResult = await authenticateUserUseCase.execute({
+      token: typeof token === 'string' ? token : '',
+    });
+
+    logger.info('Authentication use case completed', {
+      connectionId,
+      success: authResult.success,
+      hasUser: !!authResult.user,
+      error: authResult.error,
+      correlationId,
+    });
+
+    if (
+      authResult.success &&
+      authResult.user &&
+      hasUserMethods(authResult.user)
+    ) {
+      const safeUserId = authResult.user.getUserId();
+
+      logger.info('Authentication successful, storing connection', {
         connectionId,
         userId: safeUserId,
+        username: authResult.user.getUsername(),
+        correlationId,
       });
-  } else {
+
+      await storeAuthenticatedConnection(connectionId, authResult.user);
+
+      await createWebSocketService(event).sendAuthenticationResponse(
+        ConnectionId.create(connectionId),
+        {
+          success: true,
+          user: {
+            id: safeUserId,
+            username: authResult.user.getUsername(),
+            email: authResult.user.getEmail?.() || '',
+            groups: authResult.user.getGroups?.() || [],
+          },
+        }
+      );
+
+      logger.info('WebSocket authentication successful', {
+        connectionId,
+        userId: safeUserId,
+        correlationId,
+      });
+
+      await container
+        .getMetricsService()
+        .recordBusinessMetrics(
+          METRIC_CONSTANTS.NAMES.AUTHENTICATION_SUCCESS,
+          1,
+          {
+            connectionId,
+          }
+        );
+    } else {
+      logger.warn('Authentication failed', {
+        connectionId,
+        success: authResult.success,
+        hasUser: !!authResult.user,
+        error: authResult.error,
+        userMethods: authResult.user ? hasUserMethods(authResult.user) : false,
+        correlationId,
+      });
+
+      await createWebSocketService(event).sendAuthenticationResponse(
+        ConnectionId.create(connectionId),
+        {
+          success: false,
+          error: authResult.error || 'Authentication failed',
+        }
+      );
+
+      await container
+        .getMetricsService()
+        .recordBusinessMetrics(
+          METRIC_CONSTANTS.NAMES.AUTHENTICATION_FAILURE,
+          1,
+          {
+            connectionId,
+            errorType: authResult.error || 'UNKNOWN_ERROR',
+          }
+        );
+    }
+  } catch (error) {
+    logger.error('Authentication process failed with exception', {
+      connectionId,
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      correlationId,
+    });
+
     await createWebSocketService(event).sendAuthenticationResponse(
       ConnectionId.create(connectionId),
       {
         success: false,
-        error: authResult.error,
+        error: 'Internal authentication error',
       }
     );
-
-    logger.error('WebSocket authentication failed', {
-      connectionId,
-      error: authResult.error,
-      correlationId,
-    });
 
     await container
       .getMetricsService()
       .recordBusinessMetrics(METRIC_CONSTANTS.NAMES.AUTHENTICATION_FAILURE, 1, {
         connectionId,
-        errorType: authResult.error || 'UNKNOWN_ERROR',
+        errorType: 'EXCEPTION',
       });
   }
 
@@ -346,6 +402,12 @@ const conversationHandler = async (
 
     // Check if connection is authenticated for non-auth messages
     if (message.type !== 'auth') {
+      logger.info('Checking authentication for non-auth message', {
+        connectionId,
+        messageType: message.type,
+        correlationId,
+      });
+
       const checkAuthenticatedConnectionUseCase =
         container.getCheckAuthenticatedConnectionUseCase();
       const isAuthenticated = await checkAuthenticatedConnectionUseCase.execute(
@@ -354,9 +416,29 @@ const conversationHandler = async (
         }
       );
 
-      if (!isAuthenticated.success) {
+      logger.info('Authentication check completed', {
+        connectionId,
+        isAuthenticatedSuccess: isAuthenticated.success,
+        isAuthenticatedValue: isAuthenticated.isAuthenticated,
+        correlationId,
+      });
+
+      if (!isAuthenticated.success || !isAuthenticated.isAuthenticated) {
+        logger.error('WebSocket authentication failed', {
+          connectionId,
+          checkSuccess: isAuthenticated.success,
+          isAuthenticated: isAuthenticated.isAuthenticated,
+          messageType: message.type,
+          correlationId,
+        });
         throw new Error('Connection not authenticated');
       }
+
+      logger.info('Authentication check passed', {
+        connectionId,
+        messageType: message.type,
+        correlationId,
+      });
     }
 
     let response: APIGatewayProxyResult;

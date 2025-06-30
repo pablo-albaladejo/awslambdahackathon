@@ -47,15 +47,34 @@ export class DynamoDBUserMapper
    * Maps DynamoDB record (plain) to User entity
    */
   mapToDomain(record: UserRecordPlainDto): User {
+    // Handle invalid or missing email by providing a default
+    const email = this.sanitizeEmail(record.email, record.userId);
+
     return User.fromData({
       id: record.userId,
       username: record.username,
-      email: record.email,
+      email: email,
       groups: record.groups as UserGroup[], // Type conversion for groups
       isActive: record.isActive,
       createdAt: new Date(record.createdAt),
       lastActivityAt: new Date(record.lastActivityAt),
     });
+  }
+
+  /**
+   * Sanitizes email field, providing a default if invalid
+   */
+  private sanitizeEmail(
+    email: string | undefined | null,
+    userId: string
+  ): string {
+    // Check if email is valid (not empty and contains @)
+    if (email && email.trim() && email.includes('@')) {
+      return email.trim();
+    }
+
+    // Provide a default email based on userId
+    return `${userId}@placeholder.local`;
   }
 
   /**
@@ -224,9 +243,10 @@ export class DynamoDBUserMapper
       errors.push('Missing username');
     }
 
-    if (!record.email) {
-      errors.push('Missing email');
-    }
+    // Email is optional since we handle invalid/missing emails in mapToDomain
+    // if (!record.email) {
+    //   errors.push('Missing email');
+    // }
 
     if (
       !record.entityType ||
