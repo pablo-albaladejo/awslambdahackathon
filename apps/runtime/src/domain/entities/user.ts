@@ -1,4 +1,8 @@
-import { UserId } from '../value-objects';
+import {
+  UserData,
+  UserValidator,
+} from '@domain/validation/validators/user-validator';
+import { UserId } from '@domain/value-objects';
 
 export class User {
   constructor(
@@ -157,42 +161,16 @@ export class User {
   }
 
   private validate(): void {
-    if (!this.username || this.username.trim().length === 0) {
-      throw new Error('Username cannot be empty');
-    }
+    const userData: UserData = {
+      username: this.username,
+      email: this.email,
+      groups: this.groups,
+      createdAt: this.createdAt,
+      lastActivityAt: this.lastActivityAt,
+      isActive: this.isActive,
+    };
 
-    if (this.username.length < 3) {
-      throw new Error('Username must be at least 3 characters long');
-    }
-
-    if (this.username.length > 50) {
-      throw new Error('Username cannot exceed 50 characters');
-    }
-
-    if (!this.email || this.email.trim().length === 0) {
-      throw new Error('Email cannot be empty');
-    }
-
-    if (!this.isValidEmail(this.email)) {
-      throw new Error('Invalid email format');
-    }
-
-    if (!Array.isArray(this.groups)) {
-      throw new Error('Groups must be an array');
-    }
-
-    if (this.createdAt > new Date()) {
-      throw new Error('Created date cannot be in the future');
-    }
-
-    if (this.lastActivityAt > new Date()) {
-      throw new Error('Last activity date cannot be in the future');
-    }
-  }
-
-  private isValidEmail(email: string): boolean {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
+    UserValidator.validateAndThrow(userData);
   }
 
   static create(

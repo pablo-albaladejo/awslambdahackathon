@@ -1,5 +1,5 @@
-import { User } from '../entities';
-import { ConnectionId, UserId } from '../value-objects';
+import { User } from '@domain/entities';
+import { ConnectionId, UserId } from '@domain/value-objects';
 
 export interface UserRepository {
   findById(id: UserId): Promise<User | null>;

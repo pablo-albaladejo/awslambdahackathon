@@ -1,5 +1,5 @@
-import { Session, SessionStatus } from '../entities';
-import { SessionId, UserId } from '../value-objects';
+import { Session, SessionStatus } from '@domain/entities';
+import { SessionId, UserId } from '@domain/value-objects';
 
 export interface SessionRepository {
   findById(id: SessionId): Promise<Session | null>;

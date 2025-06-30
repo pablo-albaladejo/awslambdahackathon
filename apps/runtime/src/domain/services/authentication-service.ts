@@ -1,5 +1,5 @@
-import { User } from '../entities';
-import { ConnectionId } from '../value-objects';
+import { User } from '@domain/entities';
+import { ConnectionId } from '@domain/value-objects';
 
 export interface AuthenticationResult {
   success: boolean;
@@ -11,7 +11,7 @@ export interface AuthenticateUserCommand {
   token: string;
 }
 
-export interface StoreAuthenticatedConnectionCommand {
+export interface StoreAuthConnectionCommand {
   connectionId: ConnectionId;
   user: User;
 }
@@ -21,7 +21,7 @@ export interface AuthenticationService {
     command: AuthenticateUserCommand
   ): Promise<AuthenticationResult>;
   storeAuthenticatedConnection(
-    command: StoreAuthenticatedConnectionCommand
+    command: StoreAuthConnectionCommand
   ): Promise<void>;
   removeAuthenticatedConnection(connectionId: ConnectionId): Promise<void>;
   isConnectionAuthenticated(connectionId: ConnectionId): Promise<boolean>;

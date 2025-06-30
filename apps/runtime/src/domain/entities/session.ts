@@ -1,4 +1,4 @@
-import { SessionId, UserId } from '../value-objects';
+import { SessionId, UserId } from '@domain/value-objects';
 
 export enum SessionStatus {
   ACTIVE = 'active',

@@ -1,6 +1,6 @@
-import { Connection, ConnectionStatus } from '../entities';
-import { User } from '../entities/user';
-import { ConnectionId, UserId } from '../value-objects';
+import { Connection, ConnectionStatus } from '@domain/entities';
+import { User } from '@domain/entities/user';
+import { ConnectionId, UserId } from '@domain/value-objects';
 
 export interface AuthenticatedConnectionData {
   connectionId: string;

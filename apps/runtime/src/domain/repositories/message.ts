@@ -1,5 +1,5 @@
-import { Message, MessageType } from '../entities';
-import { MessageId, SessionId, UserId } from '../value-objects';
+import { Message, MessageType } from '@domain/entities';
+import { MessageId, SessionId, UserId } from '@domain/value-objects';
 
 export interface MessageRepository {
   findById(id: MessageId): Promise<Message | null>;

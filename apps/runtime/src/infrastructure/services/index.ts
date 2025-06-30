@@ -1,8 +1,14 @@
-export { ErrorHandlingService } from './app-error-handling-service';
-export { AuthenticationService } from './authentication-service';
-export { ChatService } from './chat-service';
-export { CircuitBreakerService } from './circuit-breaker-service';
-export { CloudWatchPerformanceMonitoringService as PerformanceMonitoringService } from './cloudwatch-performance-monitoring-service';
-export { ConnectionService } from './connection-service';
-export { CloudWatchMetricsService as MetricsService } from './metrics-service';
-export { WebSocketMessageService } from './websocket-message-service';
+// Core infrastructure services
+export * from './app-error-handling-service';
+export * from './authentication-service';
+export * from './chat-service';
+export * from './circuit-breaker-service';
+export * from './cloudwatch-performance-monitoring-service';
+export * from './connection-service';
+export * from './metrics-service';
+export * from './websocket-message-service';
+
+// New focused services
+export * from './connection-management-service';
+export * from './token-verification-service';
+export * from './user-authorization-service';

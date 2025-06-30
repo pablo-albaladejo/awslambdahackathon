@@ -1,10 +1,14 @@
-import { MessageId, SessionId, UserId } from '../value-objects';
+import {
+  MessageData,
+  MessageValidator,
+} from '@domain/validation/validators/message-validator';
+import { MessageId, SessionId, UserId } from '@domain/value-objects';
 
 export enum MessageType {
   USER = 'user',
   BOT = 'bot',
   SYSTEM = 'system',
-  ADMIN = 'admin'
+  ADMIN = 'admin',
 }
 
 export enum MessageStatus {
@@ -12,7 +16,7 @@ export enum MessageStatus {
   DELIVERED = 'delivered',
   READ = 'read',
   FAILED = 'failed',
-  PENDING = 'pending'
+  PENDING = 'pending',
 }
 
 export class Message {
@@ -87,7 +91,10 @@ export class Message {
   }
 
   isDelivered(): boolean {
-    return this.status === MessageStatus.DELIVERED || this.status === MessageStatus.READ;
+    return (
+      this.status === MessageStatus.DELIVERED ||
+      this.status === MessageStatus.READ
+    );
   }
 
   isRead(): boolean {
@@ -198,37 +205,18 @@ export class Message {
   }
 
   private validate(): void {
-    if (!this.content || this.content.trim().length === 0) {
-      throw new Error('Message content cannot be empty');
-    }
+    const messageData: MessageData = {
+      content: this.content,
+      type: this.type,
+      userId: this.userId.getValue(),
+      sessionId: this.sessionId.getValue(),
+      status: this.status,
+      createdAt: this.createdAt,
+      metadata: this.metadata,
+      replyToMessageId: this.replyToMessageId?.getValue(),
+    };
 
-    if (this.content.length > 10000) {
-      throw new Error('Message content cannot exceed 10000 characters');
-    }
-
-    if (!Object.values(MessageType).includes(this.type)) {
-      throw new Error('Invalid message type');
-    }
-
-    if (!Object.values(MessageStatus).includes(this.status)) {
-      throw new Error('Invalid message status');
-    }
-
-    if (!this.id) {
-      throw new Error('Message ID is required');
-    }
-
-    if (!this.userId) {
-      throw new Error('User ID is required');
-    }
-
-    if (!this.sessionId) {
-      throw new Error('Session ID is required');
-    }
-
-    if (this.createdAt > new Date()) {
-      throw new Error('Created date cannot be in the future');
-    }
+    MessageValidator.validateAndThrow(messageData);
   }
 
   static createUserMessage(
@@ -307,7 +295,9 @@ export class Message {
       data.status || MessageStatus.SENT,
       data.createdAt || new Date(),
       data.metadata || {},
-      data.replyToMessageId ? MessageId.create(data.replyToMessageId) : undefined
+      data.replyToMessageId
+        ? MessageId.create(data.replyToMessageId)
+        : undefined
     );
   }
-} 
+}

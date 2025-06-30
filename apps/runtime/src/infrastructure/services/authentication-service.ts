@@ -8,7 +8,7 @@ import {
   AuthenticateUserCommand,
   AuthenticationResult,
   AuthenticationService as DomainAuthenticationService,
-  StoreAuthenticatedConnectionCommand,
+  StoreAuthConnectionCommand,
 } from '@domain/services/authentication-service';
 import { ConnectionId, UserId } from '@domain/value-objects';
 import { CognitoJwtVerifier } from 'aws-jwt-verify';
@@ -99,7 +99,7 @@ export class AuthenticationService implements DomainAuthenticationService {
   }
 
   async storeAuthenticatedConnection(
-    command: StoreAuthenticatedConnectionCommand
+    command: StoreAuthConnectionCommand
   ): Promise<void> {
     const startTime = Date.now();
     let success = false;

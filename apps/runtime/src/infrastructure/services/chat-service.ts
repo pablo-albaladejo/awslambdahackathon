@@ -7,9 +7,9 @@ import { SessionRepository } from '@domain/repositories/session';
 import { UserRepository } from '@domain/repositories/user';
 import {
   ChatService as DomainChatService,
+  MessageValidationResult,
   ProcessMessageCommand,
   ProcessMessageResult,
-  ValidationResult,
 } from '@domain/services/chat-service';
 import { SessionId, UserId } from '@domain/value-objects';
 
@@ -104,7 +104,7 @@ export class ChatService implements DomainChatService {
     }
   }
 
-  async validateMessage(message: Message): Promise<ValidationResult> {
+  async validateMessage(message: Message): Promise<MessageValidationResult> {
     try {
       // Check if message content is not empty
       if (!message.getContent() || message.getContent().trim().length === 0) {

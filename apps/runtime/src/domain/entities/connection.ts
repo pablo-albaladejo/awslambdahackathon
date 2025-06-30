@@ -1,4 +1,4 @@
-import { ConnectionId, UserId } from '../value-objects';
+import { ConnectionId, UserId } from '@domain/value-objects';
 
 export enum ConnectionStatus {
   CONNECTED = 'connected',
