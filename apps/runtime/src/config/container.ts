@@ -423,7 +423,11 @@ class DependencyContainer implements Container {
       CheckAuthenticatedConnectionUseCaseImpl as Constructor<CheckAuthenticatedConnectionUseCase>,
       {
         singleton: false,
-        dependencies: ['Logger', 'PerformanceMonitoringService'],
+        dependencies: [
+          'AuthenticationService',
+          'Logger',
+          'PerformanceMonitoringService',
+        ],
       }
     );
 
@@ -432,7 +436,11 @@ class DependencyContainer implements Container {
       RemoveAuthenticatedConnectionUseCaseImpl as Constructor<RemoveAuthenticatedConnectionUseCase>,
       {
         singleton: false,
-        dependencies: ['Logger', 'PerformanceMonitoringService'],
+        dependencies: [
+          'AuthenticationService',
+          'Logger',
+          'PerformanceMonitoringService',
+        ],
       }
     );
   }
