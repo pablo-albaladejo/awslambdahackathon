@@ -148,7 +148,7 @@ export const WebSocketConnectionSchema = z.object({
   sessionId: IdSchema.optional(),
   connectedAt: TimestampSchema,
   lastActivityAt: TimestampSchema,
-  status: z.enum(['active', 'inactive', 'disconnected']),
+  status: z.enum(['connected', 'authenticated', 'disconnected', 'suspended']),
   metadata: z.record(z.unknown()).optional(),
 });
 

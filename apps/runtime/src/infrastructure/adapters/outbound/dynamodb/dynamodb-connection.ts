@@ -113,6 +113,7 @@ export class DynamoDBConnectionRepository implements ConnectionRepository {
             sk: `CONNECTION#${connection.getId().getValue()}`,
             connectionId: connection.getId().getValue(),
             userId: connection.getUserId()?.getValue(),
+            sessionId: null, // TODO: Add sessionId to Connection entity when implementing session association
             status: connection.getStatus(),
             connectedAt: connection.getConnectedAt().toISOString(),
             lastActivityAt: connection.getLastActivityAt().toISOString(),
@@ -391,7 +392,9 @@ export class DynamoDBConnectionRepository implements ConnectionRepository {
     const safeConnectionStatus = (value: unknown): ConnectionStatus => {
       if (
         typeof value === 'string' &&
-        ['active', 'inactive', 'disconnected'].includes(value)
+        ['connected', 'authenticated', 'disconnected', 'suspended'].includes(
+          value
+        )
       ) {
         return value as ConnectionStatus;
       }
@@ -400,7 +403,7 @@ export class DynamoDBConnectionRepository implements ConnectionRepository {
 
     return Connection.fromData({
       id: safeString(item.connectionId || item.id),
-      userId: safeString(item.userId),
+      userId: item.userId ? safeString(item.userId) : undefined,
       status: safeConnectionStatus(item.status),
       connectedAt: new Date(safeString(item.connectedAt)),
       lastActivityAt: item.lastActivityAt
