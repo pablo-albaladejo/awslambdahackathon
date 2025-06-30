@@ -32,7 +32,7 @@ const CreateUserDtoSchema = z.object({
 });
 
 /**
- * Validating mapper for User entity with Zod validation
+ * Validating mapper for User entity and UserDto with comprehensive validation
  */
 export class ValidatingUserMapper
   extends BaseValidator<UserDto>
@@ -74,9 +74,20 @@ export class ValidatingUserMapper
     const validationResult = this.validate(dto);
 
     if (!validationResult.success) {
+      // Create a placeholder user for error cases - this will be ignored due to success: false
+      const errorUser = User.fromData({
+        id: 'error',
+        username: 'error',
+        email: 'error@error.com',
+        groups: [],
+        isActive: false,
+        createdAt: new Date(),
+        lastActivityAt: new Date(),
+      });
+
       return {
         success: false,
-        data: null as any,
+        data: errorUser,
         errors: [validationResult.error || 'Validation failed'],
         warnings: validationResult.warnings,
         metadata: {
@@ -113,9 +124,20 @@ export class ValidatingUserMapper
         },
       };
     } catch (error) {
+      // Create a placeholder user for error cases - this will be ignored due to success: false
+      const errorUser = User.fromData({
+        id: 'error',
+        username: 'error',
+        email: 'error@error.com',
+        groups: [],
+        isActive: false,
+        createdAt: new Date(),
+        lastActivityAt: new Date(),
+      });
+
       return {
         success: false,
-        data: null as any,
+        data: errorUser,
         errors: [
           error instanceof Error ? error.message : 'Unknown mapping error',
         ],
@@ -173,9 +195,20 @@ export class ValidatingUserMapper
     const validationResult = CreateUserDtoSchema.safeParse(dto);
 
     if (!validationResult.success) {
+      // Create a placeholder user for error cases - this will be ignored due to success: false
+      const errorUser = User.fromData({
+        id: 'error',
+        username: 'error',
+        email: 'error@error.com',
+        groups: [],
+        isActive: false,
+        createdAt: new Date(),
+        lastActivityAt: new Date(),
+      });
+
       return {
         success: false,
-        data: null as any,
+        data: errorUser,
         errors: validationResult.error.errors.map(
           e => `${e.path.join('.')}: ${e.message}`
         ),
@@ -206,9 +239,20 @@ export class ValidatingUserMapper
         },
       };
     } catch (error) {
+      // Create a placeholder user for error cases - this will be ignored due to success: false
+      const errorUser = User.fromData({
+        id: 'error',
+        username: 'error',
+        email: 'error@error.com',
+        groups: [],
+        isActive: false,
+        createdAt: new Date(),
+        lastActivityAt: new Date(),
+      });
+
       return {
         success: false,
-        data: null as any,
+        data: errorUser,
         errors: [
           error instanceof Error ? error.message : 'Unknown creation error',
         ],

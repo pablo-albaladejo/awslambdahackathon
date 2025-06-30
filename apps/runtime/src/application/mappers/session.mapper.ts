@@ -1,4 +1,5 @@
 import { Session, SessionStatus } from '../../domain/entities/session';
+import { UserId } from '../../domain/value-objects/user-id';
 import { BidirectionalMapper } from '../../shared/mappers/mapper.interface';
 import {
   CreateSessionDto,
@@ -62,11 +63,9 @@ export class SessionMapper implements BidirectionalMapper<Session, SessionDto> {
     const durationInMinutes = Math.floor(
       (expiresAt.getTime() - Date.now()) / (1000 * 60)
     );
+    const userId = UserId.create(dto.userId);
 
-    return Session.create(
-      { getValue: () => dto.userId } as any, // Simplified for now
-      durationInMinutes
-    );
+    return Session.create(userId, durationInMinutes);
   }
 
   /**

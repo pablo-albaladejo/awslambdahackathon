@@ -4,7 +4,8 @@ import {
   APIGatewayWebSocketEventDto,
   APIGatewayWebSocketMessageDto,
   APIGatewayWebSocketResponseDto,
-} from '../../dto/websocket/api-gateway-event.dto';
+} from '@awslambdahackathon/types';
+
 import { CompleteAPIGatewayEventMapper } from '../interfaces/websocket-mapper.interface';
 
 /**

@@ -122,7 +122,7 @@ export class DynamoDBMessageMapper
   }
 
   /**
-   * Creates DynamoDB key for message (legacy method name)
+   * Creates DynamoDB key for message
    */
   createMessageKey(
     sessionId: string,

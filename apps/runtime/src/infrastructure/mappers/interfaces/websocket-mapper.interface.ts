@@ -1,14 +1,9 @@
-import { Connection } from '../../../domain/entities/connection';
-import { Message } from '../../../domain/entities/message';
-import { User } from '../../../domain/entities/user';
 import {
   APIGatewayWebSocketConnectionDto,
   APIGatewayWebSocketErrorDto,
   APIGatewayWebSocketEventDto,
   APIGatewayWebSocketMessageDto,
   APIGatewayWebSocketResponseDto,
-} from '../../dto/websocket/api-gateway-event.dto';
-import {
   WebSocketAuthEventDto,
   WebSocketConnectionEventDto,
   WebSocketCustomEventDto,
@@ -16,7 +11,11 @@ import {
   WebSocketEventUnionDto,
   WebSocketMessageEventDto,
   WebSocketPingEventDto,
-} from '../../dto/websocket/websocket-event.dto';
+} from '@awslambdahackathon/types';
+
+import { Connection } from '../../../domain/entities/connection';
+import { Message } from '../../../domain/entities/message';
+import { User } from '../../../domain/entities/user';
 
 /**
  * Interface for WebSocket event mappers

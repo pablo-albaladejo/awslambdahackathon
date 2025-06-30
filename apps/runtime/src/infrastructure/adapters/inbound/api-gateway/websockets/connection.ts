@@ -183,7 +183,7 @@ export const createConnectionHandler = (
   };
 };
 
-// Create the handler with dependencies from container (for backward compatibility)
+// Create the handler with dependencies from container
 const connectionHandler = createConnectionHandler({
   errorHandlingService:
     container.getErrorHandlingService() as ErrorHandlingService,

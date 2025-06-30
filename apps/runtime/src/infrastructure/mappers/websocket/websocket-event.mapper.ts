@@ -1,6 +1,3 @@
-import { Connection } from '../../../domain/entities/connection';
-import { Message } from '../../../domain/entities/message';
-import { User } from '../../../domain/entities/user';
 import {
   WebSocketAuthEventDto,
   WebSocketConnectionEventDto,
@@ -9,7 +6,11 @@ import {
   WebSocketEventUnionDto,
   WebSocketMessageEventDto,
   WebSocketPingEventDto,
-} from '../../dto/websocket/websocket-event.dto';
+} from '@awslambdahackathon/types';
+
+import { Connection } from '../../../domain/entities/connection';
+import { Message } from '../../../domain/entities/message';
+import { User } from '../../../domain/entities/user';
 import { CompleteWebSocketEventMapper } from '../interfaces/websocket-mapper.interface';
 
 /**

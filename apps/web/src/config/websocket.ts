@@ -1,18 +1,9 @@
+import {
+  ChatMessageResponse,
+  createChatMessage,
+} from '@awslambdahackathon/types';
 import { logger } from '@awslambdahackathon/utils/frontend';
 import { fetchAuthSession } from 'aws-amplify/auth';
-
-export interface WebSocketMessage {
-  action: string;
-  message?: string;
-  sessionId?: string;
-}
-
-export interface WebSocketResponse {
-  message: string;
-  sessionId: string;
-  timestamp: string;
-  isEcho: boolean;
-}
 
 class WebSocketClient {
   private ws: WebSocket | null = null;
@@ -117,25 +108,23 @@ class WebSocketClient {
     }
   }
 
-  sendMessage(message: string, sessionId?: string): Promise<WebSocketResponse> {
+  sendMessage(
+    message: string,
+    sessionId?: string
+  ): Promise<ChatMessageResponse> {
     return new Promise((resolve, reject) => {
       if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
         reject(new Error('WebSocket is not connected'));
         return;
       }
 
-      const wsMessage: WebSocketMessage = {
-        action: 'sendMessage',
-        message,
-        sessionId,
-      };
-
+      const wsMessage = createChatMessage(message, sessionId);
       this.ws.send(JSON.stringify(wsMessage));
 
       // Set up a one-time message listener for the response
       const messageHandler = (event: MessageEvent) => {
         try {
-          const response: WebSocketResponse = JSON.parse(event.data);
+          const response: ChatMessageResponse = JSON.parse(event.data);
           this.ws?.removeEventListener('message', messageHandler);
           resolve(response);
         } catch (error) {

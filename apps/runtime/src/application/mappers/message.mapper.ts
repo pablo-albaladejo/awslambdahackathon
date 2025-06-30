@@ -1,4 +1,6 @@
 import { Message, MessageType } from '../../domain/entities/message';
+import { SessionId } from '../../domain/value-objects/session-id';
+import { UserId } from '../../domain/value-objects/user-id';
 import { BidirectionalMapper } from '../../shared/mappers/mapper.interface';
 import {
   CreateMessageDto,
@@ -61,38 +63,20 @@ export class MessageMapper implements BidirectionalMapper<Message, MessageDto> {
    */
   fromCreateDto(dto: CreateMessageDto): Message {
     const messageType = dto.type || MessageType.USER;
+    const userId = UserId.create(dto.userId);
+    const sessionId = SessionId.generate(); // Generate a new session ID
 
     switch (messageType) {
       case MessageType.USER:
-        return Message.createUserMessage(
-          dto.content,
-          { getValue: () => dto.userId } as any, // Simplified for now
-          { getValue: () => crypto.randomUUID() } as any
-        );
+        return Message.createUserMessage(dto.content, userId, sessionId);
       case MessageType.BOT:
-        return Message.createBotMessage(
-          dto.content,
-          { getValue: () => dto.userId } as any,
-          { getValue: () => crypto.randomUUID() } as any
-        );
+        return Message.createBotMessage(dto.content, userId, sessionId);
       case MessageType.SYSTEM:
-        return Message.createSystemMessage(
-          dto.content,
-          { getValue: () => dto.userId } as any,
-          { getValue: () => crypto.randomUUID() } as any
-        );
+        return Message.createSystemMessage(dto.content, userId, sessionId);
       case MessageType.ADMIN:
-        return Message.createAdminMessage(
-          dto.content,
-          { getValue: () => dto.userId } as any,
-          { getValue: () => crypto.randomUUID() } as any
-        );
+        return Message.createAdminMessage(dto.content, userId, sessionId);
       default:
-        return Message.createUserMessage(
-          dto.content,
-          { getValue: () => dto.userId } as any,
-          { getValue: () => crypto.randomUUID() } as any
-        );
+        return Message.createUserMessage(dto.content, userId, sessionId);
     }
   }
 

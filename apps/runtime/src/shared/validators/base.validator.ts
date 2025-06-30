@@ -118,7 +118,9 @@ export abstract class BaseValidator<T> {
     try {
       // Create a partial version of the schema
       const partialSchema =
-        (this.schema as any).partial?.() || this.schema.optional();
+        'partial' in this.schema && typeof this.schema.partial === 'function'
+          ? this.schema.partial()
+          : this.schema.optional();
       const validatedData = partialSchema.parse(data);
       return {
         success: true,

@@ -1,7 +1,7 @@
 import { AttributeValue } from '@aws-sdk/client-dynamodb';
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
 
-import { User } from '../../../domain/entities/user';
+import { User, UserGroup } from '../../../domain/entities/user';
 import {
   UserQueryDto,
   UserRecordPlainDto,
@@ -52,7 +52,7 @@ export class DynamoDBUserMapper
       id: record.userId,
       username: record.username,
       email: record.email,
-      groups: record.groups as any[], // Type conversion for groups
+      groups: record.groups as UserGroup[], // Type conversion for groups
       isActive: record.isActive,
       createdAt: new Date(record.createdAt),
       lastActivityAt: new Date(record.lastActivityAt),
@@ -105,7 +105,7 @@ export class DynamoDBUserMapper
   }
 
   /**
-   * Creates DynamoDB key for user (legacy method name)
+   * Creates DynamoDB key for user
    */
   createUserKey(userId: string): { PK: AttributeValue; SK: AttributeValue } {
     const key = this.createKey(userId);
