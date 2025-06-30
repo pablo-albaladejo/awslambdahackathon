@@ -1,7 +1,6 @@
 import { logger } from '@awslambdahackathon/utils/lambda';
+import type { ChatService } from '@domain/services/chat-service';
 import { SessionId, UserId } from '@domain/value-objects';
-
-import type { ChatService } from '@/application/services/chat-service';
 
 interface SendChatMessageInput {
   connectionId: string;

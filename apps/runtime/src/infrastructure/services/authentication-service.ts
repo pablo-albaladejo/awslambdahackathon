@@ -1,17 +1,17 @@
 import { logger } from '@awslambdahackathon/utils/lambda';
+import { AUTH_CONFIG } from '@config/constants';
 import { container } from '@config/container';
 import { User } from '@domain/entities';
 import { ConnectionRepository } from '@domain/repositories/connection';
 import { UserRepository } from '@domain/repositories/user';
-import { ConnectionId, UserId } from '@domain/value-objects';
-import { CognitoJwtVerifier } from 'aws-jwt-verify';
-
 import {
   AuthenticateUserCommand,
   AuthenticationResult,
   AuthenticationService as DomainAuthenticationService,
   StoreAuthenticatedConnectionCommand,
-} from '@/application/services/authentication-service';
+} from '@domain/services/authentication-service';
+import { ConnectionId, UserId } from '@domain/value-objects';
+import { CognitoJwtVerifier } from 'aws-jwt-verify';
 
 export interface AuthenticatedUser {
   userId: string;
@@ -49,7 +49,7 @@ export class AuthenticationService implements DomainAuthenticationService {
 
     this.verifier = CognitoJwtVerifier.create({
       userPoolId,
-      tokenUse: 'access',
+      tokenUse: AUTH_CONFIG.TOKEN_USE,
       clientId,
     });
 
@@ -107,7 +107,7 @@ export class AuthenticationService implements DomainAuthenticationService {
 
     try {
       const now = Date.now();
-      const ttl = Math.floor(now / 1000) + 24 * 60 * 60; // 24 hours TTL
+      const ttl = Math.floor(now / 1000) + AUTH_CONFIG.CONNECTION_TTL_SECONDS;
 
       logger.info('Storing authenticated connection', {
         connectionId: command.connectionId.getValue(),

@@ -6,13 +6,12 @@ import {
 } from '@aws-sdk/client-apigatewaymanagementapi';
 import { logger } from '@awslambdahackathon/utils/lambda';
 import { container } from '@config/container';
-import type { APIGatewayProxyEvent } from 'aws-lambda';
-
 import {
   AuthResponse,
   WebSocketMessage,
   WebSocketMessageService,
-} from '@/application/services/websocket-message-service';
+} from '@domain/services/websocket-message-service';
+import type { APIGatewayProxyEvent } from 'aws-lambda';
 
 export class AwsApiGatewayWebSocketAdapter implements WebSocketMessageService {
   private readonly clients: Map<string, ApiGatewayManagementApiClient>;

@@ -1,4 +1,5 @@
 import { logger } from '@awslambdahackathon/utils/lambda';
+import { CIRCUIT_BREAKER_CONFIG } from '@config/constants';
 
 export enum CircuitState {
   CLOSED = 'CLOSED', // Normal operation
@@ -187,7 +188,7 @@ export class CircuitBreaker {
 
     if (recentRequests > 0) {
       const failureRate = recentFailures / recentRequests;
-      return failureRate > 0.5; // 50% failure rate threshold
+      return failureRate > CIRCUIT_BREAKER_CONFIG.FAILURE_RATE_THRESHOLD;
     }
 
     return false;

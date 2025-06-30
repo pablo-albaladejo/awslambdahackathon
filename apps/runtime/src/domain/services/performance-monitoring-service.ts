@@ -1,6 +1,7 @@
 export interface PerformanceMonitor {
   complete(success: boolean, requestSize?: number, responseSize?: number): void;
 }
+
 export interface PerformanceContext {
   operation: string;
   service: string;

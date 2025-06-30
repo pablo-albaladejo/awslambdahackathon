@@ -4,12 +4,11 @@ import {
   StandardUnit,
 } from '@aws-sdk/client-cloudwatch';
 import { logger } from '@awslambdahackathon/utils/lambda';
-
 import {
   MetricData,
   MetricFilter,
   MetricsService,
-} from '@/application/services/metrics-service';
+} from '@domain/services/metrics-service';
 
 export class CloudWatchMetricsService implements MetricsService {
   private metrics: MetricData[] = [];

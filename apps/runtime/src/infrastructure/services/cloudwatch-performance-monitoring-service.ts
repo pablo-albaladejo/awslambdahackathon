@@ -4,7 +4,6 @@ import {
   StandardUnit,
 } from '@aws-sdk/client-cloudwatch';
 import { logger } from '@awslambdahackathon/utils/lambda';
-
 import {
   PerformanceContext,
   PerformanceData,
@@ -12,7 +11,7 @@ import {
   PerformanceMonitoringService,
   PerformanceStats,
   PerformanceThresholds,
-} from '@/application/services/performance-monitoring-service';
+} from '@domain/services/performance-monitoring-service';
 
 export class CloudWatchPerformanceMonitoringService
   implements PerformanceMonitoringService

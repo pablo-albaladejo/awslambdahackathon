@@ -1,5 +1,5 @@
-import { User } from '../../domain/entities';
-import { ConnectionId } from '../../domain/value-objects';
+import { User } from '../entities';
+import { ConnectionId } from '../value-objects';
 
 export interface AuthenticationResult {
   success: boolean;

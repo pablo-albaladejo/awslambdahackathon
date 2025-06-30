@@ -1,13 +1,12 @@
+import {
+  AuthResponse,
+  WebSocketMessage,
+  WebSocketMessageService,
+} from '@domain/services/websocket-message-service';
 import { WebSocketMessageService as InfrastructureWebSocketMessageService } from '@infrastructure/services/websocket-message-service';
 import type { APIGatewayProxyEvent } from 'aws-lambda';
 
-import {
-  AuthResponse,
-  WebSocketMessageService as DomainWebSocketMessageService,
-  WebSocketMessage,
-} from '@/application/services/websocket-message-service';
-
-export class WebSocketServiceAdapter implements DomainWebSocketMessageService {
+export class WebSocketServiceAdapter implements WebSocketMessageService {
   private readonly service: InfrastructureWebSocketMessageService;
   private readonly event: APIGatewayProxyEvent;
 

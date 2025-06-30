@@ -9,12 +9,12 @@ import {
 } from '@awslambdahackathon/utils/lambda';
 import { ERROR_CONSTANTS, WEBSOCKET_CONSTANTS } from '@config/constants';
 import { container } from '@config/container';
+import { AuthenticationService } from '@domain/services/authentication-service';
+import { ConnectionService } from '@domain/services/connection-service';
+import { MetricsService } from '@domain/services/metrics-service';
+import { PerformanceMonitoringService } from '@domain/services/performance-monitoring-service';
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 
-import { AuthenticationService } from '@/application/services/authentication-service';
-import { ConnectionService } from '@/application/services/connection-service';
-import { MetricsService } from '@/application/services/metrics-service';
-import { PerformanceMonitoringService } from '@/application/services/performance-monitoring-service';
 import {
   ErrorHandlingService,
   ErrorType,

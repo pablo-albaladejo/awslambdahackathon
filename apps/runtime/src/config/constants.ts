@@ -111,3 +111,45 @@ export const CORRELATION_CONSTANTS = {
     REQUEST: 'req',
   },
 } as const;
+
+// Circuit Breaker Configuration
+export const CIRCUIT_BREAKER_CONFIG = {
+  DEFAULT_FAILURE_THRESHOLD: 3,
+  DEFAULT_RECOVERY_TIMEOUT: 20000, // 20 seconds
+  DEFAULT_EXPECTED_RESPONSE_TIME: 500, // 500ms
+  DEFAULT_MONITORING_WINDOW: 60000, // 1 minute
+  DEFAULT_MINIMUM_REQUEST_COUNT: 5,
+  FAILURE_RATE_THRESHOLD: 0.5, // 50%
+} as const;
+
+// Authentication Configuration
+export const AUTH_CONFIG = {
+  CONNECTION_TTL_SECONDS: 24 * 60 * 60, // 24 hours
+  TOKEN_USE: 'access' as const,
+} as const;
+
+// Message Configuration
+export const MESSAGE_CONFIG = {
+  MAX_CONTENT_LENGTH: 1000,
+  ID_PREFIX: {
+    MESSAGE: 'msg_',
+    ECHO: 'echo_',
+  },
+} as const;
+
+// Performance Configuration
+export const PERFORMANCE_CONFIG = {
+  DEFAULT_TIMEOUT: 30000, // 30 seconds
+  WARNING_THRESHOLD: 1000, // 1 second
+  CRITICAL_THRESHOLD: 5000, // 5 seconds
+} as const;
+
+// Database Configuration
+export const DATABASE_CONFIG = {
+  TABLES: {
+    CONNECTIONS: 'connections',
+    MESSAGES: 'messages',
+    SESSIONS: 'sessions',
+    USERS: 'users',
+  },
+} as const;

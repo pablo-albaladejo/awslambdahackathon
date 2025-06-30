@@ -1,8 +1,7 @@
+import { WebSocketMessageService } from '@domain/services/websocket-message-service';
 import type { APIGatewayProxyEvent } from 'aws-lambda';
 
 import { AwsApiGatewayWebSocketAdapter } from './aws-api-gateway-adapter';
-
-import { WebSocketMessageService } from '@/application/services/websocket-message-service';
 
 export interface WebSocketAdapterFactory {
   createWebSocketAdapter(event: APIGatewayProxyEvent): WebSocketMessageService;

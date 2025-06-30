@@ -1,7 +1,6 @@
 import { logger } from '@awslambdahackathon/utils/lambda';
+import type { ConnectionService } from '@domain/services/connection-service';
 import { ConnectionId } from '@domain/value-objects';
-
-import type { ConnectionService } from '@/application/services/connection-service';
 
 interface StoreConnectionResult {
   success: boolean;

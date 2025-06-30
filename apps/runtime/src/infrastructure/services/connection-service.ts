@@ -1,14 +1,14 @@
 import { logger } from '@awslambdahackathon/utils/lambda';
+import { CIRCUIT_BREAKER_CONFIG } from '@config/constants';
 import { container } from '@config/container';
 import { Connection, ConnectionStatus } from '@domain/entities';
 import { ConnectionRepository } from '@domain/repositories/connection';
-import { ConnectionId, UserId } from '@domain/value-objects';
-
 import {
   ConnectionService as DomainConnectionService,
   RemoveConnectionCommand,
   StoreConnectionCommand,
-} from '@/application/services/connection-service';
+} from '@domain/services/connection-service';
+import { ConnectionId, UserId } from '@domain/value-objects';
 
 export class ConnectionService implements DomainConnectionService {
   private readonly connectionRepository: ConnectionRepository;
@@ -34,11 +34,13 @@ export class ConnectionService implements DomainConnectionService {
         throw new Error('Database temporarily unavailable');
       },
       {
-        failureThreshold: 3,
-        recoveryTimeout: 20000, // 20 seconds
-        expectedResponseTime: 500, // 500ms
-        monitoringWindow: 60000, // 1 minute
-        minimumRequestCount: 5,
+        failureThreshold: CIRCUIT_BREAKER_CONFIG.DEFAULT_FAILURE_THRESHOLD,
+        recoveryTimeout: CIRCUIT_BREAKER_CONFIG.DEFAULT_RECOVERY_TIMEOUT,
+        expectedResponseTime:
+          CIRCUIT_BREAKER_CONFIG.DEFAULT_EXPECTED_RESPONSE_TIME,
+        monitoringWindow: CIRCUIT_BREAKER_CONFIG.DEFAULT_MONITORING_WINDOW,
+        minimumRequestCount:
+          CIRCUIT_BREAKER_CONFIG.DEFAULT_MINIMUM_REQUEST_COUNT,
       }
     );
   }
@@ -56,11 +58,13 @@ export class ConnectionService implements DomainConnectionService {
         throw new Error('Database temporarily unavailable');
       },
       {
-        failureThreshold: 3,
-        recoveryTimeout: 20000, // 20 seconds
-        expectedResponseTime: 500, // 500ms
-        monitoringWindow: 60000, // 1 minute
-        minimumRequestCount: 5,
+        failureThreshold: CIRCUIT_BREAKER_CONFIG.DEFAULT_FAILURE_THRESHOLD,
+        recoveryTimeout: CIRCUIT_BREAKER_CONFIG.DEFAULT_RECOVERY_TIMEOUT,
+        expectedResponseTime:
+          CIRCUIT_BREAKER_CONFIG.DEFAULT_EXPECTED_RESPONSE_TIME,
+        monitoringWindow: CIRCUIT_BREAKER_CONFIG.DEFAULT_MONITORING_WINDOW,
+        minimumRequestCount:
+          CIRCUIT_BREAKER_CONFIG.DEFAULT_MINIMUM_REQUEST_COUNT,
       }
     );
   }

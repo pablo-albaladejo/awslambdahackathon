@@ -1,8 +1,3 @@
-import { PerformanceMonitoringService } from '@application/services/performance-monitoring-service';
-import {
-  AuthResponse,
-  WebSocketMessage,
-} from '@application/services/websocket-message-service';
 import { logger } from '@awslambdahackathon/utils/lambda';
 import { ConnectionRepository } from '@domain/repositories/connection';
 import { MessageRepository } from '@domain/repositories/message';
@@ -11,7 +6,13 @@ import { UserRepository } from '@domain/repositories/user';
 import { AuthenticationService } from '@domain/services/authentication-service';
 import { ChatService } from '@domain/services/chat-service';
 import { ConnectionService } from '@domain/services/connection-service';
-import { WebSocketMessageService } from '@domain/services/websocket-message-service';
+import { MetricsService } from '@domain/services/metrics-service';
+import { PerformanceMonitoringService } from '@domain/services/performance-monitoring-service';
+import {
+  AuthResponse,
+  WebSocketMessage,
+  WebSocketMessageService,
+} from '@domain/services/websocket-message-service';
 import { DynamoDBConnectionRepository } from '@infrastructure/adapters/outbound/dynamodb/dynamodb-connection';
 import { DynamoDBMessageRepository } from '@infrastructure/adapters/outbound/dynamodb/dynamodb-message';
 import { DynamoDBSessionRepository } from '@infrastructure/adapters/outbound/dynamodb/dynamodb-session';
@@ -29,8 +30,6 @@ import { ConnectionService as ConnectionServiceImpl } from '@infrastructure/serv
 import { CloudWatchMetricsService } from '@infrastructure/services/metrics-service';
 import { WebSocketMessageService as WebSocketMessageServiceImpl } from '@infrastructure/services/websocket-message-service';
 import type { APIGatewayProxyEvent } from 'aws-lambda';
-
-import { MetricsService } from '@/application/services/metrics-service';
 
 export interface User {
   userId: string;

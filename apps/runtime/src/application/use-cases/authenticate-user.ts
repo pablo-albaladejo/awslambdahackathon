@@ -1,9 +1,8 @@
 import { logger } from '@awslambdahackathon/utils/lambda';
-
-import type {
+import {
   AuthenticationResult,
   AuthenticationService,
-} from '@/application/services/authentication-service';
+} from '@domain/services/authentication-service';
 
 interface AuthenticateUserResult {
   success: boolean;

@@ -1,5 +1,5 @@
-import { Connection } from '../../domain/entities';
-import { ConnectionId, UserId } from '../../domain/value-objects';
+import { Connection } from '../entities';
+import { ConnectionId, UserId } from '../value-objects';
 
 export interface StoreConnectionCommand {
   connectionId: ConnectionId;

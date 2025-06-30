@@ -12,7 +12,7 @@
       "@domain/*": ["src/domain/*"],
       "@domain/entities/*": ["src/domain/entities/*"],
       "@domain/repositories/*": ["src/domain/repositories/*"],
-      "@domain/services/*": ["src/application/services/*"],
+      "@domain/services/*": ["src/domain/services/*"],
       "@domain/value-objects/*": ["src/domain/value-objects/*"],
 
       // Application Layer

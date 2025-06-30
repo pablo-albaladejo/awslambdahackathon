@@ -1,17 +1,17 @@
 import { logger } from '@awslambdahackathon/utils/lambda';
+import { MESSAGE_CONFIG } from '@config/constants';
 import { container } from '@config/container';
 import { Message, MessageType } from '@domain/entities';
 import { MessageRepository } from '@domain/repositories/message';
 import { SessionRepository } from '@domain/repositories/session';
 import { UserRepository } from '@domain/repositories/user';
-import { SessionId, UserId } from '@domain/value-objects';
-
 import {
   ChatService as DomainChatService,
   ProcessMessageCommand,
   ProcessMessageResult,
   ValidationResult,
-} from '@/application/services/chat-service';
+} from '@domain/services/chat-service';
+import { SessionId, UserId } from '@domain/value-objects';
 
 export class ChatService implements DomainChatService {
   private readonly userRepository: UserRepository;
@@ -69,7 +69,7 @@ export class ChatService implements DomainChatService {
 
       const now = new Date();
       const message = Message.fromData({
-        id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        id: `${MESSAGE_CONFIG.ID_PREFIX.MESSAGE}${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         content: command.content,
         type: messageType,
         userId: command.userId.getValue(),
@@ -115,10 +115,10 @@ export class ChatService implements DomainChatService {
       }
 
       // Check message length (max 1000 characters)
-      if (message.getContent().length > 1000) {
+      if (message.getContent().length > MESSAGE_CONFIG.MAX_CONTENT_LENGTH) {
         return {
           isValid: false,
-          error: 'Message content is too long (max 1000 characters)',
+          error: `Message content is too long (max ${MESSAGE_CONFIG.MAX_CONTENT_LENGTH} characters)`,
         };
       }
 
@@ -159,7 +159,7 @@ export class ChatService implements DomainChatService {
   async createEchoMessage(originalMessage: Message): Promise<Message> {
     const now = new Date();
     return Message.fromData({
-      id: `echo_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      id: `${MESSAGE_CONFIG.ID_PREFIX.ECHO}${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       content: `Echo: ${originalMessage.getContent()}`,
       type: MessageType.BOT,
       userId: originalMessage.getUserId().getValue(),
@@ -225,7 +225,7 @@ export class ChatService implements DomainChatService {
 
       // Create user message
       const userMessage = Message.fromData({
-        id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        id: `${MESSAGE_CONFIG.ID_PREFIX.MESSAGE}${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         content: message,
         type: MessageType.USER,
         userId: 'system', // This should come from authentication
@@ -238,7 +238,7 @@ export class ChatService implements DomainChatService {
 
       // Create and store echo message
       const echoMessage = Message.fromData({
-        id: `echo_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        id: `${MESSAGE_CONFIG.ID_PREFIX.ECHO}${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         content: `Echo: ${message}`,
         type: MessageType.BOT,
         userId: 'system',
