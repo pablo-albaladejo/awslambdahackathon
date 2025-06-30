@@ -1,14 +1,14 @@
-import { WebSocketMessageService } from '@domain/services/websocket-message-service';
+import { CommunicationService } from '@domain/services/communication-service';
 import type { APIGatewayProxyEvent } from 'aws-lambda';
 
 import { AwsApiGatewayWebSocketAdapter } from './aws-api-gateway-adapter';
 
 export interface WebSocketAdapterFactory {
-  createWebSocketAdapter(event: APIGatewayProxyEvent): WebSocketMessageService;
+  createWebSocketAdapter(event: APIGatewayProxyEvent): CommunicationService;
 }
 
 export class AwsWebSocketAdapterFactory implements WebSocketAdapterFactory {
-  createWebSocketAdapter(event: APIGatewayProxyEvent): WebSocketMessageService {
+  createWebSocketAdapter(event: APIGatewayProxyEvent): CommunicationService {
     return new AwsApiGatewayWebSocketAdapter(event);
   }
 }

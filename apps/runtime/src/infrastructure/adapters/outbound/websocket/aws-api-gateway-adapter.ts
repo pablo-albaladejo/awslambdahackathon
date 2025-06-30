@@ -7,13 +7,26 @@ import {
 import { logger } from '@awslambdahackathon/utils/lambda';
 import { container } from '@config/container';
 import {
-  AuthResponse,
-  WebSocketMessage,
-  WebSocketMessageService,
-} from '@domain/services/websocket-message-service';
+  AuthenticationResponse,
+  ChatMessageResponse,
+  CommunicationMessage,
+  CommunicationService,
+  SystemNotification,
+} from '@domain/services/communication-service';
+import { ConnectionId } from '@domain/value-objects';
 import type { APIGatewayProxyEvent } from 'aws-lambda';
 
-export class AwsApiGatewayWebSocketAdapter implements WebSocketMessageService {
+// Legacy WebSocket message interface for backward compatibility
+interface WebSocketMessage {
+  type: string;
+  message?: string;
+  data?: unknown;
+  error?: string;
+  timestamp?: string;
+  [key: string]: unknown;
+}
+
+export class AwsApiGatewayWebSocketAdapter implements CommunicationService {
   private readonly clients: Map<string, ApiGatewayManagementApiClient>;
   private readonly event: APIGatewayProxyEvent;
 
@@ -36,8 +49,8 @@ export class AwsApiGatewayWebSocketAdapter implements WebSocketMessageService {
   }
 
   async sendMessage(
-    connectionId: string,
-    message: WebSocketMessage
+    connectionId: ConnectionId,
+    message: CommunicationMessage
   ): Promise<boolean> {
     const startTime = Date.now();
     let success = false;
@@ -45,12 +58,18 @@ export class AwsApiGatewayWebSocketAdapter implements WebSocketMessageService {
 
     try {
       logger.debug('Sending WebSocket message', {
-        connectionId,
+        connectionId: connectionId.getValue(),
         messageType: message.type,
         correlationId: this.generateCorrelationId(),
       });
 
       const client = this.getClient();
+      const webSocketMessage: WebSocketMessage = {
+        type: message.type,
+        message: message.content,
+        timestamp: message.timestamp?.toISOString() || new Date().toISOString(),
+        ...message.metadata,
+      };
 
       // Use circuit breaker for API Gateway Management API calls
       await container.getCircuitBreakerService().execute(
@@ -59,8 +78,8 @@ export class AwsApiGatewayWebSocketAdapter implements WebSocketMessageService {
         async () => {
           return await client.send(
             new PostToConnectionCommand({
-              ConnectionId: connectionId,
-              Data: Buffer.from(JSON.stringify(message)),
+              ConnectionId: connectionId.getValue(),
+              Data: Buffer.from(JSON.stringify(webSocketMessage)),
             })
           );
         },
@@ -69,7 +88,7 @@ export class AwsApiGatewayWebSocketAdapter implements WebSocketMessageService {
           logger.warn(
             'API Gateway Management API unavailable, message not sent',
             {
-              connectionId,
+              connectionId: connectionId.getValue(),
               messageType: message.type,
               correlationId: this.generateCorrelationId(),
             }
@@ -87,7 +106,7 @@ export class AwsApiGatewayWebSocketAdapter implements WebSocketMessageService {
 
       success = true;
       logger.info('Message sent successfully', {
-        connectionId,
+        connectionId: connectionId.getValue(),
         messageType: message.type,
         correlationId: this.generateCorrelationId(),
       });
@@ -96,7 +115,7 @@ export class AwsApiGatewayWebSocketAdapter implements WebSocketMessageService {
     } catch (error) {
       errorType = 'WEBSOCKET_SEND_ERROR';
       logger.error('Failed to send message', {
-        connectionId,
+        connectionId: connectionId.getValue(),
         messageType: message.type,
         error: error instanceof Error ? error.message : String(error),
         correlationId: this.generateCorrelationId(),
@@ -111,100 +130,134 @@ export class AwsApiGatewayWebSocketAdapter implements WebSocketMessageService {
     }
   }
 
-  async sendAuthResponse(
-    connectionId: string,
-    success: boolean,
-    data: AuthResponse
+  async sendAuthenticationResponse(
+    connectionId: ConnectionId,
+    response: AuthenticationResponse
   ): Promise<boolean> {
-    const message: WebSocketMessage = {
-      type: 'auth_response',
-      data: {
-        success,
-        ...data,
+    const message: CommunicationMessage = {
+      type: 'auth',
+      content: response.success
+        ? 'Authentication successful'
+        : 'Authentication failed',
+      metadata: {
+        success: response.success,
+        user: response.user,
+        error: response.error,
+        sessionId: response.sessionId,
       },
     };
 
     logger.info('Sending authentication response', {
-      connectionId,
-      success,
-      userId: data.userId,
+      connectionId: connectionId.getValue(),
+      success: response.success,
+      userId: response.user?.id,
       correlationId: this.generateCorrelationId(),
     });
 
     return this.sendMessage(connectionId, message);
   }
 
-  async sendChatResponse(
-    connectionId: string,
-    message: string,
-    sessionId: string,
-    isEcho: boolean
+  async sendChatMessageResponse(
+    connectionId: ConnectionId,
+    response: ChatMessageResponse
   ): Promise<boolean> {
-    const response: WebSocketMessage = {
-      type: 'message_response',
-      data: {
-        message,
-        sessionId,
-        messageId: crypto.randomUUID(),
-        timestamp: new Date().toISOString(),
-        isEcho,
+    const message: CommunicationMessage = {
+      type: 'chat',
+      content: response.content,
+      metadata: {
+        messageId: response.messageId,
+        userId: response.userId,
+        username: response.username,
+        timestamp: response.timestamp.toISOString(),
+        sessionId: response.sessionId,
+        isEcho: response.isEcho,
       },
     };
 
     logger.info('Sending chat response', {
-      connectionId,
-      sessionId,
-      messageLength: message.length,
-      isEcho,
-      correlationId: this.generateCorrelationId(),
-    });
-
-    return this.sendMessage(connectionId, response);
-  }
-
-  async sendErrorMessage(
-    connectionId: string,
-    errorMessage: string
-  ): Promise<boolean> {
-    const message: WebSocketMessage = {
-      type: 'error',
-      error: errorMessage,
-      timestamp: new Date().toISOString(),
-    };
-
-    logger.info('Sending error message', {
-      connectionId,
-      errorMessage,
+      connectionId: connectionId.getValue(),
+      sessionId: response.sessionId,
+      messageLength: response.content.length,
+      isEcho: response.isEcho,
       correlationId: this.generateCorrelationId(),
     });
 
     return this.sendMessage(connectionId, message);
   }
 
-  async sendSystemMessage(
-    connectionId: string,
-    text: string
+  async sendSystemNotification(
+    connectionId: ConnectionId,
+    notification: SystemNotification
   ): Promise<boolean> {
-    const message: WebSocketMessage = {
+    const message: CommunicationMessage = {
       type: 'system',
-      message: text,
-      timestamp: new Date().toISOString(),
+      content: notification.message,
+      metadata: {
+        notificationType: notification.type,
+        timestamp: notification.timestamp.toISOString(),
+      },
     };
 
-    logger.info('Sending system message', {
-      connectionId,
-      text,
+    logger.info('Sending system notification', {
+      connectionId: connectionId.getValue(),
+      notificationType: notification.type,
       correlationId: this.generateCorrelationId(),
     });
 
     return this.sendMessage(connectionId, message);
+  }
+
+  async disconnect(connectionId: ConnectionId, reason?: string): Promise<void> {
+    try {
+      if (reason) {
+        await this.sendMessage(connectionId, {
+          type: 'system',
+          content: `Connection closing: ${reason}`,
+        });
+      }
+
+      // In API Gateway WebSocket, we can't directly close connections
+      // The connection will be closed by the client or timeout
+      logger.info('Connection disconnect requested', {
+        connectionId: connectionId.getValue(),
+        reason,
+        correlationId: this.generateCorrelationId(),
+      });
+    } catch (error) {
+      logger.error('Failed to send disconnect message', {
+        connectionId: connectionId.getValue(),
+        error: error instanceof Error ? error.message : String(error),
+        correlationId: this.generateCorrelationId(),
+      });
+    }
+  }
+
+  async isConnectionActive(connectionId: ConnectionId): Promise<boolean> {
+    try {
+      // Try to send a ping message to check if connection is active
+      const client = this.getClient();
+      await client.send(
+        new PostToConnectionCommand({
+          ConnectionId: connectionId.getValue(),
+          Data: Buffer.from(JSON.stringify({ type: 'ping' })),
+        })
+      );
+      return true;
+    } catch (error) {
+      logger.debug('Connection not active', {
+        connectionId: connectionId.getValue(),
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return false;
+    }
   }
 
   cleanup(): void {
     this.clients.clear();
+    logger.debug('WebSocket adapter cleanup completed');
   }
 
   private generateCorrelationId(): string {
-    return `ws-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    return crypto.randomUUID();
   }
 }

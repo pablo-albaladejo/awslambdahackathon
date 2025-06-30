@@ -1,6 +1,11 @@
 import { logger } from '@awslambdahackathon/utils/lambda';
 import { container, ErrorContext } from '@config/container';
-import type { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
+import { ConnectionId } from '@domain/value-objects';
+import {
+  AwsLambdaResponseAdapter,
+  LambdaEvent,
+  LambdaResponse,
+} from '@infrastructure/adapters/outbound/lambda';
 
 export enum ErrorType {
   VALIDATION_ERROR = 'VALIDATION_ERROR',
@@ -56,17 +61,14 @@ export interface ErrorHandler {
 }
 
 export interface ErrorResponseCreator {
-  createErrorResponse(
-    error: AppError,
-    event?: APIGatewayProxyEvent
-  ): APIGatewayProxyResult;
+  createErrorResponse(error: AppError, _event?: LambdaEvent): LambdaResponse;
 }
 
 export interface WebSocketErrorHandler {
   handleWebSocketError(
     error: AppError,
     connectionId: string,
-    event: APIGatewayProxyEvent
+    event: LambdaEvent
   ): Promise<void>;
 }
 
@@ -77,6 +79,12 @@ export interface ErrorHandlingService
     WebSocketErrorHandler {}
 
 export class ApplicationErrorHandlingService implements ErrorHandlingService {
+  private readonly responseAdapter: AwsLambdaResponseAdapter;
+
+  constructor() {
+    this.responseAdapter = new AwsLambdaResponseAdapter();
+  }
+
   createError(
     type: ErrorType,
     message: string,
@@ -124,7 +132,10 @@ export class ApplicationErrorHandlingService implements ErrorHandlingService {
     return appError;
   }
 
-  createErrorResponse(error: AppError): APIGatewayProxyResult {
+  createErrorResponse(error: AppError, _event?: LambdaEvent): LambdaResponse {
+    // Using void to indicate intentionally unused parameter
+    void _event;
+
     const statusCode = this.getHttpStatusCode(error.type);
     const body = JSON.stringify({
       error: {
@@ -160,7 +171,7 @@ export class ApplicationErrorHandlingService implements ErrorHandlingService {
   async handleWebSocketError(
     error: AppError,
     connectionId: string,
-    event: APIGatewayProxyEvent
+    event: LambdaEvent
   ): Promise<void> {
     const startTime = Date.now();
     const correlationId = this.generateCorrelationId();
@@ -197,7 +208,6 @@ export class ApplicationErrorHandlingService implements ErrorHandlingService {
       const duration = Date.now() - startTime;
       logger.info('WebSocket error handling completed', {
         connectionId,
-        errorType: error.type,
         duration,
         correlationId,
       });
@@ -206,17 +216,45 @@ export class ApplicationErrorHandlingService implements ErrorHandlingService {
 
   private async sendErrorMessageToClient(
     connectionId: string,
-    event: APIGatewayProxyEvent,
+    event: LambdaEvent,
     error: AppError
   ): Promise<void> {
     try {
-      const webSocketService = container.createWebSocketMessageService(
-        event as never
+      // Create a mock WebSocketEvent for the communication service
+      const webSocketEvent = {
+        requestContext: event.requestContext,
+        body: event.body,
+        headers: event.headers,
+        // Add required properties for APIGatewayProxyEvent compatibility
+        httpMethod: 'POST',
+        isBase64Encoded: false,
+        multiValueHeaders: {},
+        multiValueQueryStringParameters: null,
+        path: '',
+        pathParameters: null,
+        queryStringParameters: null,
+        resource: '',
+        stageVariables: null,
+      };
+
+      const communicationService = container.createCommunicationService(
+        webSocketEvent as never
       );
 
       const errorMessage = this.getUserFriendlyErrorMessage(error);
 
-      await webSocketService.sendErrorMessage(connectionId, errorMessage);
+      await communicationService.sendMessage(
+        ConnectionId.create(connectionId),
+        {
+          type: 'error',
+          content: errorMessage,
+          metadata: {
+            errorType: error.type,
+            errorCode: error.code,
+            timestamp: error.timestamp.toISOString(),
+          },
+        }
+      );
 
       logger.info('Error message sent to WebSocket client', {
         connectionId,

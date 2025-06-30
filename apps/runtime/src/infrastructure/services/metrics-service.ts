@@ -1,24 +1,24 @@
-import {
-  CloudWatchClient,
-  PutMetricDataCommand,
-  StandardUnit,
-} from '@aws-sdk/client-cloudwatch';
 import { logger } from '@awslambdahackathon/utils/lambda';
 import {
   MetricData,
   MetricFilter,
   MetricsService,
 } from '@domain/services/metrics-service';
+import {
+  CloudWatchMetric,
+  CloudWatchMetricsAdapter,
+} from '@infrastructure/adapters/outbound/cloudwatch';
 
 export class CloudWatchMetricsService implements MetricsService {
   private metrics: MetricData[] = [];
-  private readonly cloudWatchClient: CloudWatchClient;
+  private readonly cloudWatchAdapter: CloudWatchMetricsAdapter;
   private readonly namespace: string;
 
-  constructor(namespace = 'AWSLambdaHackathon/Metrics') {
-    this.cloudWatchClient = new CloudWatchClient({
-      region: process.env.AWS_REGION || 'us-east-1',
-    });
+  constructor(
+    cloudWatchAdapter: CloudWatchMetricsAdapter,
+    namespace = 'AWSLambdaHackathon/Metrics'
+  ) {
+    this.cloudWatchAdapter = cloudWatchAdapter;
     this.namespace = namespace;
   }
 
@@ -186,128 +186,80 @@ export class CloudWatchMetricsService implements MetricsService {
     }
 
     try {
-      const metricData = this.metrics.map(metric => ({
-        MetricName: metric.name,
-        Value: metric.value,
-        Unit: this.validateStandardUnit(metric.unit || 'None'),
-        Dimensions: this.convertDimensions(metric.dimensions),
-        Timestamp: metric.timestamp,
-      }));
+      const cloudWatchMetrics: CloudWatchMetric[] = this.metrics.map(
+        metric => ({
+          name: metric.name,
+          value: metric.value,
+          unit: metric.unit,
+          dimensions: metric.dimensions,
+          timestamp: metric.timestamp,
+        })
+      );
 
-      // CloudWatch allows max 20 metrics per request, so we need to batch them
-      const batchSize = 20;
-      for (let i = 0; i < metricData.length; i += batchSize) {
-        const batch = metricData.slice(i, i + batchSize);
+      await this.cloudWatchAdapter.publishMetrics(
+        cloudWatchMetrics,
+        this.namespace
+      );
 
-        const command = new PutMetricDataCommand({
-          Namespace: this.namespace,
-          MetricData: batch,
-        });
-
-        await this.cloudWatchClient.send(command);
-      }
-
-      logger.info('Metrics sent to CloudWatch', {
+      logger.info('Successfully published metrics', {
         count: this.metrics.length,
-        batches: Math.ceil(metricData.length / batchSize),
         namespace: this.namespace,
       });
 
-      this.metrics = [];
+      // Clear metrics after successful publication
+      this.clearMetrics();
     } catch (error) {
-      logger.error('Failed to send metrics to CloudWatch', {
-        error: error instanceof Error ? error.message : 'Unknown error',
+      logger.error('Failed to publish metrics', {
+        error: error instanceof Error ? error.message : String(error),
         metricsCount: this.metrics.length,
-        namespace: this.namespace,
       });
       throw error;
     }
   }
 
   getMetrics(filter?: MetricFilter): MetricData[] {
-    let filteredMetrics = [...this.metrics];
-
-    if (filter?.name) {
-      filteredMetrics = filteredMetrics.filter(
-        metric => metric.name === filter.name
-      );
+    if (!filter) {
+      return [...this.metrics];
     }
 
-    if (filter?.startTime) {
-      filteredMetrics = filteredMetrics.filter(
-        metric => metric.timestamp && metric.timestamp >= filter.startTime!
-      );
-    }
+    return this.metrics.filter(metric => {
+      // Filter by metric name
+      if (filter.name && !metric.name.includes(filter.name)) {
+        return false;
+      }
 
-    if (filter?.endTime) {
-      filteredMetrics = filteredMetrics.filter(
-        metric => metric.timestamp && metric.timestamp <= filter.endTime!
-      );
-    }
+      // Filter by time range
+      if (
+        filter.startTime &&
+        metric.timestamp &&
+        metric.timestamp < filter.startTime
+      ) {
+        return false;
+      }
 
-    if (filter?.dimensions) {
-      filteredMetrics = filteredMetrics.filter(metric => {
-        if (!metric.dimensions) return false;
-        return Object.entries(filter.dimensions!).every(
-          ([key, value]) => metric.dimensions![key] === value
-        );
-      });
-    }
+      if (
+        filter.endTime &&
+        metric.timestamp &&
+        metric.timestamp > filter.endTime
+      ) {
+        return false;
+      }
 
-    return filteredMetrics;
+      // Filter by dimensions
+      if (filter.dimensions) {
+        for (const [key, value] of Object.entries(filter.dimensions)) {
+          if (!metric.dimensions || metric.dimensions[key] !== value) {
+            return false;
+          }
+        }
+      }
+
+      return true;
+    });
   }
 
   clearMetrics(): void {
     this.metrics = [];
     logger.debug('Metrics cleared');
-  }
-
-  private validateStandardUnit(unit: string): StandardUnit {
-    const validUnits: StandardUnit[] = [
-      'Seconds',
-      'Microseconds',
-      'Milliseconds',
-      'Bytes',
-      'Kilobytes',
-      'Megabytes',
-      'Gigabytes',
-      'Terabytes',
-      'Bits',
-      'Kilobits',
-      'Megabits',
-      'Gigabits',
-      'Terabits',
-      'Percent',
-      'Count',
-      'Bytes/Second',
-      'Kilobytes/Second',
-      'Megabytes/Second',
-      'Gigabytes/Second',
-      'Terabytes/Second',
-      'Bits/Second',
-      'Kilobits/Second',
-      'Megabits/Second',
-      'Gigabits/Second',
-      'Terabits/Second',
-      'Count/Second',
-      'None',
-    ];
-
-    return validUnits.includes(unit as StandardUnit)
-      ? (unit as StandardUnit)
-      : 'None';
-  }
-
-  private convertDimensions(
-    dimensions?: Record<string, string>
-  ): Array<{ Name: string; Value: string }> {
-    if (!dimensions) {
-      return [];
-    }
-
-    return Object.entries(dimensions).map(([key, value]) => ({
-      Name: key,
-      Value: String(value),
-    }));
   }
 }

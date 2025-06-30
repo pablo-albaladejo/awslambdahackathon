@@ -19,6 +19,8 @@ function hasUserMethods(obj: unknown): obj is {
   getUserId(): string;
   getUsername(): string;
   getId(): { getValue(): string };
+  getEmail?: () => string;
+  getGroups?: () => string[];
 } {
   return (
     typeof obj === 'object' &&
@@ -28,7 +30,8 @@ function hasUserMethods(obj: unknown): obj is {
     'getId' in obj &&
     typeof (obj as Record<string, unknown>).getUserId === 'function' &&
     typeof (obj as Record<string, unknown>).getUsername === 'function' &&
-    typeof (obj as Record<string, unknown>).getId === 'function'
+    typeof (obj as Record<string, unknown>).getId === 'function' &&
+    ('getEmail' in obj || 'getGroups' in obj)
   );
 }
 
@@ -89,7 +92,7 @@ const parseWebSocketMessage = (
 
 // Safe wrapper functions
 function createWebSocketService(event: APIGatewayProxyEvent) {
-  return container.createWebSocketMessageService(event as never);
+  return container.createCommunicationService(event as never);
 }
 
 function storeAuthenticatedConnection(connectionId: string, user: unknown) {
@@ -133,10 +136,18 @@ const handleAuthMessage = async (
 
     await storeAuthenticatedConnection(connectionId, authResult.user);
 
-    await createWebSocketService(event).sendAuthResponse(connectionId, true, {
-      userId: safeUserId,
-      username: authResult.user.getUsername(),
-    });
+    await createWebSocketService(event).sendAuthenticationResponse(
+      ConnectionId.create(connectionId),
+      {
+        success: true,
+        user: {
+          id: safeUserId,
+          username: authResult.user.getUsername(),
+          email: authResult.user.getEmail?.() || '',
+          groups: authResult.user.getGroups?.() || [],
+        },
+      }
+    );
 
     logger.info('WebSocket authentication successful', {
       connectionId,
@@ -151,9 +162,13 @@ const handleAuthMessage = async (
         userId: safeUserId,
       });
   } else {
-    await createWebSocketService(event).sendAuthResponse(connectionId, false, {
-      error: authResult.error,
-    });
+    await createWebSocketService(event).sendAuthenticationResponse(
+      ConnectionId.create(connectionId),
+      {
+        success: false,
+        error: authResult.error,
+      }
+    );
 
     logger.error('WebSocket authentication failed', {
       connectionId,
@@ -222,11 +237,17 @@ const handleChatMessage = async (
     throw new Error(result.error || 'Failed to send chat message');
   }
 
-  await createWebSocketService(event).sendChatResponse(
-    connectionId,
-    result.message?.getContent() ?? '',
-    result.message?.getSessionId().getValue() ?? '',
-    true // isEcho
+  await createWebSocketService(event).sendChatMessageResponse(
+    ConnectionId.create(connectionId),
+    {
+      messageId: crypto.randomUUID(),
+      content: result.message?.getContent() ?? '',
+      userId: user.getId().getValue(),
+      username: user.getUsername(),
+      timestamp: new Date(),
+      sessionId: result.message?.getSessionId().getValue() ?? '',
+      isEcho: true,
+    }
   );
 
   return createSuccessResponse({

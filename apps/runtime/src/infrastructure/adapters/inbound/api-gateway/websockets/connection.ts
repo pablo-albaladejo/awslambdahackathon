@@ -8,6 +8,7 @@ import { ERROR_CONSTANTS, WEBSOCKET_CONSTANTS } from '@config/constants';
 import { container } from '@config/container';
 import { MetricsService } from '@domain/services/metrics-service';
 import { PerformanceMonitoringService } from '@domain/services/performance-monitoring-service';
+import { AwsLambdaResponseAdapter } from '@infrastructure/adapters/outbound/lambda';
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 
 import {
@@ -26,6 +27,8 @@ interface ConnectionHandlerDependencies {
 export const createConnectionHandler = (
   dependencies: ConnectionHandlerDependencies
 ) => {
+  const lambdaAdapter = new AwsLambdaResponseAdapter();
+
   return async (
     event: APIGatewayProxyEvent
   ): Promise<APIGatewayProxyResult> => {
@@ -34,6 +37,9 @@ export const createConnectionHandler = (
       performanceMonitoringService,
       metricsService,
     } = dependencies;
+
+    // Convert event for error handling service
+    const lambdaEvent = lambdaAdapter.parseEvent(event);
 
     // Start performance monitoring
     const performanceMonitor = performanceMonitoringService.startMonitoring(
@@ -75,7 +81,11 @@ export const createConnectionHandler = (
 
         performanceMonitor.complete(false);
 
-        return errorHandlingService.createErrorResponse(error, event);
+        const errorResponse = errorHandlingService.createErrorResponse(
+          error,
+          lambdaEvent
+        );
+        return lambdaAdapter.createResponse(errorResponse);
       }
 
       if (
@@ -102,7 +112,11 @@ export const createConnectionHandler = (
 
           performanceMonitor.complete(false);
 
-          return errorHandlingService.createErrorResponse(appError, event);
+          const errorResponse = errorHandlingService.createErrorResponse(
+            appError,
+            lambdaEvent
+          );
+          return lambdaAdapter.createResponse(errorResponse);
         }
       }
 
@@ -165,7 +179,11 @@ export const createConnectionHandler = (
 
       performanceMonitor.complete(false);
 
-      return errorHandlingService.createErrorResponse(error, event);
+      const errorResponse = errorHandlingService.createErrorResponse(
+        error,
+        lambdaEvent
+      );
+      return lambdaAdapter.createResponse(errorResponse);
     } catch (error) {
       const appError = errorHandlingService.handleError(error as Error, {
         requestId: event.requestContext.requestId,
@@ -176,7 +194,11 @@ export const createConnectionHandler = (
 
       performanceMonitor.complete(false);
 
-      return errorHandlingService.createErrorResponse(appError, event);
+      const errorResponse = errorHandlingService.createErrorResponse(
+        appError,
+        lambdaEvent
+      );
+      return lambdaAdapter.createResponse(errorResponse);
     } finally {
       subsegment?.close();
     }

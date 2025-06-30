@@ -1,8 +1,3 @@
-import {
-  CloudWatchClient,
-  PutMetricDataCommand,
-  StandardUnit,
-} from '@aws-sdk/client-cloudwatch';
 import { logger } from '@awslambdahackathon/utils/lambda';
 import { CloudWatchConfig } from '@config/container';
 import {
@@ -14,6 +9,10 @@ import {
   PerformanceThresholds,
 } from '@domain/services/performance-monitoring-service';
 import { Metric, PerformanceMetric } from '@domain/value-objects/metric';
+import {
+  AwsCloudWatchPerformanceAdapter,
+  CloudWatchPerformanceAdapter,
+} from '@infrastructure/adapters/outbound/cloudwatch';
 
 export class CloudWatchPerformanceMonitoringService
   implements PerformanceMonitoringService
@@ -22,7 +21,7 @@ export class CloudWatchPerformanceMonitoringService
   private metricsBuffer: Metric[] = [];
   private lastFlush: Date | null = null;
   private readonly maxBufferSize = 100;
-  private readonly client: CloudWatchClient;
+  private readonly adapter: CloudWatchPerformanceAdapter;
   private readonly namespace: string;
   private currentSpan: {
     name: string;
@@ -31,7 +30,7 @@ export class CloudWatchPerformanceMonitoringService
   } | null = null;
 
   constructor(config: CloudWatchConfig) {
-    this.client = new CloudWatchClient({});
+    this.adapter = new AwsCloudWatchPerformanceAdapter(config.namespace);
     this.namespace = config.namespace;
   }
 
@@ -402,42 +401,24 @@ export class CloudWatchPerformanceMonitoringService
     }
 
     try {
-      // CloudWatch allows max 20 metrics per request, so we need to batch them
+      // Batch metrics to avoid CloudWatch limits
       const batchSize = 20;
       for (let i = 0; i < this.metricsBuffer.length; i += batchSize) {
         const batch = this.metricsBuffer.slice(i, i + batchSize);
 
-        const command = new PutMetricDataCommand({
-          Namespace: namespace || this.namespace,
-          MetricData: batch.map(metric => ({
-            MetricName: metric.name,
-            Value: metric.value || metric.duration || 0,
-            Unit: metric.unit
-              ? (this.validateStandardUnit(metric.unit) as StandardUnit)
-              : 'None',
-            Dimensions: Object.entries(metric.tags).map(([key, value]) => ({
-              Name: key,
-              Value: String(value),
-            })),
-            Timestamp: metric.timestamp
-              ? new Date(metric.timestamp)
-              : new Date(),
-          })),
-        });
-
-        await this.client.send(command);
+        await this.adapter.publishPerformanceMetrics(batch, namespace);
       }
 
-      logger.info('Performance metrics sent to CloudWatch', {
+      logger.info('Performance metrics flushed successfully', {
         count: this.metricsBuffer.length,
-        batches: Math.ceil(this.metricsBuffer.length / batchSize),
+        namespace: namespace || this.namespace,
       });
 
       this.metricsBuffer = [];
       this.lastFlush = new Date();
     } catch (error) {
-      logger.error('Failed to send metrics to CloudWatch', {
-        error: error instanceof Error ? error.message : 'Unknown error',
+      logger.error('Failed to flush performance metrics', {
+        error: error instanceof Error ? error.message : String(error),
         metricsCount: this.metricsBuffer.length,
       });
       throw error;
@@ -446,48 +427,23 @@ export class CloudWatchPerformanceMonitoringService
 
   async shutdown(): Promise<void> {
     logger.info('Shutting down performance monitoring service');
-
-    for (const [operationId] of this.activeOperations.entries()) {
-      this.completeOperation(operationId, false);
-    }
-
     await this.flushMetrics();
+    this.activeOperations.clear();
+    this.metricsBuffer = [];
   }
 
-  private validateStandardUnit(unit: string): StandardUnit {
-    const validUnits: StandardUnit[] = [
-      'Seconds',
-      'Microseconds',
-      'Milliseconds',
-      'Bytes',
-      'Kilobytes',
-      'Megabytes',
-      'Gigabytes',
-      'Terabytes',
-      'Bits',
-      'Kilobits',
-      'Megabits',
-      'Gigabits',
-      'Terabits',
-      'Percent',
-      'Count',
-      'Bytes/Second',
-      'Kilobytes/Second',
-      'Megabytes/Second',
-      'Gigabytes/Second',
-      'Terabytes/Second',
-      'Bits/Second',
-      'Kilobits/Second',
-      'Megabits/Second',
-      'Gigabits/Second',
-      'Terabits/Second',
-      'Count/Second',
-      'None',
-    ];
+  private getStandardUnit(unit: string): string {
+    const unitMap: Record<string, string> = {
+      ms: 'Milliseconds',
+      milliseconds: 'Milliseconds',
+      seconds: 'Seconds',
+      bytes: 'Bytes',
+      count: 'Count',
+      percent: 'Percent',
+      none: 'None',
+    };
 
-    return validUnits.includes(unit as StandardUnit)
-      ? (unit as StandardUnit)
-      : 'None';
+    return unitMap[unit.toLowerCase()] || 'None';
   }
 
   private completeOperation(

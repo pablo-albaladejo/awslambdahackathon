@@ -8,21 +8,21 @@ import { SessionRepository } from '@domain/repositories/session';
 import { UserRepository } from '@domain/repositories/user';
 import { AuthenticationService as AuthenticationServiceInterface } from '@domain/services/authentication-service';
 import { ChatService as ChatServiceInterface } from '@domain/services/chat-service';
+import { CommunicationService } from '@domain/services/communication-service';
 import { PerformanceMonitoringService } from '@domain/services/performance-monitoring-service';
-import { WebSocketMessageService } from '@domain/services/websocket-message-service';
+import { AwsCloudWatchMetricsAdapter } from '@infrastructure/adapters/outbound/cloudwatch/cloudwatch-metrics-adapter';
 import { DynamoDBConnectionRepository } from '@infrastructure/adapters/outbound/dynamodb/dynamodb-connection';
 import { DynamoDBMessageRepository } from '@infrastructure/adapters/outbound/dynamodb/dynamodb-message';
 import { DynamoDBSessionRepository } from '@infrastructure/adapters/outbound/dynamodb/dynamodb-session';
 import { DynamoDBUserRepository } from '@infrastructure/adapters/outbound/dynamodb/dynamodb-user';
-import { WebSocketServiceAdapter } from '@infrastructure/adapters/outbound/websocket/websocket-service-adapter';
+import { AwsApiGatewayWebSocketAdapter } from '@infrastructure/adapters/outbound/websocket/aws-api-gateway-adapter';
 import { ApplicationErrorHandlingService } from '@infrastructure/services/app-error-handling-service';
-import { AuthenticationService } from '@infrastructure/services/authentication-service';
 import { ChatService } from '@infrastructure/services/chat-service';
 import { CircuitBreakerService as CircuitBreakerServiceImpl } from '@infrastructure/services/circuit-breaker-service';
-import { CloudWatchPerformanceMonitoringService } from '@infrastructure/services/cloudwatch-performance-monitoring-service';
-import { ConnectionManagementService } from '@infrastructure/services/connection-management-service';
-import { ConnectionService } from '@infrastructure/services/connection-service';
 import { CloudWatchMetricsService } from '@infrastructure/services/metrics-service';
+import type { APIGatewayProxyEvent } from 'aws-lambda';
+
+import { CloudWatchPerformanceMonitoringService } from '@/infrastructure/services/performance-monitoring-service';
 
 export type Constructor<T = unknown> = new (...args: unknown[]) => T;
 export type Token<T = unknown> = Constructor<T> | string;
@@ -67,6 +67,10 @@ export interface CircuitBreakerConfig {
 
 export interface ErrorContext {
   [key: string]: unknown;
+}
+
+export interface WebSocketEvent extends APIGatewayProxyEvent {
+  // WebSocket-specific extensions can be added here if needed
 }
 
 class DependencyContainer implements Container {
@@ -177,7 +181,7 @@ class DependencyContainer implements Container {
   }
 
   getPerformanceMonitoringService(): PerformanceMonitoringService {
-    return this.resolve('PerformanceMonitoringService');
+    return new CloudWatchPerformanceMonitoringService(this.cloudWatchConfig);
   }
 
   getErrorHandlingService(): ErrorHandlingService {
@@ -185,24 +189,23 @@ class DependencyContainer implements Container {
   }
 
   getMetricsService(): MetricsService {
-    return this.resolve('MetricsService');
+    // Create CloudWatch adapter
+    const cloudWatchAdapter = new AwsCloudWatchMetricsAdapter();
+
+    // Create service with adapter
+    return new CloudWatchMetricsService(
+      cloudWatchAdapter,
+      this.cloudWatchConfig.namespace
+    );
   }
 
   getCircuitBreakerService(): CircuitBreakerService {
     return this.resolve('CircuitBreakerService');
   }
 
-  createWebSocketMessageService(
-    event: WebSocketEvent
-  ): WebSocketMessageService {
-    const service = this.resolve<WebSocketMessageService>(
-      'WebSocketMessageService'
-    );
-    // Configure service with event context
-    if (event) {
-      // TODO: Add event-specific configuration
-    }
-    return service;
+  createCommunicationService(event: WebSocketEvent): CommunicationService {
+    // Create a new instance for each WebSocket event
+    return new AwsApiGatewayWebSocketAdapter(event);
   }
 
   private resolveDependencies(dependencies: Token<unknown>[]): unknown[] {
@@ -288,51 +291,7 @@ class DependencyContainer implements Container {
       }
     );
 
-    // Register services with type assertion
-    this.register<WebSocketMessageService>(
-      'WebSocketMessageService',
-      WebSocketServiceAdapter as Constructor<WebSocketMessageService>,
-      {
-        singleton: true,
-        dependencies: ['WebSocketConfig'],
-      }
-    );
-
-    this.register<PerformanceMonitoringService>(
-      'PerformanceMonitoringService',
-      CloudWatchPerformanceMonitoringService as Constructor<PerformanceMonitoringService>,
-      {
-        singleton: true,
-        dependencies: ['CloudWatchConfig'],
-      }
-    );
-
-    this.register<AuthenticationServiceInterface>(
-      'AuthenticationService',
-      AuthenticationService as Constructor<AuthenticationServiceInterface>,
-      {
-        singleton: true,
-        dependencies: ['UserRepository', 'ConnectionRepository'],
-      }
-    );
-
-    this.register<ConnectionService>(
-      'ConnectionService',
-      ConnectionService as Constructor<ConnectionService>,
-      {
-        singleton: true,
-        dependencies: ['ConnectionRepository'],
-      }
-    );
-
-    this.register<ConnectionManagementService>(
-      'ConnectionManagementService',
-      ConnectionManagementService as Constructor<ConnectionManagementService>,
-      {
-        singleton: true,
-        dependencies: ['ConnectionRepository', 'UserRepository'],
-      }
-    );
+    // Note: CommunicationService is created per-request in createCommunicationService method
 
     this.register<ErrorHandlingService>(
       'ErrorHandlingService',
@@ -343,14 +302,8 @@ class DependencyContainer implements Container {
       }
     );
 
-    this.register<MetricsService>(
-      'MetricsService',
-      CloudWatchMetricsService as Constructor<MetricsService>,
-      {
-        singleton: true,
-        dependencies: [],
-      }
-    );
+    // Note: MetricsService is created per-request in getMetricsService method
+    // Note: PerformanceMonitoringService is created per-request in getPerformanceMonitoringService method
 
     this.register<CircuitBreakerService>(
       'CircuitBreakerService',
@@ -536,10 +489,4 @@ export interface CircuitBreakerService {
   resetAll(): void;
   getCircuitBreakerStats(serviceName: string, operation: string): unknown;
   setDefaultConfig(config: CircuitBreakerConfig): void;
-}
-
-export interface WebSocketEvent {
-  requestContext: unknown;
-  body?: string | null;
-  [key: string]: unknown;
 }
