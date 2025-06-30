@@ -336,10 +336,22 @@ const handleChatMessage = async (
     );
   }
 
+  // Generate sessionId if not provided
+  const finalSessionId =
+    sessionId && sessionId.trim() ? sessionId : SessionId.generate().getValue();
+
+  logger.info('Using sessionId for chat message', {
+    connectionId,
+    providedSessionId: sessionId,
+    finalSessionId,
+    wasGenerated: !sessionId || !sessionId.trim(),
+    correlationId,
+  });
+
   const sendChatMessageUseCase = container.getSendChatMessageUseCase();
   const result = await sendChatMessageUseCase.execute({
     content: chatMessage ?? '',
-    sessionId: sessionId ?? '',
+    sessionId: finalSessionId,
     userId: user.getId().getValue(),
     connectionId,
   });
