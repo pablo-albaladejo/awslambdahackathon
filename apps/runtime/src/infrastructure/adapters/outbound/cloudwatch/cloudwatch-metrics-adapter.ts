@@ -3,7 +3,8 @@ import {
   PutMetricDataCommand,
   StandardUnit,
 } from '@aws-sdk/client-cloudwatch';
-import { logger } from '@awslambdahackathon/utils/lambda';
+import { Metric } from '@domain/value-objects/metric';
+import { BaseAdapter } from '@infrastructure/adapters/base/base-adapter';
 
 export interface CloudWatchMetric {
   name: string;
@@ -17,64 +18,115 @@ export interface CloudWatchMetricsAdapter {
   publishMetrics(metrics: CloudWatchMetric[], namespace: string): Promise<void>;
 }
 
-export class AwsCloudWatchMetricsAdapter implements CloudWatchMetricsAdapter {
-  private readonly client: CloudWatchClient;
+export class AwsCloudWatchMetricsAdapter extends BaseAdapter {
+  private static readonly SERVICE_NAME = 'CloudWatch';
+  private static readonly NAMESPACE = 'AWSLambdaHackathon';
 
-  constructor() {
-    this.client = new CloudWatchClient({
-      region: process.env.AWS_REGION || 'us-east-1',
-    });
+  constructor(private readonly client: CloudWatchClient) {
+    super();
   }
 
-  async publishMetrics(
-    metrics: CloudWatchMetric[],
-    namespace: string
-  ): Promise<void> {
-    if (metrics.length === 0) {
-      logger.debug('No metrics to publish');
-      return;
+  private getStandardUnit(unit?: string): StandardUnit {
+    switch (unit?.toLowerCase()) {
+      case 'seconds':
+        return StandardUnit.Seconds;
+      case 'milliseconds':
+        return StandardUnit.Milliseconds;
+      case 'microseconds':
+        return StandardUnit.Microseconds;
+      case 'count':
+        return StandardUnit.Count;
+      case 'percent':
+        return StandardUnit.Percent;
+      case 'bytes':
+        return StandardUnit.Bytes;
+      case 'kilobytes':
+        return StandardUnit.Kilobytes;
+      case 'megabytes':
+        return StandardUnit.Megabytes;
+      case 'gigabytes':
+        return StandardUnit.Gigabytes;
+      default:
+        return StandardUnit.Count;
     }
+  }
 
-    try {
-      const metricData = metrics.map(metric => ({
-        MetricName: metric.name,
-        Value: metric.value,
-        Unit: this.validateStandardUnit(metric.unit || 'None'),
-        Dimensions: this.convertDimensions(metric.dimensions),
-        Timestamp: metric.timestamp || new Date(),
-      }));
-
-      // CloudWatch allows max 20 metrics per request, so we need to batch them
-      const batchSize = 20;
-      for (let i = 0; i < metricData.length; i += batchSize) {
-        const batch = metricData.slice(i, i + batchSize);
-
+  async putMetric(metric: Metric): Promise<void> {
+    return this.executeWithErrorHandling(
+      'putMetric',
+      AwsCloudWatchMetricsAdapter.SERVICE_NAME,
+      async () => {
         const command = new PutMetricDataCommand({
-          Namespace: namespace,
-          MetricData: batch,
+          Namespace: AwsCloudWatchMetricsAdapter.NAMESPACE,
+          MetricData: [
+            {
+              MetricName: metric.name,
+              Value: metric.value || 0,
+              Unit: this.getStandardUnit(metric.unit),
+              Timestamp: metric.timestamp
+                ? new Date(metric.timestamp)
+                : new Date(),
+              Dimensions: metric.tags
+                ? Object.entries(metric.tags).map(([name, value]) => ({
+                    Name: name,
+                    Value: value,
+                  }))
+                : undefined,
+            },
+          ],
         });
 
         await this.client.send(command);
+      },
+      { metricName: metric.name, value: metric.value }
+    );
+  }
 
-        logger.debug('Published metrics batch to CloudWatch', {
-          namespace,
-          batchSize: batch.length,
-          totalMetrics: metrics.length,
+  async putMetrics(metrics: Metric[]): Promise<void> {
+    return this.executeWithErrorHandling(
+      'putMetrics',
+      AwsCloudWatchMetricsAdapter.SERVICE_NAME,
+      async () => {
+        const command = new PutMetricDataCommand({
+          Namespace: AwsCloudWatchMetricsAdapter.NAMESPACE,
+          MetricData: metrics.map(metric => ({
+            MetricName: metric.name,
+            Value: metric.value || 0,
+            Unit: this.getStandardUnit(metric.unit),
+            Timestamp: metric.timestamp
+              ? new Date(metric.timestamp)
+              : new Date(),
+            Dimensions: metric.tags
+              ? Object.entries(metric.tags).map(([name, value]) => ({
+                  Name: name,
+                  Value: value,
+                }))
+              : undefined,
+          })),
         });
-      }
 
-      logger.info('Successfully published all metrics to CloudWatch', {
-        namespace,
-        totalMetrics: metrics.length,
-      });
-    } catch (error) {
-      logger.error('Failed to publish metrics to CloudWatch', {
-        error: error instanceof Error ? error.message : String(error),
-        namespace,
-        metricsCount: metrics.length,
-      });
-      throw error;
-    }
+        await this.client.send(command);
+      },
+      { metricsCount: metrics.length }
+    );
+  }
+
+  // Backward compatibility method
+  async publishMetrics(
+    metrics: CloudWatchMetric[],
+    _namespace: string
+  ): Promise<void> {
+    void _namespace; // Namespace is fixed in this implementation
+    const convertedMetrics: Metric[] = metrics.map(metric => ({
+      name: metric.name,
+      type: 'business',
+      tags: metric.dimensions || {},
+      value: metric.value,
+      unit: metric.unit,
+      timestamp: metric.timestamp?.getTime(),
+    }));
+
+    return this.putMetrics(convertedMetrics);
   }
 
   private validateStandardUnit(unit: string): StandardUnit {

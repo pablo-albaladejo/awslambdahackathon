@@ -1,5 +1,5 @@
 import { BaseResult, BaseUseCase } from '@application/use-cases/base-use-case';
-import { Logger } from '@config/container';
+import { Logger } from '@awslambdahackathon/types';
 import { PerformanceMonitoringService } from '@domain/services/performance-monitoring-service';
 import { ConnectionId } from '@domain/value-objects';
 import { ConnectionService } from '@infrastructure/services/connection-service';

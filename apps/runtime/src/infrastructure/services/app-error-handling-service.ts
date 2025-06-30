@@ -1,5 +1,7 @@
+import { ErrorDtoMapper } from '@application/mappers/error-dto.mapper';
 import { logger } from '@awslambdahackathon/utils/lambda';
-import { container, ErrorContext } from '@config/container';
+import { container } from '@config/container';
+import { ErrorContext } from '@domain/services/error-handling-service';
 import { ConnectionId } from '@domain/value-objects';
 import {
   AwsLambdaResponseAdapter,
@@ -125,7 +127,10 @@ export class ApplicationErrorHandlingService implements ErrorHandlingService {
     );
 
     logger.error('Handling unexpected error', {
-      error: appError.toJSON(),
+      error: ErrorDtoMapper.unknownErrorToDto(
+        appError,
+        this.isDevEnvironment()
+      ),
       context,
     });
 
@@ -178,7 +183,7 @@ export class ApplicationErrorHandlingService implements ErrorHandlingService {
 
     logger.error('Handling WebSocket error', {
       connectionId,
-      error: error.toJSON(),
+      error: ErrorDtoMapper.unknownErrorToDto(error, this.isDevEnvironment()),
       correlationId,
     });
 
@@ -196,7 +201,10 @@ export class ApplicationErrorHandlingService implements ErrorHandlingService {
       this.logErrorDetails(error, connectionId, correlationId);
     } catch (handlingError) {
       logger.error('Failed to handle WebSocket error', {
-        originalError: error.toJSON(),
+        originalError: ErrorDtoMapper.unknownErrorToDto(
+          error,
+          this.isDevEnvironment()
+        ),
         handlingError:
           handlingError instanceof Error
             ? handlingError.message
@@ -264,7 +272,10 @@ export class ApplicationErrorHandlingService implements ErrorHandlingService {
     } catch (sendError) {
       logger.error('Failed to send error message to WebSocket client', {
         connectionId,
-        originalError: error.toJSON(),
+        originalError: ErrorDtoMapper.unknownErrorToDto(
+          error,
+          this.isDevEnvironment()
+        ),
         sendError:
           sendError instanceof Error ? sendError.message : String(sendError),
       });
@@ -304,7 +315,10 @@ export class ApplicationErrorHandlingService implements ErrorHandlingService {
     } catch (metricsError) {
       logger.error('Failed to record error metrics', {
         connectionId,
-        originalError: error.toJSON(),
+        originalError: ErrorDtoMapper.unknownErrorToDto(
+          error,
+          this.isDevEnvironment()
+        ),
         metricsError:
           metricsError instanceof Error
             ? metricsError.message
@@ -341,7 +355,10 @@ export class ApplicationErrorHandlingService implements ErrorHandlingService {
     } catch (cleanupError) {
       logger.error('Failed to clean up connection resources', {
         connectionId,
-        originalError: error.toJSON(),
+        originalError: ErrorDtoMapper.unknownErrorToDto(
+          error,
+          this.isDevEnvironment()
+        ),
         cleanupError:
           cleanupError instanceof Error
             ? cleanupError.message
@@ -465,5 +482,11 @@ export class ApplicationErrorHandlingService implements ErrorHandlingService {
       default:
         return 500;
     }
+  }
+
+  private isDevEnvironment(): boolean {
+    return (
+      process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'dev'
+    );
   }
 }

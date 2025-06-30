@@ -227,17 +227,7 @@ export class User {
     UserValidator.validateAndThrow(userData);
   }
 
-  public toJSON(): UserJSON {
-    return {
-      id: this.id.getValue(),
-      username: this.username,
-      email: this.email,
-      groups: this.groups,
-      createdAt: this.createdAt,
-      lastActivityAt: this.lastActivityAt,
-      isActive: this.active,
-    };
-  }
+  // toJSON method removed - use UserEntityMapper.toDto() instead
 
   static create(
     id: string,

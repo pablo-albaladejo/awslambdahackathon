@@ -1,4 +1,12 @@
-import { ApiGatewayManagementApiClient } from '@aws-sdk/client-apigatewaymanagementapi';
+import {
+  AuthenticateUserUseCase,
+  CheckAuthenticatedConnectionUseCase,
+  HandlePingMessageUseCase,
+  RemoveAuthenticatedConnectionUseCase,
+  RemoveConnectionUseCase,
+  SendChatMessageUseCase,
+  StoreConnectionUseCase,
+} from '@application/interfaces/use-case-interfaces';
 import { CloudWatchClient } from '@aws-sdk/client-cloudwatch';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
@@ -6,9 +14,12 @@ import { ConnectionRepository } from '@domain/repositories/connection';
 import { MessageRepository } from '@domain/repositories/message';
 import { SessionRepository } from '@domain/repositories/session';
 import { UserRepository } from '@domain/repositories/user';
-import { AuthenticationService as AuthenticationServiceInterface } from '@domain/services/authentication-service';
+import { AuthenticationService } from '@domain/services/authentication-service';
 import { ChatService as ChatServiceInterface } from '@domain/services/chat-service';
+import { CircuitBreakerService } from '@domain/services/circuit-breaker-service';
 import { CommunicationService } from '@domain/services/communication-service';
+import { ErrorHandlingService } from '@domain/services/error-handling-service';
+import { MetricsService } from '@domain/services/metrics-service';
 import { PerformanceMonitoringService } from '@domain/services/performance-monitoring-service';
 import { AwsCloudWatchMetricsAdapter } from '@infrastructure/adapters/outbound/cloudwatch/cloudwatch-metrics-adapter';
 import { DynamoDBConnectionRepository } from '@infrastructure/adapters/outbound/dynamodb/dynamodb-connection';
@@ -16,13 +27,17 @@ import { DynamoDBMessageRepository } from '@infrastructure/adapters/outbound/dyn
 import { DynamoDBSessionRepository } from '@infrastructure/adapters/outbound/dynamodb/dynamodb-session';
 import { DynamoDBUserRepository } from '@infrastructure/adapters/outbound/dynamodb/dynamodb-user';
 import { AwsApiGatewayWebSocketAdapter } from '@infrastructure/adapters/outbound/websocket/aws-api-gateway-adapter';
+import { DynamoDBConfig } from '@infrastructure/config/database-config';
+import { CloudWatchConfig } from '@infrastructure/config/monitoring-config';
+import {
+  WebSocketConfig,
+  WebSocketEvent,
+} from '@infrastructure/config/websocket-config';
 import { ApplicationErrorHandlingService } from '@infrastructure/services/app-error-handling-service';
 import { ChatService } from '@infrastructure/services/chat-service';
 import { CircuitBreakerService as CircuitBreakerServiceImpl } from '@infrastructure/services/circuit-breaker-service';
 import { CloudWatchMetricsService } from '@infrastructure/services/metrics-service';
-import type { APIGatewayProxyEvent } from 'aws-lambda';
-
-import { CloudWatchPerformanceMonitoringService } from '@/infrastructure/services/performance-monitoring-service';
+import { CloudWatchPerformanceMonitoringService } from '@infrastructure/services/performance-monitoring-service';
 
 export type Constructor<T = unknown> = new (...args: unknown[]) => T;
 export type Token<T = unknown> = Constructor<T> | string;
@@ -42,69 +57,32 @@ export interface RegistrationOptions {
   dependencies?: Token<unknown>[];
 }
 
-export interface DynamoDBConfig {
-  tableName: string;
-  region: string;
-  endpoint?: string;
-}
-
-export interface WebSocketConfig {
-  endpoint: string;
-}
-
-export interface CloudWatchConfig {
-  namespace: string;
-}
-
-export interface CircuitBreakerConfig {
-  failureThreshold: number;
-  recoveryTimeout: number;
-  monitoringPeriod: number;
-  expectedResponseTime: number;
-  monitoringWindow: number;
-  minimumRequestCount: number;
-}
-
-export interface ErrorContext {
-  [key: string]: unknown;
-}
-
-export interface WebSocketEvent extends APIGatewayProxyEvent {
-  // WebSocket-specific extensions can be added here if needed
-}
-
 class DependencyContainer implements Container {
   private readonly registry = new Map<
     Token,
     { implementation: Constructor; options?: RegistrationOptions }
   >();
   private readonly instances = new Map<Token, unknown>();
-  private readonly dynamoDBClient: DynamoDBClient;
-  private readonly dynamoDBDocClient: DynamoDBDocumentClient;
-  private readonly cloudWatchClient: CloudWatchClient;
-  private readonly apiGatewayClient: ApiGatewayManagementApiClient;
-  private readonly dynamoDBConfig: DynamoDBConfig;
-  private readonly webSocketConfig: WebSocketConfig;
-  private readonly cloudWatchConfig: CloudWatchConfig;
+  private readonly configs: {
+    dynamoDB: DynamoDBConfig;
+    webSocket: WebSocketConfig;
+    cloudWatch: CloudWatchConfig;
+  };
 
   constructor() {
-    this.dynamoDBClient = new DynamoDBClient({});
-    this.dynamoDBDocClient = DynamoDBDocumentClient.from(this.dynamoDBClient);
-    this.cloudWatchClient = new CloudWatchClient({});
-    this.apiGatewayClient = new ApiGatewayManagementApiClient({});
-
-    this.dynamoDBConfig = {
-      tableName: process.env.DYNAMODB_TABLE_NAME || 'chat-app',
-      region: process.env.AWS_REGION || 'us-east-1',
-      endpoint: process.env.DYNAMODB_ENDPOINT,
-    };
-
-    this.webSocketConfig = {
-      endpoint: process.env.WEBSOCKET_ENDPOINT || '',
-    };
-
-    this.cloudWatchConfig = {
-      namespace: process.env.CLOUDWATCH_NAMESPACE || 'chat-app',
+    // Initialize configurations
+    this.configs = {
+      dynamoDB: {
+        tableName: process.env.DYNAMODB_TABLE_NAME || 'chat-app',
+        region: process.env.AWS_REGION || 'us-east-1',
+        endpoint: process.env.DYNAMODB_ENDPOINT,
+      },
+      webSocket: {
+        endpoint: process.env.WEBSOCKET_ENDPOINT || '',
+      },
+      cloudWatch: {
+        namespace: process.env.CLOUDWATCH_NAMESPACE || 'chat-app',
+      },
     };
 
     this.registerServices();
@@ -176,12 +154,19 @@ class DependencyContainer implements Container {
   }
 
   // Service methods
-  getAuthenticationService(): AuthenticationServiceInterface {
+  getAuthenticationService(): AuthenticationService {
     return this.resolve('AuthenticationService');
   }
 
   getPerformanceMonitoringService(): PerformanceMonitoringService {
-    return new CloudWatchPerformanceMonitoringService(this.cloudWatchConfig);
+    // Get CloudWatch client from instances
+    const cloudWatchClient = this.instances.get(
+      'CloudWatchClient'
+    ) as CloudWatchClient;
+    return new CloudWatchPerformanceMonitoringService(
+      cloudWatchClient,
+      this.configs.cloudWatch
+    );
   }
 
   getErrorHandlingService(): ErrorHandlingService {
@@ -189,13 +174,16 @@ class DependencyContainer implements Container {
   }
 
   getMetricsService(): MetricsService {
-    // Create CloudWatch adapter
-    const cloudWatchAdapter = new AwsCloudWatchMetricsAdapter();
+    // Get CloudWatch client from instances
+    const cloudWatchClient = this.instances.get(
+      'CloudWatchClient'
+    ) as CloudWatchClient;
+    const cloudWatchAdapter = new AwsCloudWatchMetricsAdapter(cloudWatchClient);
 
     // Create service with adapter
     return new CloudWatchMetricsService(
       cloudWatchAdapter,
-      this.cloudWatchConfig.namespace
+      this.configs.cloudWatch.namespace
     );
   }
 
@@ -213,54 +201,34 @@ class DependencyContainer implements Container {
   }
 
   private registerServices(): void {
-    // Register configurations
-    this.register<DynamoDBConfig>(
-      'DynamoDBConfig',
-      class implements DynamoDBConfig {
-        tableName: string;
-        region: string;
-        endpoint?: string;
+    // Register configurations as singletons - direct instances
+    this.instances.set('DynamoDBConfig', this.configs.dynamoDB);
+    this.instances.set('WebSocketConfig', this.configs.webSocket);
+    this.instances.set('CloudWatchConfig', this.configs.cloudWatch);
 
-        constructor() {
-          const container = DependencyContainer.prototype;
-          this.tableName = container.dynamoDBConfig.tableName;
-          this.region = container.dynamoDBConfig.region;
-          this.endpoint = container.dynamoDBConfig.endpoint;
-        }
-      }
-    );
+    // Register AWS clients as singletons
+    const dynamoDBClient = new DynamoDBClient({
+      region: this.configs.dynamoDB.region,
+      ...(this.configs.dynamoDB.endpoint && {
+        endpoint: this.configs.dynamoDB.endpoint,
+      }),
+    });
+    const dynamoDBDocClient = DynamoDBDocumentClient.from(dynamoDBClient);
+    const cloudWatchClient = new CloudWatchClient({
+      region: this.configs.dynamoDB.region,
+    });
 
-    this.register<WebSocketConfig>(
-      'WebSocketConfig',
-      class implements WebSocketConfig {
-        endpoint: string;
+    this.instances.set('DynamoDBClient', dynamoDBClient);
+    this.instances.set('DynamoDBDocumentClient', dynamoDBDocClient);
+    this.instances.set('CloudWatchClient', cloudWatchClient);
 
-        constructor() {
-          const container = DependencyContainer.prototype;
-          this.endpoint = container.webSocketConfig.endpoint;
-        }
-      }
-    );
-
-    this.register<CloudWatchConfig>(
-      'CloudWatchConfig',
-      class implements CloudWatchConfig {
-        namespace: string;
-
-        constructor() {
-          const container = DependencyContainer.prototype;
-          this.namespace = container.cloudWatchConfig.namespace;
-        }
-      }
-    );
-
-    // Register repositories with type assertion
+    // Register repositories with AWS client injection
     this.register<UserRepository>(
       'UserRepository',
       DynamoDBUserRepository as Constructor<UserRepository>,
       {
         singleton: true,
-        dependencies: ['DynamoDBConfig'],
+        dependencies: ['DynamoDBDocumentClient', 'DynamoDBConfig'],
       }
     );
 
@@ -269,7 +237,7 @@ class DependencyContainer implements Container {
       DynamoDBConnectionRepository as Constructor<ConnectionRepository>,
       {
         singleton: true,
-        dependencies: ['DynamoDBConfig'],
+        dependencies: ['DynamoDBDocumentClient', 'DynamoDBConfig'],
       }
     );
 
@@ -278,7 +246,7 @@ class DependencyContainer implements Container {
       DynamoDBMessageRepository as Constructor<MessageRepository>,
       {
         singleton: true,
-        dependencies: ['DynamoDBConfig'],
+        dependencies: ['DynamoDBDocumentClient', 'DynamoDBConfig'],
       }
     );
 
@@ -287,7 +255,7 @@ class DependencyContainer implements Container {
       DynamoDBSessionRepository as Constructor<SessionRepository>,
       {
         singleton: true,
-        dependencies: ['DynamoDBConfig'],
+        dependencies: ['DynamoDBDocumentClient', 'DynamoDBConfig'],
       }
     );
 
@@ -326,167 +294,3 @@ class DependencyContainer implements Container {
 }
 
 export const container = new DependencyContainer();
-
-export type Logger = {
-  info: (message: string, meta?: Record<string, unknown>) => void;
-  warn: (message: string, meta?: Record<string, unknown>) => void;
-  error: (message: string, meta?: Record<string, unknown>) => void;
-  debug: (message: string, meta?: Record<string, unknown>) => void;
-};
-
-// Use case interfaces
-export interface StoreConnectionUseCase {
-  execute(command: {
-    connectionId: string;
-  }): Promise<{ success: boolean; error?: string; errorCode?: string }>;
-}
-
-export interface RemoveConnectionUseCase {
-  execute(command: {
-    connectionId: string;
-  }): Promise<{ success: boolean; error?: string; errorCode?: string }>;
-}
-
-export interface RemoveAuthenticatedConnectionUseCase {
-  execute(command: {
-    connectionId: string;
-  }): Promise<{ success: boolean; error?: string; errorCode?: string }>;
-}
-
-export interface AuthenticateUserUseCase {
-  execute(command: { token: string }): Promise<{
-    success: boolean;
-    error?: string;
-    errorCode?: string;
-    userId?: string;
-    user?: unknown;
-  }>;
-}
-
-export interface SendChatMessageUseCase {
-  execute(command: {
-    content: string;
-    userId: string;
-    sessionId: string;
-    connectionId: string;
-  }): Promise<{
-    success: boolean;
-    error?: string;
-    errorCode?: string;
-    message?: { getContent(): string; getSessionId(): { getValue(): string } };
-  }>;
-}
-
-export interface HandlePingMessageUseCase {
-  execute(command: {
-    connectionId: string;
-  }): Promise<{ success: boolean; error?: string; errorCode?: string }>;
-}
-
-export interface CheckAuthenticatedConnectionUseCase {
-  execute(command: { connectionId: string }): Promise<{
-    success: boolean;
-    error?: string;
-    errorCode?: string;
-    isAuthenticated?: boolean;
-  }>;
-}
-
-// Service interfaces
-export interface ErrorHandlingService {
-  createError(
-    type: string,
-    message: string,
-    code: string,
-    details?: Record<string, unknown>,
-    correlationId?: string
-  ): unknown;
-  handleError(error: Error | unknown, context?: ErrorContext): unknown;
-  createErrorResponse(error: unknown, event?: unknown): unknown;
-  handleWebSocketError(
-    error: unknown,
-    connectionId: string,
-    event: unknown
-  ): Promise<void>;
-}
-
-export interface MetricsService {
-  recordMetric(
-    name: string,
-    value: number,
-    unit?: string,
-    dimensions?: Record<string, string>
-  ): void;
-  recordCount(
-    name: string,
-    count?: number,
-    dimensions?: Record<string, string>
-  ): void;
-  recordDuration(
-    name: string,
-    durationMs: number,
-    dimensions?: Record<string, string>
-  ): void;
-  recordError(
-    name: string,
-    errorType: string,
-    dimensions?: Record<string, string>
-  ): void;
-  recordErrorMetrics(
-    errorType: string,
-    operation: string,
-    additionalDimensions?: Record<string, string>
-  ): Promise<void>;
-  recordBusinessMetrics(
-    metricName: string,
-    value: number,
-    additionalDimensions?: Record<string, string>
-  ): Promise<void>;
-  recordWebSocketMetrics(
-    event:
-      | 'connect'
-      | 'disconnect'
-      | 'message_sent'
-      | 'message_received'
-      | 'ping'
-      | 'message_processed',
-    success: boolean,
-    duration?: number,
-    errorType?: string
-  ): Promise<void>;
-  recordDatabaseMetrics(
-    operation: string,
-    tableName: string,
-    success: boolean,
-    duration: number,
-    errorType?: string
-  ): Promise<void>;
-  recordAuthenticationMetrics(
-    success: boolean,
-    duration: number,
-    errorType?: string,
-    userId?: string
-  ): Promise<void>;
-  publishMetrics(): Promise<void>;
-  getMetrics(filter?: unknown): unknown[];
-  clearMetrics(): void;
-}
-
-export interface CircuitBreakerService {
-  execute<T>(
-    serviceName: string,
-    operation: string,
-    operationFn: () => Promise<T>,
-    fallback?: () => Promise<T> | T,
-    config?: Partial<CircuitBreakerConfig>
-  ): Promise<T>;
-  getCircuitBreaker(
-    serviceName: string,
-    operation: string,
-    config?: Partial<CircuitBreakerConfig>
-  ): unknown;
-  getAllStats(): Record<string, unknown>;
-  resetAll(): void;
-  getCircuitBreakerStats(serviceName: string, operation: string): unknown;
-  setDefaultConfig(config: CircuitBreakerConfig): void;
-}

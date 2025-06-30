@@ -19,8 +19,11 @@ export class AwsCloudWatchPerformanceAdapter
   private readonly client: CloudWatchClient;
   private readonly defaultNamespace: string;
 
-  constructor(namespace: string = 'AWSLambdaHackathon/Performance') {
-    this.client = new CloudWatchClient({});
+  constructor(
+    client: CloudWatchClient,
+    namespace: string = 'AWSLambdaHackathon/Performance'
+  ) {
+    this.client = client;
     this.defaultNamespace = namespace;
   }
 

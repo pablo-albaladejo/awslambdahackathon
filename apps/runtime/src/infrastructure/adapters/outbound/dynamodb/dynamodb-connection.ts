@@ -1,4 +1,3 @@
-import { DynamoDBClient, DynamoDBClientConfig } from '@aws-sdk/client-dynamodb';
 import {
   DeleteCommand,
   DynamoDBDocumentClient,
@@ -9,7 +8,6 @@ import {
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { logger } from '@awslambdahackathon/utils/lambda';
-import { DynamoDBConfig } from '@config/container';
 import { Connection, ConnectionStatus } from '@domain/entities/connection';
 import { User } from '@domain/entities/user';
 import {
@@ -17,20 +15,14 @@ import {
   ConnectionRepository,
 } from '@domain/repositories/connection';
 import { ConnectionId, UserId } from '@domain/value-objects';
+import { DynamoDBConfig } from '@infrastructure/config/database-config';
 
 export class DynamoDBConnectionRepository implements ConnectionRepository {
   private readonly ddbClient: DynamoDBDocumentClient;
   private readonly tableName: string;
 
-  constructor(config: DynamoDBConfig) {
-    const clientConfig: DynamoDBClientConfig = { region: config.region };
-    if (config.endpoint) {
-      clientConfig.endpoint = config.endpoint;
-    }
-
-    this.ddbClient = DynamoDBDocumentClient.from(
-      new DynamoDBClient(clientConfig)
-    );
+  constructor(ddbClient: DynamoDBDocumentClient, config: DynamoDBConfig) {
+    this.ddbClient = ddbClient;
     this.tableName = config.tableName;
   }
 

@@ -1,5 +1,5 @@
 import { BaseResult, BaseUseCase } from '@application/use-cases/base-use-case';
-import { Logger } from '@config/container';
+import { Logger } from '@awslambdahackathon/types';
 import { Message } from '@domain/entities/message';
 import { MessageValidationException } from '@domain/errors/domain-errors';
 import { ChatService } from '@domain/services/chat-service';

@@ -1,31 +1,20 @@
-export type ErrorCode =
-  | 'VALIDATION_ERROR'
-  | 'AUTHENTICATION_ERROR'
-  | 'AUTHORIZATION_ERROR'
-  | 'NOT_FOUND'
-  | 'CONFLICT'
-  | 'INTERNAL_ERROR'
-  | 'CIRCUIT_BREAKER_ERROR';
+import { DomainError } from '@awslambdahackathon/types';
 
-export class DomainError extends Error {
-  constructor(
-    message: string,
-    public readonly code: ErrorCode,
-    public readonly details?: Record<string, unknown>
-  ) {
-    super(message);
-    this.name = 'DomainError';
-    Object.setPrototypeOf(this, DomainError.prototype);
-  }
-}
+// Re-export base types for convenience
+export { DomainError, ErrorCode } from '@awslambdahackathon/types';
 
+// Domain-specific error classes extending the shared base
 export class ValidationError extends DomainError {
   constructor(
     message: string,
     field?: string,
-    details?: Record<string, unknown>
+    validationErrors?: Record<string, unknown>
   ) {
-    super(message, 'VALIDATION_ERROR', details);
+    super(message, 'VALIDATION_ERROR', {
+      field,
+      validationErrors,
+    });
+    this.name = 'ValidationError';
   }
 }
 
@@ -40,18 +29,52 @@ export class EntityNotFoundError extends DomainError {
       'NOT_FOUND',
       { entityType, identifier, ...details }
     );
+    this.name = 'EntityNotFoundError';
   }
 }
 
 export class AuthenticationError extends DomainError {
-  constructor(message: string, details?: Record<string, unknown>) {
-    super(message, 'AUTHENTICATION_ERROR', details);
+  constructor(
+    message: string,
+    userId?: string,
+    details?: Record<string, unknown>
+  ) {
+    super(message, 'AUTHENTICATION_ERROR', { userId, ...details });
+    this.name = 'AuthenticationError';
   }
 }
 
 export class AuthorizationError extends DomainError {
-  constructor(message: string, details?: Record<string, unknown>) {
-    super(message, 'AUTHORIZATION_ERROR', details);
+  constructor(
+    message: string,
+    userId?: string,
+    requiredPermissions?: string[],
+    details?: Record<string, unknown>
+  ) {
+    super(message, 'AUTHORIZATION_ERROR', {
+      userId,
+      requiredPermissions,
+      ...details,
+    });
+    this.name = 'AuthorizationError';
+  }
+}
+
+export class ConflictError extends DomainError {
+  constructor(
+    message: string,
+    resourceType?: string,
+    identifier?: string,
+    version?: string,
+    details?: Record<string, unknown>
+  ) {
+    super(message, 'CONFLICT', {
+      resourceType,
+      identifier,
+      version,
+      ...details,
+    });
+    this.name = 'ConflictError';
   }
 }
 
@@ -59,12 +82,13 @@ export class BusinessRuleViolationError extends DomainError {
   constructor(
     message: string,
     ruleName: string,
-    details?: Record<string, unknown>
+    context?: Record<string, unknown>
   ) {
     super(message, 'CONFLICT', {
       ruleName,
-      ...details,
+      ...context,
     });
+    this.name = 'BusinessRuleViolationError';
   }
 }
 
@@ -78,6 +102,7 @@ export class ConnectionError extends DomainError {
       connectionId,
       ...details,
     });
+    this.name = 'ConnectionError';
   }
 }
 
@@ -91,19 +116,23 @@ export class MessageError extends DomainError {
       messageId,
       ...details,
     });
+    this.name = 'MessageError';
   }
 }
 
 export class InfrastructureError extends DomainError {
   constructor(
     message: string,
-    service: string,
+    service?: string,
+    operation?: string,
     details?: Record<string, unknown>
   ) {
     super(message, 'INTERNAL_ERROR', {
       service,
+      operation,
       ...details,
     });
+    this.name = 'InfrastructureError';
   }
 }
 
@@ -114,11 +143,12 @@ export class RateLimitError extends DomainError {
     window: string,
     details?: Record<string, unknown>
   ) {
-    super(message, 'INTERNAL_ERROR', {
+    super(message, 'RATE_LIMIT_ERROR', {
       limit,
       window,
       ...details,
     });
+    this.name = 'RateLimitError';
   }
 }
 
@@ -126,152 +156,162 @@ export class CircuitBreakerError extends DomainError {
   constructor(
     service: string,
     state: string,
+    operation?: string,
     details?: Record<string, unknown>
   ) {
     super(
       `Circuit breaker is ${state} for service: ${service}`,
       'CIRCUIT_BREAKER_ERROR',
-      { service, state, ...details }
+      { service, state, operation, ...details }
     );
+    this.name = 'CircuitBreakerError';
   }
 }
 
-export class DomainException extends Error {
+// Migrated specific error classes - using shared DomainError base
+export class UserAuthenticationFailedException extends DomainError {
   constructor(
-    message: string,
-    public readonly code: string,
-    public readonly details?: Record<string, unknown>
-  ) {
-    super(message);
-    this.name = 'DomainException';
-  }
-}
-
-export class UserAuthenticationFailedException extends DomainException {
-  constructor(
-    public readonly reason: string,
-    public readonly userId?: string
+    reason: string,
+    userId?: string,
+    details?: Record<string, unknown>
   ) {
     super(`Authentication failed: ${reason}`, 'USER_AUTHENTICATION_FAILED', {
       reason,
       userId,
+      ...details,
     });
     this.name = 'UserAuthenticationFailedException';
   }
 }
 
-export class UserNotFoundException extends DomainException {
-  constructor(public readonly userId: string) {
-    super(`User not found: ${userId}`, 'USER_NOT_FOUND', { userId });
+export class UserNotFoundException extends DomainError {
+  constructor(userId: string, details?: Record<string, unknown>) {
+    super(`User not found: ${userId}`, 'USER_NOT_FOUND', {
+      userId,
+      ...details,
+    });
     this.name = 'UserNotFoundException';
   }
 }
 
-export class ConnectionNotFoundException extends DomainException {
-  constructor(public readonly connectionId: string) {
+export class ConnectionNotFoundException extends DomainError {
+  constructor(connectionId: string, details?: Record<string, unknown>) {
     super(`Connection not found: ${connectionId}`, 'CONNECTION_NOT_FOUND', {
       connectionId,
+      ...details,
     });
     this.name = 'ConnectionNotFoundException';
   }
 }
 
-export class MessageValidationException extends DomainException {
+export class MessageValidationException extends DomainError {
   constructor(
-    public readonly field: string,
-    public readonly value: unknown,
-    public readonly reason: string
+    field: string,
+    value: unknown,
+    reason: string,
+    details?: Record<string, unknown>
   ) {
     super(
       `Message validation failed for field '${field}': ${reason}`,
       'MESSAGE_VALIDATION_FAILED',
-      { field, value, reason }
+      { field, value, reason, ...details }
     );
     this.name = 'MessageValidationException';
   }
 }
 
-export class SessionExpiredException extends DomainException {
-  constructor(public readonly sessionId: string) {
-    super(`Session expired: ${sessionId}`, 'SESSION_EXPIRED', { sessionId });
+export class SessionExpiredException extends DomainError {
+  constructor(sessionId: string, details?: Record<string, unknown>) {
+    super(`Session expired: ${sessionId}`, 'SESSION_EXPIRED', {
+      sessionId,
+      ...details,
+    });
     this.name = 'SessionExpiredException';
   }
 }
 
-export class UserAuthorizationException extends DomainException {
+export class UserAuthorizationException extends DomainError {
   constructor(
-    public readonly userId: string,
-    public readonly requiredPermission: string,
-    public readonly reason: string
+    userId: string,
+    requiredPermission: string,
+    reason: string,
+    details?: Record<string, unknown>
   ) {
     super(
       `User ${userId} not authorized for ${requiredPermission}: ${reason}`,
       'USER_AUTHORIZATION_FAILED',
-      { userId, requiredPermission, reason }
+      { userId, requiredPermission, reason, ...details }
     );
     this.name = 'UserAuthorizationException';
   }
 }
 
-export class ConnectionLimitExceededException extends DomainException {
+export class ConnectionLimitExceededException extends DomainError {
   constructor(
-    public readonly userId: string,
-    public readonly currentConnections: number,
-    public readonly maxConnections: number
+    userId: string,
+    currentConnections: number,
+    maxConnections: number,
+    details?: Record<string, unknown>
   ) {
     super(
       `Connection limit exceeded for user ${userId}`,
       'CONNECTION_LIMIT_EXCEEDED',
-      { userId, currentConnections, maxConnections }
+      { userId, currentConnections, maxConnections, ...details }
     );
     this.name = 'ConnectionLimitExceededException';
   }
 }
 
-export class MessageRateLimitExceededException extends DomainException {
+export class MessageRateLimitExceededException extends DomainError {
   constructor(
-    public readonly userId: string,
-    public readonly timeWindow: number
+    userId: string,
+    timeWindow: number,
+    details?: Record<string, unknown>
   ) {
     super(
       `Message rate limit exceeded for user ${userId}`,
       'MESSAGE_RATE_LIMIT_EXCEEDED',
-      { userId, timeWindow }
+      { userId, timeWindow, ...details }
     );
     this.name = 'MessageRateLimitExceededException';
   }
 }
 
-export class InvalidTokenException extends DomainException {
-  constructor(public readonly reason: string) {
-    super(`Invalid token: ${reason}`, 'INVALID_TOKEN', { reason });
+export class InvalidTokenException extends DomainError {
+  constructor(reason: string, details?: Record<string, unknown>) {
+    super(`Invalid token: ${reason}`, 'INVALID_TOKEN', {
+      reason,
+      ...details,
+    });
     this.name = 'InvalidTokenException';
   }
 }
 
-export class ServiceUnavailableException extends DomainException {
+export class ServiceUnavailableException extends DomainError {
   constructor(
-    public readonly serviceName: string,
-    public readonly reason: string
+    serviceName: string,
+    reason: string,
+    details?: Record<string, unknown>
   ) {
     super(
       `Service ${serviceName} unavailable: ${reason}`,
       'SERVICE_UNAVAILABLE',
-      { serviceName, reason }
+      { serviceName, reason, ...details }
     );
     this.name = 'ServiceUnavailableException';
   }
 }
 
-export class CircuitBreakerOpenException extends DomainException {
+export class CircuitBreakerOpenException extends DomainError {
   constructor(
-    public readonly serviceName: string,
-    public readonly operation: string
+    serviceName: string,
+    operation: string,
+    details?: Record<string, unknown>
   ) {
     super(
       `Circuit breaker is open for ${serviceName}:${operation}`,
       'CIRCUIT_BREAKER_OPEN',
-      { serviceName, operation }
+      { serviceName, operation, ...details }
     );
     this.name = 'CircuitBreakerOpenException';
   }

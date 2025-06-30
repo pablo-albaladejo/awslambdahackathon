@@ -1,5 +1,5 @@
+import { CloudWatchClient } from '@aws-sdk/client-cloudwatch';
 import { logger } from '@awslambdahackathon/utils/lambda';
-import { CloudWatchConfig } from '@config/container';
 import {
   PerformanceContext,
   PerformanceData,
@@ -13,6 +13,7 @@ import {
   AwsCloudWatchPerformanceAdapter,
   CloudWatchPerformanceAdapter,
 } from '@infrastructure/adapters/outbound/cloudwatch';
+import { CloudWatchConfig } from '@infrastructure/config/monitoring-config';
 
 export class CloudWatchPerformanceMonitoringService
   implements PerformanceMonitoringService
@@ -29,8 +30,11 @@ export class CloudWatchPerformanceMonitoringService
     tags?: Record<string, string>;
   } | null = null;
 
-  constructor(config: CloudWatchConfig) {
-    this.adapter = new AwsCloudWatchPerformanceAdapter(config.namespace);
+  constructor(cloudWatchClient: CloudWatchClient, config: CloudWatchConfig) {
+    this.adapter = new AwsCloudWatchPerformanceAdapter(
+      cloudWatchClient,
+      config.namespace
+    );
     this.namespace = config.namespace;
   }
 

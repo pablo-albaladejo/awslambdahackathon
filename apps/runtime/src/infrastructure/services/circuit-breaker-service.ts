@@ -1,19 +1,11 @@
 import { logger } from '@awslambdahackathon/utils/lambda';
 import { CIRCUIT_BREAKER_CONFIG } from '@config/constants';
-import { CircuitBreakerConfig as ContainerCircuitBreakerConfig } from '@config/container';
+import { CircuitBreakerConfig } from '@infrastructure/config/monitoring-config';
 
 export enum CircuitState {
   CLOSED = 'CLOSED', // Normal operation
   OPEN = 'OPEN', // Circuit is open, requests fail fast
   HALF_OPEN = 'HALF_OPEN', // Testing if service is back up
-}
-
-export interface CircuitBreakerConfig {
-  failureThreshold: number; // Number of failures before opening circuit
-  recoveryTimeout: number; // Time in ms to wait before trying again
-  expectedResponseTime: number; // Expected response time in ms
-  monitoringWindow: number; // Time window for failure counting
-  minimumRequestCount: number; // Minimum requests before circuit can open
 }
 
 export interface CircuitBreakerStats {
@@ -302,12 +294,13 @@ export class CircuitBreakerService {
   private circuitBreakers = new Map<string, CircuitBreaker>();
   private defaultConfig: CircuitBreakerConfig;
 
-  constructor(config?: ContainerCircuitBreakerConfig) {
+  constructor(config?: CircuitBreakerConfig) {
     this.defaultConfig = {
       failureThreshold: config?.failureThreshold || 5,
       recoveryTimeout: config?.recoveryTimeout || 30000,
       expectedResponseTime: config?.expectedResponseTime || 1000,
       monitoringWindow: config?.monitoringWindow || 60000,
+      monitoringPeriod: config?.monitoringPeriod || 10000,
       minimumRequestCount: config?.minimumRequestCount || 10,
     };
   }

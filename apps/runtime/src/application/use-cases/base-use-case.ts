@@ -1,4 +1,4 @@
-import { Logger } from '@config/container';
+import { Logger } from '@awslambdahackathon/types';
 import { DomainError } from '@domain/errors/domain-errors';
 import { PerformanceMonitoringService } from '@domain/services/performance-monitoring-service';
 
