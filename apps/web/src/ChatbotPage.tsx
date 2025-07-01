@@ -167,6 +167,7 @@ const ChatbotPage = React.memo(() => {
   const [inputValue, setInputValue] = useState('');
   const [isSending, setIsSending] = useState(false);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   // Performance monitoring for the main component
   const { getPerformanceStats } = usePerformance('ChatbotPage');
@@ -243,6 +244,13 @@ const ChatbotPage = React.memo(() => {
     }
   }, [messages.length]);
 
+  // Focus input on component mount and when connection is established
+  useEffect(() => {
+    if (isConnected && inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, [isConnected]);
+
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
@@ -267,6 +275,11 @@ const ChatbotPage = React.memo(() => {
           userId: userInfo.userId,
           messageLength: messageText.length,
         });
+
+        // Mantener el foco en el input después de enviar
+        setTimeout(() => {
+          inputRef.current?.focus();
+        }, 0);
       } catch (error) {
         const errorMessage =
           error instanceof Error ? error.message : 'Failed to send message';
@@ -283,6 +296,11 @@ const ChatbotPage = React.memo(() => {
         });
 
         // Show error to user (error state is already handled by WebSocket context)
+
+        // Mantener el foco incluso en caso de error
+        setTimeout(() => {
+          inputRef.current?.focus();
+        }, 0);
       } finally {
         setIsSending(false);
       }
@@ -357,6 +375,7 @@ const ChatbotPage = React.memo(() => {
         {/* Input Form */}
         <form onSubmit={handleSubmit} className="chatbot-input-row">
           <input
+            ref={inputRef}
             type="text"
             value={inputValue}
             onChange={handleInputChange}
