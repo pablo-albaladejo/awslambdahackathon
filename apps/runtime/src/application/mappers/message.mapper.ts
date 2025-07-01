@@ -64,21 +64,19 @@ export class MessageMapper implements BidirectionalMapper<Message, MessageDto> {
    * Maps CreateMessageDto to Message entity
    */
   fromCreateDto(dto: CreateMessageDto): Message {
-    const messageType = dto.type || MessageType.USER;
+    const messageType = dto.type || MessageType.TEXT;
     const userId = UserId.create(dto.userId);
     const sessionId = SessionId.generate(); // Generate a new session ID
 
     switch (messageType) {
-      case MessageType.USER:
-        return Message.createUserMessage(dto.content, userId, sessionId);
-      case MessageType.BOT:
-        return Message.createBotMessage(dto.content, userId, sessionId);
+      case MessageType.TEXT:
+        return Message.createTextMessage(dto.content, userId, sessionId);
       case MessageType.SYSTEM:
         return Message.createSystemMessage(dto.content, userId, sessionId);
       case MessageType.ADMIN:
         return Message.createAdminMessage(dto.content, userId, sessionId);
       default:
-        return Message.createUserMessage(dto.content, userId, sessionId);
+        return Message.createTextMessage(dto.content, userId, sessionId);
     }
   }
 

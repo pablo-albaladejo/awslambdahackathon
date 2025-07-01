@@ -14,8 +14,7 @@ interface SendChatMessageCommand {
 }
 
 interface SendChatMessageResult extends BaseResult {
-  userMessage?: Message;
-  botMessage?: Message;
+  message?: Message;
 }
 
 export interface SendChatMessageUseCase {
@@ -66,25 +65,23 @@ export class SendChatMessageUseCaseImpl
       const userId = UserId.create(command.userId);
       const sessionId = SessionId.create(command.sessionId);
 
-      // Process message through chat service
+      // Process the message using the chat service
       const result = await this.chatService.processMessage({
         content: command.content,
         userId,
         sessionId,
-        messageType: 'user',
       });
 
       this.logger.info('Chat message processed successfully', {
-        userMessageId: result.userMessage.getId().getValue(),
-        botMessageId: result.botMessage.getId().getValue(),
+        inputMessageId: result.inputMessage.getId().getValue(),
+        outputMessageId: result.outputMessage.getId().getValue(),
         userId: command.userId,
         sessionId: command.sessionId,
       });
 
       return {
         success: true,
-        userMessage: result.userMessage,
-        botMessage: result.botMessage,
+        message: result.outputMessage,
       };
     } catch (error) {
       return this.handleError(error, {

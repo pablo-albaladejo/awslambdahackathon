@@ -5,12 +5,11 @@ export interface ProcessMessageCommand {
   content: string;
   userId: UserId;
   sessionId: SessionId;
-  messageType: 'user' | 'bot' | 'system';
 }
 
 export interface ProcessMessageResult {
-  userMessage: Message;
-  botMessage: Message;
+  inputMessage: Message;
+  outputMessage: Message;
   sessionId: SessionId;
 }
 

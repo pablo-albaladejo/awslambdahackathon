@@ -5,8 +5,7 @@ import {
 import { MessageId, SessionId, UserId } from '@domain/value-objects';
 
 export enum MessageType {
-  USER = 'user',
-  BOT = 'bot',
+  TEXT = 'text',
   SYSTEM = 'system',
   ADMIN = 'admin',
 }
@@ -70,12 +69,8 @@ export class Message {
     return this.replyToMessageId;
   }
 
-  isUserMessage(): boolean {
-    return this.type === MessageType.USER;
-  }
-
-  isBotMessage(): boolean {
-    return this.type === MessageType.BOT;
+  isTextMessage(): boolean {
+    return this.type === MessageType.TEXT;
   }
 
   isSystemMessage(): boolean {
@@ -219,7 +214,7 @@ export class Message {
     MessageValidator.validateAndThrow(messageData);
   }
 
-  static createUserMessage(
+  static createTextMessage(
     content: string,
     userId: UserId,
     sessionId: SessionId
@@ -227,21 +222,7 @@ export class Message {
     return new Message(
       MessageId.generate(),
       content,
-      MessageType.USER,
-      userId,
-      sessionId
-    );
-  }
-
-  static createBotMessage(
-    content: string,
-    userId: UserId,
-    sessionId: SessionId
-  ): Message {
-    return new Message(
-      MessageId.generate(),
-      content,
-      MessageType.BOT,
+      MessageType.TEXT,
       userId,
       sessionId
     );

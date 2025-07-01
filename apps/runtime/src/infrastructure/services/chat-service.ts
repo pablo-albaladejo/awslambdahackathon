@@ -39,21 +39,17 @@ export class ChatService implements DomainChatService {
         userId: command.userId.getValue(),
         sessionId: command.sessionId.getValue(),
         messageLength: command.content?.length,
-        messageType: command.messageType,
         operation: 'chat_message_processing',
         service: 'chat',
       });
 
     try {
-      // Convert messageType to MessageType enum
-      const messageType = this.convertToMessageType(command.messageType);
-
       // Validate the message first
       const validationResult = await this.validateMessage(
         Message.fromData({
           id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
           content: command.content,
-          type: messageType,
+          type: MessageType.TEXT,
           userId: command.userId.getValue(),
           sessionId: command.sessionId.getValue(),
           createdAt: new Date(),
@@ -71,21 +67,21 @@ export class ChatService implements DomainChatService {
       }
 
       const now = new Date();
-      const message = Message.fromData({
+      const inputMessage = Message.fromData({
         id: `${MESSAGE_CONFIG.ID_PREFIX.MESSAGE}${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         content: command.content,
-        type: messageType,
+        type: MessageType.TEXT,
         userId: command.userId.getValue(),
         sessionId: command.sessionId.getValue(),
         createdAt: now,
       });
 
-      // Store the user message
-      await this.messageRepository.save(message);
+      // Store the input message
+      await this.messageRepository.save(inputMessage);
 
-      // Invoke LLM for bot response
+      // Invoke LLM for response
       const llmRequest: LLMRequest = {
-        messageId: message.getId().getValue(),
+        messageId: inputMessage.getId().getValue(),
         userId: command.userId.getValue(),
         sessionId: command.sessionId.getValue(),
         message: command.content,
@@ -99,24 +95,24 @@ export class ChatService implements DomainChatService {
         throw new Error(llmResult.error || 'LLM generation failed');
       }
 
-      const botMessage = Message.fromData({
+      const outputMessage = Message.fromData({
         id: `${MESSAGE_CONFIG.ID_PREFIX.MESSAGE}${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         content:
           llmResult.response || 'Sorry, I could not generate a response.',
-        type: MessageType.BOT,
-        userId: command.userId.getValue(), // Bot message is associated with the user who initiated the conversation
+        type: MessageType.TEXT,
+        userId: command.userId.getValue(),
         sessionId: command.sessionId.getValue(),
         createdAt: new Date(),
       });
 
-      // Store the bot message
-      await this.messageRepository.save(botMessage);
+      // Store the output message
+      await this.messageRepository.save(outputMessage);
 
       performanceMonitor.complete(true);
 
       return {
-        userMessage: message,
-        botMessage: botMessage,
+        inputMessage: inputMessage,
+        outputMessage: outputMessage,
         sessionId: command.sessionId,
       };
     } catch (error) {
@@ -145,11 +141,7 @@ export class ChatService implements DomainChatService {
       }
 
       // Check if message type is valid
-      const validTypes = [
-        MessageType.USER,
-        MessageType.BOT,
-        MessageType.SYSTEM,
-      ];
+      const validTypes = [MessageType.TEXT, MessageType.SYSTEM];
       if (!validTypes.includes(message.getType())) {
         return {
           isValid: false,
@@ -197,21 +189,6 @@ export class ChatService implements DomainChatService {
         error: error instanceof Error ? error.message : String(error),
       });
       return false;
-    }
-  }
-
-  private convertToMessageType(
-    messageType: 'user' | 'bot' | 'system'
-  ): MessageType {
-    switch (messageType) {
-      case 'user':
-        return MessageType.USER;
-      case 'bot':
-        return MessageType.BOT;
-      case 'system':
-        return MessageType.SYSTEM;
-      default:
-        return MessageType.USER;
     }
   }
 }

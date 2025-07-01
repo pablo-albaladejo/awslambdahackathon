@@ -58,13 +58,11 @@ export class MessageEntityMapper {
     type: MessageType
   ): 'text' | 'system' | 'notification' {
     switch (type) {
-      case MessageType.USER:
+      case MessageType.TEXT:
         return 'text';
       case MessageType.SYSTEM:
       case MessageType.ADMIN:
         return 'system';
-      case MessageType.BOT:
-        return 'notification';
       default:
         return 'text';
     }

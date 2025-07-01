@@ -157,28 +157,28 @@ export class WebSocketMessageService {
   /**
    * Send chat message response
    */
-  async sendChatResponse(
+  async sendMessageResponse(
     connectionId: string,
     event: APIGatewayProxyEvent,
-    botMessage: Message
+    outputMessage: Message
   ): Promise<boolean> {
-    const botMessageResponse: WebSocketMessage = {
+    const outputMessageResponse: WebSocketMessage = {
       type: 'message_response',
       data: {
-        message: botMessage.getContent(),
-        sessionId: botMessage.getSessionId().getValue(),
-        messageId: botMessage.getId().getValue(),
-        timestamp: botMessage.getCreatedAt().toISOString(),
+        message: outputMessage.getContent(),
+        sessionId: outputMessage.getSessionId().getValue(),
+        messageId: outputMessage.getId().getValue(),
+        timestamp: outputMessage.getCreatedAt().toISOString(),
       },
     };
 
-    logger.info('Sending chat response', {
+    logger.info('Sending message response', {
       connectionId,
-      botMessageId: botMessage.getId().getValue(),
+      outputMessageId: outputMessage.getId().getValue(),
       correlationId: this.generateCorrelationId(),
     });
 
-    return this.sendMessage(connectionId, event, botMessageResponse);
+    return this.sendMessage(connectionId, event, outputMessageResponse);
   }
 
   /**

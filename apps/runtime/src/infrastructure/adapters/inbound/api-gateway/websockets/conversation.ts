@@ -364,10 +364,11 @@ const handleChatMessage = async (
     throw new Error(result.error || 'Failed to send chat message');
   }
 
-  // Use the message field that's available in the result
-  const messageContent =
+  // Use the response content from the result
+  const responseContent =
     result.message?.getContent() ?? 'Sorry, I could not process your message.';
 
+  // Send the response message using WebSocket
   await createWebSocketService(event).sendMessage(
     ConnectionId.create(connectionId),
     {
@@ -375,11 +376,11 @@ const handleChatMessage = async (
       timestamp: new Date(),
       data: {
         messageId: crypto.randomUUID(),
-        message: messageContent,
+        message: responseContent,
         userId: user.getId().getValue(),
         username: user.getUsername(),
         timestamp: new Date(),
-        sessionId: finalSessionId, // Use the generated sessionId instead of empty string
+        sessionId: finalSessionId,
       },
     }
   );
