@@ -33,15 +33,14 @@ import { ErrorHandlingService } from '@domain/services/error-handling-service';
 import { LLMService } from '@domain/services/llm-service';
 import { MetricsService } from '@domain/services/metrics-service';
 import { PerformanceMonitoringService } from '@domain/services/performance-monitoring-service';
-import {
-  BedrockConfig,
-  BedrockLLMAdapter,
-} from '@infrastructure/adapters/outbound/bedrock/bedrock-llm-adapter';
+import { BedrockConfig } from '@infrastructure/adapters/outbound/bedrock';
 import { AwsCloudWatchMetricsAdapter } from '@infrastructure/adapters/outbound/cloudwatch/cloudwatch-metrics-adapter';
 import { DynamoDBConnectionRepository } from '@infrastructure/adapters/outbound/dynamodb/dynamodb-connection';
 import { DynamoDBMessageRepository } from '@infrastructure/adapters/outbound/dynamodb/dynamodb-message';
 import { DynamoDBSessionRepository } from '@infrastructure/adapters/outbound/dynamodb/dynamodb-session';
 import { DynamoDBUserRepository } from '@infrastructure/adapters/outbound/dynamodb/dynamodb-user';
+import { type LambdaInvokerConfig } from '@infrastructure/adapters/outbound/lambda';
+import { LambdaLLMService } from '@infrastructure/adapters/outbound/lambda/lambda-llm-service';
 import { AwsApiGatewayWebSocketAdapter } from '@infrastructure/adapters/outbound/websocket/aws-api-gateway-adapter';
 import { DynamoDBConfig } from '@infrastructure/config/database-config';
 import { CloudWatchConfig } from '@infrastructure/config/monitoring-config';
@@ -238,6 +237,15 @@ class DependencyContainer implements Container {
       maxRetries: 3,
     };
     this.instances.set('BedrockConfig', bedrockConfig);
+
+    // Register Lambda Invoker configuration for LLM service
+    const lambdaInvokerConfig: LambdaInvokerConfig = {
+      region: process.env.AWS_REGION || 'us-east-2',
+      llmFunctionName: process.env.LLM_FUNCTION_NAME || '',
+      timeout: 30000,
+      maxRetries: 3,
+    };
+    this.instances.set('LambdaInvokerConfig', lambdaInvokerConfig);
 
     // Register AWS clients as singletons
     const dynamoDBClient = new DynamoDBClient({
@@ -458,10 +466,10 @@ class DependencyContainer implements Container {
 
     this.register<LLMService>(
       'LLMService',
-      BedrockLLMAdapter as Constructor<LLMService>,
+      LambdaLLMService as Constructor<LLMService>,
       {
         singleton: true,
-        dependencies: ['BedrockConfig'],
+        dependencies: ['LambdaInvokerConfig'],
       }
     );
   }
