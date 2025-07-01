@@ -7,7 +7,6 @@ import React, {
   useState,
 } from 'react';
 
-import { VirtualizedMessageList } from './components/VirtualizedMessageList';
 import { useWebSocket } from './contexts/WebSocketContext';
 import { useCurrentUser } from './hooks/useCurrentUser';
 import { usePerformance } from './hooks/usePerformance';
@@ -200,14 +199,6 @@ const ChatbotPage = React.memo(() => {
     [inputValue, isConnected, isSending]
   );
 
-  // Memoized container height calculation
-  const containerHeight = useMemo(() => {
-    if (messagesContainerRef.current) {
-      return messagesContainerRef.current.offsetHeight;
-    }
-    return 400; // Default height
-  }, []);
-
   useEffect(() => {
     if (user) {
       recordAction('chatbot_page_viewed', {
@@ -239,6 +230,18 @@ const ChatbotPage = React.memo(() => {
       // Chat is ready to receive messages
     }
   }, [isConnected, sessionId]);
+
+  // Auto-scroll to bottom when new messages are added
+  useEffect(() => {
+    if (messagesContainerRef.current && messages.length > 0) {
+      const scrollElement = messagesContainerRef.current;
+      const scrollTimeout = setTimeout(() => {
+        scrollElement.scrollTop = scrollElement.scrollHeight;
+      }, 100);
+
+      return () => clearTimeout(scrollTimeout);
+    }
+  }, [messages.length]);
 
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
@@ -341,15 +344,11 @@ const ChatbotPage = React.memo(() => {
         <div ref={messagesContainerRef} className="chatbot-messages">
           {shouldShowWelcome && <WelcomeMessage />}
 
-          {/* Use virtualized list for better performance with large message counts */}
-          {messages.length > 0 && (
-            <VirtualizedMessageList
-              messages={messages}
-              itemHeight={80}
-              containerHeight={containerHeight}
-              overscan={5}
-            />
-          )}
+          {/* Render messages directly to avoid virtualization overlap issues */}
+          {messages.length > 0 &&
+            messages.map(message => (
+              <MessageItem key={message.id} message={message} />
+            ))}
 
           {/* Loading indicator */}
           {isLoading && <LoadingIndicator />}

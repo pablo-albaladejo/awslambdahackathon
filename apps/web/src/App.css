@@ -255,9 +255,8 @@ code {
   margin-bottom: 1.2rem;
   display: flex;
   flex-direction: column;
-  gap: 0.8rem;
-  padding-right: 2px;
-  padding-left: 2px;
+  gap: 1rem;
+  padding: 0.5rem 4px;
 }
 
 .chatbot-message-bubble {
@@ -272,10 +271,15 @@ code {
   color: #333;
   font-size: 1.05rem;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.07);
-  margin-bottom: 0.1rem;
+  margin: 0;
   position: relative;
   animation: fadeIn 0.3s;
   align-self: flex-start;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  box-sizing: border-box;
+  clear: both;
+  text-align: left;
 }
 .chatbot-message-bubble.user {
   align-self: flex-end;
@@ -283,19 +287,28 @@ code {
   color: #fff;
   border-radius: 16px 16px 6px 16px;
   margin-left: auto;
+  margin-right: 0;
+  text-align: left;
 }
 .chatbot-message-bubble.bot {
   align-self: flex-start;
   background: rgba(255, 255, 255, 0.85);
   color: #333;
   border-radius: 16px 16px 16px 6px;
+  margin-left: 0;
   margin-right: auto;
+  text-align: left;
 }
 .chatbot-message-text {
   margin-bottom: 0.2rem;
   word-break: break-word;
+  overflow-wrap: break-word;
   line-height: 1.4;
   white-space: pre-wrap;
+  hyphens: auto;
+  width: 100%;
+  box-sizing: border-box;
+  text-align: left;
 }
 .chatbot-message-time {
   font-size: 0.82rem;
@@ -374,9 +387,10 @@ code {
 
 @media (max-width: 600px) {
   .chatbot-container {
-    max-width: 98vw;
-    padding: 1rem 0.5rem 1rem 0.5rem;
-    margin: 1rem;
+    max-width: 95vw;
+    width: 95vw;
+    padding: 1rem 0.75rem;
+    margin: 0.5rem;
   }
   .chatbot-title {
     font-size: 1.3rem;
@@ -384,6 +398,44 @@ code {
   .chatbot-messages {
     max-height: 180px;
     font-size: 0.98rem;
+    padding: 0.25rem 2px;
+    gap: 0.8rem;
+  }
+  .chatbot-message-bubble {
+    max-width: 85%;
+    padding: 0.6rem 0.9rem 0.4rem 0.9rem;
+    font-size: 0.95rem;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    hyphens: auto;
+    margin: 0;
+  }
+  .chatbot-message-bubble.user {
+    margin-left: auto;
+    margin-right: 0;
+  }
+  .chatbot-message-bubble.bot {
+    margin-left: 0;
+    margin-right: auto;
+  }
+  .chatbot-message-text {
+    word-break: break-word;
+    overflow-wrap: break-word;
+    hyphens: auto;
+  }
+  .chatbot-input-row {
+    gap: 0.5rem;
+  }
+  .chatbot-input {
+    font-size: 1rem;
+    padding: 0.6rem 0.8rem;
+  }
+  .chatbot-send-btn {
+    padding: 0.6rem 0.9rem;
+    font-size: 1.1rem;
+  }
+  .chatbot-header-left {
+    gap: 0.5rem;
   }
 }
 
@@ -691,5 +743,95 @@ code {
   100% {
     stroke-dasharray: 90, 150;
     stroke-dashoffset: -124;
+  }
+}
+
+/* VirtualizedMessageList styles */
+.virtualized-message-list {
+  width: 100%;
+  overflow: auto;
+}
+
+.message-item {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0;
+}
+
+/* Direct message rendering - no virtualization */
+.chatbot-messages .chatbot-message-bubble {
+  position: static !important;
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 0 !important;
+  margin-top: 0 !important;
+}
+
+/* Ensure proper spacing between messages */
+.chatbot-messages > .chatbot-message-bubble {
+  margin: 0 !important;
+}
+
+.chatbot-messages > .chatbot-message-bubble:not(:last-child) {
+  margin-bottom: 0 !important;
+}
+
+/* Additional responsive styles for very small screens */
+@media (max-width: 400px) {
+  .chatbot-container {
+    max-width: 98vw;
+    width: 98vw;
+    padding: 0.8rem 0.5rem;
+    margin: 0.25rem;
+  }
+
+  .chatbot-message-bubble {
+    max-width: 90%;
+    min-width: 100px;
+    padding: 0.5rem 0.8rem 0.3rem 0.8rem;
+    font-size: 0.9rem;
+    margin: 0;
+  }
+
+  .chatbot-message-bubble.user {
+    margin-left: auto;
+    margin-right: 0;
+  }
+
+  .chatbot-message-bubble.bot {
+    margin-left: 0;
+    margin-right: auto;
+  }
+
+  .chatbot-messages {
+    gap: 0.6rem;
+    padding: 0.25rem 1px;
+  }
+
+  .chatbot-title {
+    font-size: 1.1rem;
+  }
+
+  .chatbot-input {
+    font-size: 0.95rem;
+    padding: 0.5rem 0.7rem;
+  }
+
+  .chatbot-send-btn {
+    padding: 0.5rem 0.8rem;
+    font-size: 1rem;
+  }
+
+  .chatbot-header-left {
+    gap: 0.4rem;
+  }
+
+  .chatbot-connection-indicator {
+    font-size: 0.85rem;
+    padding: 0 0.5rem;
+    height: 1.8rem;
   }
 }
