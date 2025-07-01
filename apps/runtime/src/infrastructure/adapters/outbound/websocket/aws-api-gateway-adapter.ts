@@ -223,11 +223,10 @@ export class AwsApiGatewayWebSocketAdapter implements CommunicationService {
       username: string;
       timestamp: Date;
       sessionId: string;
-      isEcho: boolean;
     }
   ): Promise<void> {
     const message: WebSocketMessage = {
-      type: 'chat_message',
+      type: 'message_response',
       timestamp: new Date(),
       data: response,
     };

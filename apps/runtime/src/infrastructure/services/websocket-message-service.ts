@@ -160,20 +160,8 @@ export class WebSocketMessageService {
   async sendChatResponse(
     connectionId: string,
     event: APIGatewayProxyEvent,
-    userMessage: Message,
     botMessage: Message
   ): Promise<boolean> {
-    const userMessageResponse: WebSocketMessage = {
-      type: 'message_response',
-      data: {
-        message: userMessage.getContent(),
-        sessionId: userMessage.getSessionId().getValue(),
-        messageId: userMessage.getId().getValue(),
-        timestamp: userMessage.getCreatedAt().toISOString(),
-        isEcho: false, // User message is not an echo
-      },
-    };
-
     const botMessageResponse: WebSocketMessage = {
       type: 'message_response',
       data: {
@@ -181,29 +169,16 @@ export class WebSocketMessageService {
         sessionId: botMessage.getSessionId().getValue(),
         messageId: botMessage.getId().getValue(),
         timestamp: botMessage.getCreatedAt().toISOString(),
-        isEcho: true, // Bot message is the "echo" or response
       },
     };
 
-    logger.info('Sending chat responses', {
+    logger.info('Sending chat response', {
       connectionId,
-      userMessageId: userMessage.getId().getValue(),
       botMessageId: botMessage.getId().getValue(),
       correlationId: this.generateCorrelationId(),
     });
 
-    const userMessageSent = await this.sendMessage(
-      connectionId,
-      event,
-      userMessageResponse
-    );
-    const botMessageSent = await this.sendMessage(
-      connectionId,
-      event,
-      botMessageResponse
-    );
-
-    return userMessageSent && botMessageSent;
+    return this.sendMessage(connectionId, event, botMessageResponse);
   }
 
   /**

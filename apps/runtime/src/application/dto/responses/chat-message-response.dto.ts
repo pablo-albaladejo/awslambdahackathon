@@ -37,9 +37,6 @@ export interface ChatMessageDto {
 
   /** Message metadata */
   metadata?: Record<string, unknown>;
-
-  /** Whether this is an echo of the sender's own message */
-  isEcho?: boolean;
 }
 
 /**

@@ -133,7 +133,6 @@ export const MESSAGE_CONFIG = {
   MAX_CONTENT_LENGTH: 1000,
   ID_PREFIX: {
     MESSAGE: 'msg_',
-    ECHO: 'echo_',
   },
 } as const;
 

@@ -257,8 +257,17 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
         );
         if (!validation.success || !validation.data) {
           const errorMessage = validation.error || 'Invalid message format';
-          logger.error('Invalid message received:', validation.error);
-          handleError(errorMessage);
+          logger.error('WebSocket message validation failed:', {
+            error: validation.error,
+            receivedData: event.data,
+            errorMessage,
+          });
+          // Resilient error handling: Log validation errors but keep connection alive
+          // This prevents the WebSocket from disconnecting due to malformed/unexpected messages
+          // from the server, improving connection stability
+          logger.warn(
+            'Ignoring invalid message, keeping WebSocket connection alive'
+          );
           return;
         }
         const data = validation.data;
@@ -319,7 +328,12 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
           error,
           data: event.data,
         });
-        handleError('Failed to parse server message');
+        // Resilient error handling: Log parsing errors but keep connection alive
+        // This prevents the WebSocket from disconnecting due to invalid JSON
+        // from the server, improving connection stability
+        logger.warn(
+          'Ignoring unparseable message, keeping WebSocket connection alive'
+        );
       }
     },
     [handleError, websocketConfig.reconnectAttempts]

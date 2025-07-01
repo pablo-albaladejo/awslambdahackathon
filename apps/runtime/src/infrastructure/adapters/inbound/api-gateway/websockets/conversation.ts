@@ -367,7 +367,7 @@ const handleChatMessage = async (
   await createWebSocketService(event).sendMessage(
     ConnectionId.create(connectionId),
     {
-      type: 'chat_message',
+      type: 'message_response',
       timestamp: new Date(),
       data: {
         messageId: crypto.randomUUID(),
@@ -376,7 +376,6 @@ const handleChatMessage = async (
         username: user.getUsername(),
         timestamp: new Date(),
         sessionId: result.message?.getSessionId().getValue() ?? '',
-        isEcho: true,
       },
     }
   );
