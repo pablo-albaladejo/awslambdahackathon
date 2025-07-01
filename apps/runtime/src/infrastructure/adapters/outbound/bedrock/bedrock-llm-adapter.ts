@@ -82,11 +82,11 @@ export class BedrockLLMAdapter implements LLMService {
   private readonly client: BedrockRuntimeClient;
   private readonly config: BedrockConfig;
 
-  // Map our models to Bedrock model IDs
+  // Map our models to Bedrock model IDs and inference profiles
   private readonly modelMap = {
-    'nova-micro': 'amazon.nova-micro-v1:0',
-    'nova-lite': 'amazon.nova-lite-v1:0',
-    'nova-pro': 'amazon.nova-pro-v1:0',
+    'nova-micro': 'us.amazon.nova-micro-v1:0', // Use inference profile for Nova models
+    'nova-lite': 'us.amazon.nova-lite-v1:0', // Use inference profile for Nova models
+    'nova-pro': 'us.amazon.nova-pro-v1:0', // Use inference profile for Nova models
     'claude-3-haiku': 'anthropic.claude-3-haiku-20240307-v1:0',
     'claude-3-sonnet': 'anthropic.claude-3-sonnet-20240229-v1:0',
     'claude-3-opus': 'anthropic.claude-3-opus-20240229-v1:0',

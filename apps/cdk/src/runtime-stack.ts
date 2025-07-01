@@ -241,16 +241,26 @@ export class RuntimeStack extends cdk.Stack {
     this.websocketConversationFunction.addToRolePolicy(cloudWatchPolicy);
     this.llmServiceFunction.addToRolePolicy(cloudWatchPolicy);
 
-    // Grant Bedrock access to LLM function for Nova models
+    // Grant Bedrock access to LLM function for Nova models via inference profiles
     const bedrockPolicy = new cdk.aws_iam.PolicyStatement({
       effect: cdk.aws_iam.Effect.ALLOW,
       actions: ['bedrock:InvokeModel', 'bedrock:InvokeModelWithResponseStream'],
       resources: [
-        // Nova models
-        `arn:aws:bedrock:${this.region}::foundation-model/amazon.nova-micro-v1:0`,
-        `arn:aws:bedrock:${this.region}::foundation-model/amazon.nova-lite-v1:0`,
-        `arn:aws:bedrock:${this.region}::foundation-model/amazon.nova-pro-v1:0`,
-        // Claude models (fallback support)
+        // Nova inference profiles (cross-region, system-defined - no account ID needed)
+        `arn:aws:bedrock:*:*:inference-profile/us.amazon.nova-micro-v1:0`,
+        `arn:aws:bedrock:*:*:inference-profile/us.amazon.nova-lite-v1:0`,
+        `arn:aws:bedrock:*:*:inference-profile/us.amazon.nova-pro-v1:0`,
+        // Nova foundation models in all regions where inference profiles can route
+        `arn:aws:bedrock:us-east-1::foundation-model/amazon.nova-micro-v1:0`,
+        `arn:aws:bedrock:us-east-2::foundation-model/amazon.nova-micro-v1:0`,
+        `arn:aws:bedrock:us-west-2::foundation-model/amazon.nova-micro-v1:0`,
+        `arn:aws:bedrock:us-east-1::foundation-model/amazon.nova-lite-v1:0`,
+        `arn:aws:bedrock:us-east-2::foundation-model/amazon.nova-lite-v1:0`,
+        `arn:aws:bedrock:us-west-2::foundation-model/amazon.nova-lite-v1:0`,
+        `arn:aws:bedrock:us-east-1::foundation-model/amazon.nova-pro-v1:0`,
+        `arn:aws:bedrock:us-east-2::foundation-model/amazon.nova-pro-v1:0`,
+        `arn:aws:bedrock:us-west-2::foundation-model/amazon.nova-pro-v1:0`,
+        // Claude models (fallback support - current region only)
         `arn:aws:bedrock:${this.region}::foundation-model/anthropic.claude-3-haiku-20240307-v1:0`,
         `arn:aws:bedrock:${this.region}::foundation-model/anthropic.claude-3-sonnet-20240229-v1:0`,
         `arn:aws:bedrock:${this.region}::foundation-model/anthropic.claude-3-opus-20240229-v1:0`,
