@@ -4,24 +4,6 @@ This document presents the entity-relationship diagram for the Amazon DynamoDB t
 
 ```mermaid
 erDiagram
-    CONNECTIONS {
-        string connectionId PK
-        string userId
-        string sessionId
-        string connectedAt
-        string lastActivityAt
-        string status
-    }
-
-    MESSAGES {
-        string sessionId PK
-        string timestamp SK
-        string messageId
-        string text
-        bool isUser
-        string userId
-    }
-
     USERS {
         string userId PK
         string email
@@ -30,9 +12,18 @@ erDiagram
         string updatedAt
     }
 
+    CONNECTIONS {
+        string connectionId PK
+        string userId FK
+        string sessionId
+        string connectedAt
+        string lastActivityAt
+        string status
+    }
+
     SESSIONS {
         string sessionId PK
-        string userId
+        string userId FK
         string title
         string createdAt
         string updatedAt
@@ -41,6 +32,19 @@ erDiagram
         bool isActive
     }
 
-    USERS ||--o{ SESSIONS : "has"
-    USERS ||--o{ CONNECTIONS : "has"
+    MESSAGES {
+        string messageId PK
+        string sessionId FK
+        string timestamp
+        string text
+        bool isUser
+        string userId FK
+    }
+
+    USERS ||--o{ SESSIONS : has
+    USERS ||--o{ CONNECTIONS : has
+    SESSIONS ||--o{ MESSAGES : has
+    SESSIONS ||--o{ CONNECTIONS : "used by"
+    USERS ||--o{ MESSAGES : "writes"
+
     SESSIONS ||--o{ MESSAGES : "has"
