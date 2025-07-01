@@ -265,6 +265,7 @@ export class ApplicationErrorHandlingService implements ErrorHandlingService {
 
       const errorMessage = this.getUserFriendlyErrorMessage(error);
 
+      // Use correct WebSocket message structure that follows ErrorSchema
       await communicationService.sendMessage(
         ConnectionId.create(connectionId),
         {
@@ -273,9 +274,11 @@ export class ApplicationErrorHandlingService implements ErrorHandlingService {
           data: {
             code: error.code,
             message: errorMessage,
+            timestamp: error.timestamp.toISOString(), // Required by ErrorSchema
             details: {
               errorType: error.type,
-              timestamp: error.timestamp.toISOString(),
+              correlationId: error.correlationId,
+              ...(error.details || {}),
             },
           },
         }
