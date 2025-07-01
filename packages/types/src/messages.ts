@@ -6,7 +6,7 @@ import { IdSchema, TimestampSchema } from './schemas';
 export const ChatMessageDataSchema = z.object({
   id: IdSchema,
   text: z.string().min(1).max(10000), // Max 10KB message
-  isUser: z.boolean(),
+  isFromUser: z.boolean(),
   timestamp: TimestampSchema,
   sessionId: IdSchema.optional(),
   userId: IdSchema.optional(),
@@ -73,7 +73,7 @@ export const MessageAnalyticsSchema = z.object({
   sessionId: IdSchema,
   totalMessages: z.number().int().min(0),
   userMessages: z.number().int().min(0),
-  botMessages: z.number().int().min(0),
+  assistantMessages: z.number().int().min(0),
   averageResponseTime: z.number().min(0).optional(),
   sessionDuration: z.number().min(0).optional(),
   startTime: TimestampSchema,
@@ -117,13 +117,13 @@ export const validateMessageWithStatus = (data: unknown): MessageWithStatus => {
 // Message factory functions
 export const createChatMessageData = (
   text: string,
-  isUser: boolean,
+  isFromUser: boolean,
   sessionId?: string,
   userId?: string
 ): ChatMessageData => ({
   id: crypto.randomUUID(),
   text,
-  isUser,
+  isFromUser,
   timestamp: new Date().toISOString(),
   sessionId,
   userId,
@@ -152,11 +152,11 @@ export const createChatSession = (
 
 // Message utility functions
 export const isMessageFromUser = (message: ChatMessageData): boolean => {
-  return message.isUser;
+  return message.isFromUser;
 };
 
-export const isMessageFromBot = (message: ChatMessageData): boolean => {
-  return !message.isUser;
+export const isMessageFromAssistant = (message: ChatMessageData): boolean => {
+  return !message.isFromUser;
 };
 
 export const getMessageAge = (message: ChatMessageData): number => {
@@ -221,7 +221,7 @@ export const calculateSessionAnalytics = (
 ): MessageAnalytics => {
   const sessionMessages = filterMessagesBySession(messages, sessionId);
   const userMessages = sessionMessages.filter(isMessageFromUser);
-  const botMessages = sessionMessages.filter(isMessageFromBot);
+  const assistantMessages = sessionMessages.filter(isMessageFromAssistant);
 
   const startTime = sessionMessages[0]?.timestamp || new Date().toISOString();
   const endTime = sessionMessages[sessionMessages.length - 1]?.timestamp;
@@ -230,7 +230,7 @@ export const calculateSessionAnalytics = (
     sessionId,
     totalMessages: sessionMessages.length,
     userMessages: userMessages.length,
-    botMessages: botMessages.length,
+    assistantMessages: assistantMessages.length,
     startTime,
     endTime,
   };
