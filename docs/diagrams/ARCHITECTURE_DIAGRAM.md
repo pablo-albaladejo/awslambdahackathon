@@ -13,19 +13,19 @@ graph LR
     G[Amazon DynamoDB]
     H[Amazon Cognito]
     I[Amazon CloudWatch]
-    J[Model Context Protocol (MCP) Server]
+    J[Model Context Protocol - Server]
 
-    A -- HTTPS --> B
-    B -- Serves Content --> C
-    A -- REST API Calls (e.g., Auth) --> D
-    A -- WebSocket Connection (Real-time) --> E
+    A -->|HTTPS| B
+    B -->|Serves Content| C
+    A -->|REST API Calls | D
+    A -->|WebSocket Connection | E
 
-    D -- Triggers --> F
-    E -- Triggers --> F
+    D -->|Triggers| F
+    E -->|Triggers| F
 
-    F -- Reads/Writes --> G
-    F -- Authenticates With --> H
-    F -- Sends Logs/Metrics --> I
-    F -- MCP Requests --> J
-    J -- MCP Responses --> F
+    F -->|Reads/Writes| G
+    F -->|Authenticates With| H
+    F -->|Sends Logs/Metrics| I
+    F -->|MCP Requests| J
+    J -->|MCP Responses| F
 ```
