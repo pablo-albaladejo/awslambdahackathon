@@ -57,7 +57,6 @@ export interface NovaRequest {
   }>;
   max_tokens: number;
   temperature: number;
-  top_p?: number;
   system?: string;
 }
 
@@ -132,7 +131,6 @@ export class BedrockLLMAdapter implements LLMService {
           ],
           max_tokens: request.maxTokens || 1000,
           temperature: request.temperature || 0.7,
-          top_p: 0.9,
         };
         requestBody = JSON.stringify(novaRequest);
       } else {
