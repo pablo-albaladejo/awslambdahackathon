@@ -21,6 +21,9 @@ export interface LLMRequest {
   model?: LLMModel;
   maxTokens?: number;
   temperature?: number;
+  topP?: number;
+  topK?: number;
+  systemPrompt?: string;
 }
 
 export interface LLMResponse {

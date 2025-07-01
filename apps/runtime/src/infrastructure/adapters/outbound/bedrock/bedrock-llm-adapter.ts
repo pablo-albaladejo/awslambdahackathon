@@ -20,61 +20,87 @@ export interface BedrockConfig {
   maxRetries: number;
 }
 
+/**
+ * Claude request interface according to official AWS Bedrock documentation
+ * @see https://docs.aws.amazon.com/bedrock/latest/userguide/model-parameters-anthropic-claude-messages-request-response.html
+ */
 export interface ClaudeRequest {
-  anthropic_version: string;
-  max_tokens: number;
-  temperature: number;
+  anthropic_version: string; // Must be "bedrock-2023-05-31" for Bedrock
+  max_tokens: number; // Required: maximum tokens to generate
+  temperature?: number; // Optional: randomness (0-1, default 1)
+  top_p?: number; // Optional: nucleus sampling (0-1, default 0.999)
+  top_k?: number; // Optional: top-k sampling (0-500, disabled by default)
+  system?: string; // Optional: system prompt
   messages: Array<{
     role: 'user' | 'assistant';
-    content: string;
+    content:
+      | Array<{
+          type: 'text';
+          text: string;
+        }>
+      | string; // Support both array format and string format (shorthand)
   }>;
+  stop_sequences?: string[]; // Optional: custom stop sequences
 }
 
+/**
+ * Claude response interface according to official AWS Bedrock documentation
+ * @see https://docs.aws.amazon.com/bedrock/latest/userguide/model-parameters-anthropic-claude-messages-request-response.html
+ */
 export interface ClaudeResponse {
-  id: string;
-  type: string;
-  role: string;
+  id: string; // Unique identifier for the response
+  type: string; // Always "message"
+  role: string; // Always "assistant"
   content: Array<{
-    type: string;
-    text: string;
+    type: string; // "text", "tool_use", or "image"
+    text: string; // Generated text content
+    // Additional fields for tool use and image responses
+    id?: string;
+    name?: string;
+    input?: any;
+    image?: any;
   }>;
-  model: string;
-  stop_reason: string;
-  stop_sequence: null;
+  model: string; // Model ID that processed the request
+  stop_reason: string; // "end_turn", "max_tokens", or "stop_sequence"
+  stop_sequence?: string; // The stop sequence that ended generation (if any)
   usage: {
-    input_tokens: number;
-    output_tokens: number;
+    input_tokens: number; // Number of input tokens
+    output_tokens: number; // Number of output tokens
   };
 }
 
 export interface NovaRequest {
+  schemaVersion: string;
   messages: Array<{
     role: 'user' | 'assistant';
     content: Array<{
-      type: 'text';
       text: string;
     }>;
   }>;
-  max_tokens: number;
-  temperature: number;
-  system?: string;
+  inferenceConfig: {
+    maxTokens: number;
+    temperature: number;
+    topP: number;
+    topK: number;
+  };
+  system?: Array<{
+    text: string;
+  }>;
 }
 
 export interface NovaResponse {
-  id: string;
-  type: string;
-  role: string;
-  content: Array<{
-    type: string;
-    text: string;
-  }>;
-  model: string;
-  stop_reason: string;
-  stop_sequence: null;
-  usage: {
-    input_tokens: number;
-    output_tokens: number;
+  output: {
+    message: {
+      content: Array<{
+        text: string;
+      }>;
+    };
   };
+  usage: {
+    inputTokens: number;
+    outputTokens: number;
+  };
+  stopReason: string;
 }
 
 export class BedrockLLMAdapter implements LLMService {
@@ -116,8 +142,42 @@ export class BedrockLLMAdapter implements LLMService {
       let requestBody: string;
 
       if (isNova) {
-        // Prepare request for Nova models
+        // Prepare request for Nova models using the correct format from AWS documentation
         const novaRequest: NovaRequest = {
+          schemaVersion: 'messages-v1',
+          messages: [
+            {
+              role: 'user',
+              content: [
+                {
+                  text: this.buildPrompt(request),
+                },
+              ],
+            },
+          ],
+          inferenceConfig: {
+            maxTokens: request.maxTokens || 1000,
+            temperature: request.temperature || 0.7,
+            topP: request.topP || 0.9,
+            topK: 20,
+          },
+        };
+
+        // Add system prompt if provided
+        if (request.systemPrompt) {
+          novaRequest.system = [
+            {
+              text: request.systemPrompt,
+            },
+          ];
+        }
+
+        requestBody = JSON.stringify(novaRequest);
+      } else {
+        // Prepare request for Claude models according to official AWS Bedrock documentation
+        const claudeRequest: ClaudeRequest = {
+          anthropic_version: 'bedrock-2023-05-31', // Official version for Bedrock
+          max_tokens: request.maxTokens || 1000,
           messages: [
             {
               role: 'user',
@@ -129,23 +189,22 @@ export class BedrockLLMAdapter implements LLMService {
               ],
             },
           ],
-          max_tokens: request.maxTokens || 1000,
-          temperature: request.temperature || 0.7,
         };
-        requestBody = JSON.stringify(novaRequest);
-      } else {
-        // Prepare request for Claude models
-        const claudeRequest: ClaudeRequest = {
-          anthropic_version: '2023-06-01',
-          max_tokens: request.maxTokens || 1000,
-          temperature: request.temperature || 0.7,
-          messages: [
-            {
-              role: 'user',
-              content: this.buildPrompt(request),
-            },
-          ],
-        };
+
+        // Add optional parameters only if they are provided
+        if (request.temperature !== undefined) {
+          claudeRequest.temperature = request.temperature;
+        }
+        if (request.topP !== undefined) {
+          claudeRequest.top_p = request.topP;
+        }
+        if (request.topK !== undefined) {
+          claudeRequest.top_k = request.topK;
+        }
+        if (request.systemPrompt) {
+          claudeRequest.system = request.systemPrompt;
+        }
+
         requestBody = JSON.stringify(claudeRequest);
       }
 
@@ -171,22 +230,43 @@ export class BedrockLLMAdapter implements LLMService {
         };
       }
 
-      // Parse the response
-      const responseBody = JSON.parse(
-        new TextDecoder().decode(response.body)
-      ) as ClaudeResponse;
+      // Parse the response based on model type
+      const responseBody = JSON.parse(new TextDecoder().decode(response.body));
 
-      const generatedText = responseBody.content
-        .filter(item => item.type === 'text')
-        .map(item => item.text)
-        .join('');
+      let generatedText: string;
+      let usage: LLMUsage;
 
-      const usage: LLMUsage = {
-        inputTokens: responseBody.usage.input_tokens,
-        outputTokens: responseBody.usage.output_tokens,
-        totalTokens:
-          responseBody.usage.input_tokens + responseBody.usage.output_tokens,
-      };
+      if (isNova) {
+        // Parse Nova response format
+        const novaResponse = responseBody as NovaResponse;
+
+        generatedText = novaResponse.output.message.content
+          .map(item => item.text)
+          .join('');
+
+        usage = {
+          inputTokens: novaResponse.usage.inputTokens,
+          outputTokens: novaResponse.usage.outputTokens,
+          totalTokens:
+            novaResponse.usage.inputTokens + novaResponse.usage.outputTokens,
+        };
+      } else {
+        // Parse Claude response format
+        const claudeResponse = responseBody as ClaudeResponse;
+
+        generatedText = claudeResponse.content
+          .filter(item => item.type === 'text')
+          .map(item => item.text)
+          .join('');
+
+        usage = {
+          inputTokens: claudeResponse.usage.input_tokens,
+          outputTokens: claudeResponse.usage.output_tokens,
+          totalTokens:
+            claudeResponse.usage.input_tokens +
+            claudeResponse.usage.output_tokens,
+        };
+      }
 
       logger.info('Bedrock LLM request completed successfully', {
         messageId: request.messageId,
@@ -257,6 +337,20 @@ export class BedrockLLMAdapter implements LLMService {
       return {
         success: false,
         error: 'temperature must be between 0 and 1',
+      };
+    }
+
+    if (request.topP && (request.topP < 0 || request.topP > 1)) {
+      return {
+        success: false,
+        error: 'topP must be between 0 and 1',
+      };
+    }
+
+    if (request.topK && (request.topK < 0 || request.topK > 500)) {
+      return {
+        success: false,
+        error: 'topK must be between 0 and 500',
       };
     }
 
